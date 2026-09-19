@@ -34,10 +34,8 @@ depends on it is marked as such.
 
 | ID | Question | Status |
 |---|---|---|
-| DATAREPO-1 | Revisit v1 scope: DIA, TMT and rodent are in (your correction). | Posted 001, 2026-09-19 |
-| DATAREPO-2 | Record organism / acquisition / quant_method / instrument_vendor explicitly in provenance. | Posted 001 |
-| DATAREPO-3 | Which accession list and which PSM count are canonical (count mismatches)? | Posted 001 |
-| DATAREPO-4 | Own the benchmark question set (the user's call); a 78-question seed is attached. | Posted 002, 2026-09-19 |
+| DATAREPO-2 | Record organism / acquisition / quant_method / instrument_vendor, **plus enrichment and labelling** (aging's addition), explicitly in provenance. | Accepted (aging 003). aging will say in the thread when `provenance.json` carries them. Until then the ingester reads them from discover/SDRF and marks them `inferred`. |
+| DATAREPO-3 | Which accession list and which PSM count are canonical? | Open on aging's side: SUSPICIOUS.md S20 (datasets; the frozen census, R1, will be canonical) and S21 (PSMs; aging will answer with a definition ID). Until then the ingester stores both PSM numbers with their source. |
 
 ## Answered
 
@@ -48,3 +46,5 @@ depends on it is marked as such.
 | — | CC BY 4.0 data, MIT code | D3 |
 | G6a | QPX-compatible superset | D4 |
 | G6b | Human + rodent, DDA + DIA, LFQ + TMT | D5 |
+| DATAREPO-1 | aging accepts DIA/TMT/rodent; build order stays human DDA LFQ first (aging 003) | D5 (unchanged) |
+| DATAREPO-4 | aging owns the benchmark: `aging/design/QUESTIONS.md` v0.3, 168 questions, read from trishorts/aging master, not copied (aging 003) | G5 |
