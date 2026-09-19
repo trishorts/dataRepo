@@ -33,6 +33,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   (G14). Don't add an in-house parser for a format pyMzLib covers.
 - **PowerShell `Set-Content -Encoding utf8` writes a BOM,** and linkml-validate then rejects the file (the first key reads as `ï»¿datasets`). Write YAML fixtures with the Write tool or `[IO.File]::WriteAllText` using UTF-8 without a BOM.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
+- **To check whether a thread landed, run aging's checker** — don't guess and don't edit aging's
+  tracking table yourself:
+  `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`
+  It prints who owes whom per peer and flags DUP-NUMBER / DIVERGED / ONE-SIDED / UNCOMMITTED /
+  UNPUSHED. Both sides number from a shared sequence, so check `next=` before choosing a number:
+  aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.
+  Its DIVERGED check normalizes line endings, so CRLF/LF differences between the two copies are fine.
 
 - **FRAMEWORK.md is still mostly a proposal.** Its step 1 (ingest) is built and its contract is locked as D9; steps 2-6 (DuckDB catalog, client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
