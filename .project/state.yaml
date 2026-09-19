@@ -1,0 +1,34 @@
+name: dataRepo
+created: 2026-09-19
+phase: INCEPTION
+
+goal: >
+  Design and build an AI-ready, API-accessible data repository that organizes the search + quant
+  results (PSMs, peptides, proteoforms/PTMs, protein groups, FlashLFQ quant, provenance, SDRF design,
+  GO/organelle annotation) from dozens-to-hundreds of PRIDE datasets reanalyzed by the aging pipeline,
+  so humans and especially AI agents can query aging-related proteomic changes across organelles.
+
+# SIBLING of aging: aging PRODUCES results (pipeline); dataRepo STORES + SERVES them.
+#   aging -> run outputs on F:\aging_data\<run>\<PXD>\ with provenance.json (aging-provenance/2)
+#   dataRepo ingests those; it never re-runs searches.
+depends_on: [aging]
+
+decisions: []
+
+gaps:
+  - "G1 Framework: research what the best bio/proteomics resources do for AI-ready access and propose an architecture (design/FRAMEWORK.md). In progress 2026-09-19."
+  - "G2 Hosting: where does the server live (lab Linux box, UW CHTC/DoIT, NCEMS cyberinfrastructure, cloud)? aging D5 says production goes to server operators."
+  - "G3 Access policy: public from day one, or private to the NCEMS working group until publication?"
+  - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
+
+skip_log: []
+
+repos: []
+
+github:
+  remote: ""
+  private: true
+
+dir_map: {}
+
+normalizations: []
