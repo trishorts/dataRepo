@@ -6,10 +6,12 @@
 
 | | |
 |---|---|
-| Commits | 0 |
+| Commits | 1 |
 | Sync | not synced -- no remote recorded |
 | Locked decisions | 0 |
 | Open gaps | 4 |
+
+> **1 document(s) in `design/` not referenced above** -- `INPUT_INVENTORY.md`. Add a line for each, or say why not.
 
 <!-- END GENERATED -->
 
