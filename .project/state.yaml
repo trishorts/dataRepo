@@ -29,10 +29,17 @@ decisions:
   - id: D5
     date: 2026-09-19
     text: "Scope: human + rodent, DDA + DIA, label-free + TMT from v0 (user: 'definitely DIA and TMT and rodent'; aging's 'DIA is out' is wrong). organism, acquisition, quant_method, instrument_vendor are real columns. Quant table is long: (run, channel, feature, value). Only the aging-DDA-LFQ ingester is written now; DIA/TMT ingesters when aging produces that data (Q6 option A, taken by default; user may revisit). Relayed to aging as thread dataRepo/001 DATAREPO-1. (Closes G6 part b.)"
+  - id: D6
+    date: 2026-09-19
+    text: "The benchmark questions come from aging, not dataRepo (user: 'have the aging project generate all the questions. let's keep this project just a bit more generic'). dataRepo stays generic: it stores, serves and is scored against a question set; it doesn't set the science agenda. How generic the schema gets is G10."
+  - id: D7
+    date: 2026-09-19
+    text: "Every question that needs a human answer goes into design/OPEN_QUESTIONS.md with a default, grouped by who answers (NCEMS / user + working group / aging). The user takes it to meetings. Work proceeds on the defaults."
 
 gaps:
   - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). The user has not reviewed or locked it. Next: /grill-me on it, then record the locked choices as decisions."
-  - "G5 Step 0 question set: write 50-100 real aging/organelle questions the repo must answer (e.g. 'which mitochondrial proteins decline with age in skeletal muscle in >=3 datasets?'). This comes BEFORE schema or tools; it is the evaluation benchmark (Open Targets Karenina pattern)."
+  - "G5 Step 0 question set (the evaluation benchmark, Karenina pattern): OWNED BY AGING (D6). A 78-question seed was posted as thread dataRepo/002 DATAREPO-4; waiting for aging's adopted version. dataRepo scores its schema + tools against it. The seed's schema-gap rows (excluded datasets, release changelog, ortholog/age mapping, occupancy, organelle-mass normalization, TMT model) are for aging to route."
+  - "G10 Genericity (U5 in design/OPEN_QUESTIONS.md): proposal = generic core schema + a pluggable study layer (aging supplies age_effect, organelle_age_summary, sample age columns). Not yet confirmed."
   - "G7 Count mismatches found in aging: POSTED 2026-09-19 as thread dataRepo/001 DATAREPO-3; awaiting aging reply. discover says 1,432 hits/286 kept/35 SDRF, the threads say 589/88, PLAN.md says 407 kept; results.txt says 26,582 PSMs at 1% FDR vs provenance psms_1pct 27,958. Asked aging to log both in SUSPICIOUS.md and name the canonical source."
   - "G8 GitHub remote: none yet. Offered trishorts/dataRepo (private); the user has not answered. Create only on explicit OK."
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."

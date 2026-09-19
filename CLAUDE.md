@@ -6,7 +6,9 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** Run `/grill-me` on `design/FRAMEWORK.md` §7 to lock G2 (hosting), G3 (access) and G6 (QPX / v0 scope). Then write `design/QUESTIONS.md`, the Step 0 benchmark (G5).
+- **Pick up at:** D1–D7 are locked (hosting, access, licences, QPX format, scope, aging owns the questions, question tracker). Next, draft the generic core LinkML schema v0 on U5's default (core generic, aging as a study layer). Check the aging thread for replies to 001/002.
+- **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
+- **The benchmark questions belong to aging** (D6). Don't write domain questions here.
 
 ## Things that will bite you here
 
