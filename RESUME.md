@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 7 |
+| Commits | 10 |
 | Sync | not synced -- no remote recorded |
 | Locked decisions | 7 |
 | Open gaps | 8 |
@@ -40,7 +40,7 @@ The framework's section 7 decisions are **locked** (grill-me). Everything else i
 
 ## Pick up at
 
-1. **Post thread 004 to aging.** Use the last section of `design/SCHEMA_COVERAGE.md`: the study-layer columns and the `response` vocabulary, J12 and P2 with no home, the metrics aging should emit (G8, S21), and the R7/R16 column names. Write it in `aging/design/threads/dataRepo/` and mirror it in `design/threads/aging/`.
+1. **Read aging's reply to 004** (DATAREPO-5..8) in `aging/design/threads/dataRepo/` (005+). Record the answers.
 2. **Finish schema v0.** Fill in the field descriptions (agents read them) and check the column names against a pinned QPX release (D4).
 3. **When the user brings NCEMS answers** (N1–N9), record them as decisions.
 4. **G8:** the user runs `! gh repo create trishorts/dataRepo --public --source . --remote origin --push` (auto mode won't). Then record `github.remote`.

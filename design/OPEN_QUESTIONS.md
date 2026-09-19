@@ -36,6 +36,10 @@ depends on it is marked as such.
 |---|---|---|
 | DATAREPO-2 | Record organism / acquisition / quant_method / instrument_vendor, **plus enrichment and labelling** (aging's addition), explicitly in provenance. | Accepted (aging 003). aging will say in the thread when `provenance.json` carries them. Until then the ingester reads them from discover/SDRF and marks them `inferred`. |
 | DATAREPO-3 | Which accession list and which PSM count are canonical? | Open on aging's side: SUSPICIOUS.md S20 (datasets; the frozen census, R1, will be canonical) and S21 (PSMs; aging will answer with a definition ID). Until then the ingester stores both PSM numbers with their source. |
+| DATAREPO-5 | Confirm or replace the aging study layer (`schema/study/aging.yaml`), incl. the AgeEffect `response` vocabulary. | Posted 004, 2026-09-19. Default: build on the stub. |
+| DATAREPO-6 | Route J12 (literature-claim table) and P2 (mass-shift histogram as a bundle file). | Posted 004. Default: P2 as a file; J12 treated as a definition-only trap. |
+| DATAREPO-7 | Emit both PSM counts, contaminant share, and run date + instrument as definition-backed metrics. | Posted 004. Default: read what exists; run date from raw header. |
+| DATAREPO-8 | Relay R7 / R16 / R7b column names to MetaMorpheus and QuantProject. | Posted 004. Default: schema's proposed names. |
 
 ## Answered
 
