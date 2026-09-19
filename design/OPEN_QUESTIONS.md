@@ -29,6 +29,7 @@ depends on it is marked as such.
 | U2 | Does the working group agree to **public from day one** (D2), including age-effect results before the first paper? You decided this; this is only a check that co-leads (Schilling, Gladyshev, Mohanty) aren't surprised. | Public. |
 | U3 | **Credit line** for CC BY 4.0 (D3): what exactly should reusers cite? The NCEMS working group name, a grant number, the paper? | "NCEMS Aging Proteome Working Group, dataRepo vX.Y, DOI…", to be replaced once confirmed. |
 | U5 | **How generic is "generic"?** You said to keep dataRepo "a bit more generic." My proposal: the **core** schema (dataset, sample, run, psm, peptidoform, quant, protein group, protein, provenance, finding, definition) knows nothing about aging, so any reanalysis project could use it. The aging-specific tables (`age_effect`, `organelle_age_summary`, and the age columns on `sample`) move to a pluggable **study layer** that a consumer project like aging supplies. The name, goal and first deployment stay aging's. | Core generic + aging as the first study layer. |
+| U6 | D8 makes dataRepo code-only, with aging hosting the data. Does aging also **run the service** (the API/MCP server over its data, deployed by NCEMS as aging's), or does it only publish the data files and someone else runs the server? | aging owns the whole instance: the data, the releases/DOIs, and the deployed service. dataRepo ships a package that aging runs. |
 
 ## Waiting on aging (thread `design/threads/aging/`)
 

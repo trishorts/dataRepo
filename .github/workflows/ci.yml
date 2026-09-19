@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+
+      - name: Lint schemas
+        run: |
+          linkml-lint --config .linkmllint.yaml schema/datarepo.yaml
+          linkml-lint --config .linkmllint.yaml schema/study/aging.yaml
+
+      - name: Generators accept the schemas
+        run: |
+          gen-json-schema schema/datarepo.yaml > /dev/null
+          gen-json-schema schema/study/aging.yaml > /dev/null
+
+      - name: Valid example validates
+        run: linkml-validate -s schema/datarepo.yaml -C Bundle examples/minimal_bundle.yaml
+
+      - name: Invalid examples are rejected
+        run: |
+          for f in examples/invalid/*.yaml; do
+            if linkml-validate -s schema/datarepo.yaml -C Bundle "$f"; then
+              echo "::error file=$f::expected validation to fail"; exit 1
+            fi
+          done
+
+      - name: Generated docs are up to date
+        run: python tools/build_docs.py --check

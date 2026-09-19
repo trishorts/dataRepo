@@ -6,10 +6,20 @@
 
 | | |
 |---|---|
-| Commits | 10 |
-| Sync | not synced -- no remote recorded |
-| Locked decisions | 7 |
-| Open gaps | 8 |
+| Commits | 11 |
+| Sync | [`trishorts/dataRepo"
+  private: false  # D2: public; created by the user 2026-09-19 (closed G8)
+
+dir_map: {}
+
+normalizations: []`](https://github.com/trishorts/dataRepo"
+  private: false  # D2: public; created by the user 2026-09-19 (closed G8)
+
+dir_map: {}
+
+normalizations: []) |
+| Locked decisions | 8 |
+| Open gaps | 0 |
 
 <!-- END GENERATED -->
 
@@ -36,11 +46,11 @@ The framework's section 7 decisions are **locked** (grill-me). Everything else i
 - **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core) and `schema/study/aging.yaml` (a stub for aging to own).
 - **`lit/`:** the research on platforms and proteomics resources.
 
-**No code yet** (the schema is YAML only). The GitHub remote is not created (G8): auto mode blocked `gh repo create --public`, so the user runs it themselves.
+**No code yet** (the schema is YAML only). The public GitHub repo is https://github.com/trishorts/dataRepo.
 
 ## Pick up at
 
 1. **Read aging's reply to 004** (DATAREPO-5..8) in `aging/design/threads/dataRepo/` (005+). Record the answers.
-2. **Finish schema v0.** Fill in the field descriptions (agents read them) and check the column names against a pinned QPX release (D4).
+2. **Tell aging about D8** (a thread message): aging now hosts the data instance (bundles, releases, DOIs, the deployed service), and U6 asks whether it also runs the server.
+3. **Check the QPX column mapping** against a pinned QPX release (D4). Then **start the ingester** (FRAMEWORK step 1).
 3. **When the user brings NCEMS answers** (N1–N9), record them as decisions.
-4. **G8:** the user runs `! gh repo create trishorts/dataRepo --public --source . --remote origin --push` (auto mode won't). Then record `github.remote`.

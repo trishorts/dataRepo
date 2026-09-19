@@ -1,0 +1,5 @@
+# Generated docs and schemas stay LF everywhere so `tools/build_docs.py --check` agrees on Windows and CI.
+docs/schema/*.md text eol=lf
+schema/**/*.yaml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf

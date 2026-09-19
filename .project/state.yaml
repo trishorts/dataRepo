@@ -1,4 +1,4 @@
-﻿name: dataRepo
+name: dataRepo
 created: 2026-09-19
 phase: INCEPTION
 
@@ -36,13 +36,15 @@ decisions:
     date: 2026-09-19
     text: "Every question that needs a human answer goes into design/OPEN_QUESTIONS.md with a default, grouped by who answers (NCEMS / user + working group / aging). The user takes it to meetings. Work proceeds on the defaults."
 
-gaps:
-  - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). The user has not reviewed or locked it. Next: /grill-me on it, then record the locked choices as decisions."
+  - id: D8
+    date: 2026-09-19
+    text: "dataRepo is code, not data (user: 'this should just be code. I think aging should host the data'). This repo holds the schema, ingester, API/MCP server and deploy package, and never data. aging owns the data instance: the Parquet bundles, the release/changelog entries and DOIs (R2 is now an aging-instance table; dataRepo only defines it), and deploying the service over its results. Refines D1 (NCEMS still runs production, as aging's deployment) and D2 (aging's releases carry the DOIs). How much of running the service aging takes on is U6."
+
+gaps:  - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). The user has not reviewed or locked it. Next: /grill-me on it, then record the locked choices as decisions."
   - "G5 Step 0 question set: OWNED BY AGING (D6). READY 2026-09-19 (aging 003): aging/design/QUESTIONS.md v0.3, 168 questions, top 10 = K1 D2 O1 D1 T2 N1 M1 C1 G1 J16. Read it from trishorts/aging master; never copy it. Next: map every question onto schema v0 (design/SCHEMA_COVERAGE.md) once v0 is drafted."
   - "G11 Tables aging 003 routed to dataRepo. OWN: R2 release/changelog. STORE (aging-produced): R1 census, R3 dataset axes (+ enrichment, labelling), R8 reference panels, R9 clock model. STORE (MetaMorpheus-produced): R7 PTM stoichiometry, R16 glycopeptides (compositions, not structures, J9), R7b proteoform inference with confidence (no top-down, J16). All drafted in schema v0; producers' column names still to confirm."
   - "G10 Genericity (U5 in design/OPEN_QUESTIONS.md): proposal = generic core schema + a pluggable study layer (aging supplies age_effect, organelle_age_summary, sample age columns). Not yet confirmed."
   - "G7 Count mismatches: aging logged them 2026-09-19 as SUSPICIOUS.md S20 (dataset counts; the frozen census R1 will be canonical) and S21 (PSM counts; aging will answer with a definition ID). Both OPEN on aging's side. Nothing blocks here: ingest stores both PSM numbers with their source until S21 closes."
-  - "G8 GitHub remote: the user said YES 2026-09-19 to PUBLIC trishorts/dataRepo (D2), but auto mode blocked gh repo create --public as possible data exfiltration. The user must run it: ! gh repo create trishorts/dataRepo --public --source . --remote origin --push. Then record github.remote and set private: false."
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
@@ -51,8 +53,8 @@ skip_log: []
 repos: []
 
 github:
-  remote: ""
-  private: false  # D2: public; remote not yet created (G8)
+  remote: "https://github.com/trishorts/dataRepo"
+  private: false  # D2: public; created by the user 2026-09-19 (closed G8)
 
 dir_map: {}
 

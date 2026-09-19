@@ -1,0 +1,6 @@
+# linkml-lint config. Enum values keep the field's own spellings (DDA, TMT, MBR, N_and_O) because
+# agents and people search for those strings; snake_case would hide them.
+extends: recommended
+rules:
+  standard_naming:
+    level: disabled
