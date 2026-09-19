@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 2 |
+| Commits | 3 |
 | Sync | not synced -- no remote recorded |
-| Locked decisions | 0 |
-| Open gaps | 8 |
+| Locked decisions | 5 |
+| Open gaps | 6 |
 
 <!-- END GENERATED -->
 

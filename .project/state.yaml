@@ -1,4 +1,4 @@
-name: dataRepo
+﻿name: dataRepo
 created: 2026-09-19
 phase: INCEPTION
 
@@ -13,17 +13,30 @@ goal: >
 #   dataRepo ingests those; it never re-runs searches.
 depends_on: [aging]
 
-decisions: []
+decisions:
+  - id: D1
+    date: 2026-09-19
+    text: "Hosting: aging D5 applies. Prototype locally (data on F:, API on localhost); NCEMS operators run production from a portable Docker Compose package + handover doc. No Windows-only paths. (Closes G2; whether NCEMS hosts web services is G9.)"
+  - id: D2
+    date: 2026-09-19
+    text: "Access: public from day one, no login anywhere (user: 'all open all the time'). Rate limiting lives in the operators' proxy, not our code. Versioned releases with a DOI from the start. (Closes G3.)"
+  - id: D3
+    date: 2026-09-19
+    text: "Licences: data CC BY 4.0; code MIT."
+  - id: D4
+    date: 2026-09-19
+    text: "Format: QPX-compatible superset. Use QPX column names/types where it has a matching view; extend for proteoforms, USI per PSM, organelle, age. Every file records the QPX version it matches. (Closes G6 part a.)"
+  - id: D5
+    date: 2026-09-19
+    text: "Scope: human + rodent, DDA + DIA, label-free + TMT from v0 (user: 'definitely DIA and TMT and rodent'; aging's 'DIA is out' is wrong). organism, acquisition, quant_method, instrument_vendor are real columns. Quant table is long: (run, channel, feature, value). Only the aging-DDA-LFQ ingester is written now; DIA/TMT ingesters when aging produces that data (Q6 option A, taken by default; user may revisit). Relayed to aging as thread dataRepo/001 DATAREPO-1. (Closes G6 part b.)"
 
 gaps:
   - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). The user has not reviewed or locked it. Next: /grill-me on it, then record the locked choices as decisions."
   - "G5 Step 0 question set: write 50-100 real aging/organelle questions the repo must answer (e.g. 'which mitochondrial proteins decline with age in skeletal muscle in >=3 datasets?'). This comes BEFORE schema or tools; it is the evaluation benchmark (Open Targets Karenina pattern)."
-  - "G6 QPX compatibility + v0 scope (human, DDA, label-free, same as aging v1): recommended in FRAMEWORK section 7; confirm in the grill-me."
-  - "G7 Count mismatches found in aging (not fixed here; tell aging): discover says 1,432 hits/286 kept/35 SDRF, the threads say 589/88, PLAN.md says 407 kept; results.txt says 26,582 PSMs at 1% FDR vs provenance psms_1pct 27,958. Not yet posted to aging's SUSPICIOUS.md or threads."
+  - "G7 Count mismatches found in aging: POSTED 2026-09-19 as thread dataRepo/001 DATAREPO-3; awaiting aging reply. discover says 1,432 hits/286 kept/35 SDRF, the threads say 589/88, PLAN.md says 407 kept; results.txt says 26,582 PSMs at 1% FDR vs provenance psms_1pct 27,958. Asked aging to log both in SUSPICIOUS.md and name the canonical source."
   - "G8 GitHub remote: none yet. Offered trishorts/dataRepo (private); the user has not answered. Create only on explicit OK."
-  - "G2 Hosting: where does the server live (lab Linux box, UW CHTC/DoIT, NCEMS cyberinfrastructure, cloud)? aging D5 says production goes to server operators."
-  - "G3 Access policy: public from day one, or private to the NCEMS working group until publication?"
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
+  - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
 skip_log: []
 
