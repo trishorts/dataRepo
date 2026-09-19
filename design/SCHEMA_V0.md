@@ -10,7 +10,7 @@
 
 A study layer **adds tables keyed on core IDs** (`sample_id`, `dataset_id`, `feature_type` + `feature_id`). It never adds columns to a core table. That's why age lives in `SampleAge`, not on `Sample`.
 
-## Core tables (25 classes)
+## Core tables (27 classes)
 
 | Group | Tables |
 |---|---|
@@ -20,7 +20,7 @@ A study layer **adds tables keyed on core IDs** (`sample_id`, `dataset_id`, `fea
 | PTM / glyco / proteoform | PtmSite, PtmStoichiometry (R7), Glycopeptide (R16), ProteoformInference (R7b) |
 | Quant | QuantValue: long, one row per (assay, feature), with a definition_id on every value |
 | Stored from owners | AnnotationSource, ProteinLocalization (go), ProteinAnnotation (R5/R6), FeatureSet + FeatureSetMember (R8 panels) |
-| Trust | Definition, ProvenanceRecord, Finding |
+| Trust | Definition, ProvenanceRecord, Finding, Metric (long, one definition per number), SearchModification |
 
 **The six dataset axes** are real columns on Dataset: organisms, acquisition, quant_method, labelling (+ plex), enrichment and instrument_vendor. `axis_source` records where each value came from. It stays `discover`/`sdrf` until aging's provenance carries the axes (DATAREPO-2).
 
@@ -35,9 +35,9 @@ A study layer **adds tables keyed on core IDs** (`sample_id`, `dataset_id`, `fea
 1. **QPX column mapping.** The `qpx_view` annotations are at table level only. Next: check the column names against a pinned QPX release and record `qpx_version` (D4).
 2. **Producers' column names** for R7 stoichiometry and R16 glycopeptides. MetaMorpheus hasn't published those outputs yet, so the columns here are the ones aging 003 listed.
 3. **Study-layer columns.** aging to confirm or replace (SampleAge, AgeEffect, OrganelleAgeSummary, ClockModel/Feature).
-4. **PSM count (S21).** `Run.psms_at_1pct` carries a definition_id, so both of aging's numbers can be stored until aging names the canonical one.
-5. **Descriptions.** 153 lint warnings are style only, mostly missing field descriptions. Fill them in before the schema docs are served to agents (FRAMEWORK §4 `datarepo_describe`).
+4. **PSM count (S21).** Both of aging's numbers go in `Metric`, each with its own definition_id and source file, until aging names the canonical one.
+5. **Descriptions.** ~168 lint warnings are style only, mostly missing field descriptions. Fill them in before the schema docs are served to agents (FRAMEWORK §4 `datarepo_describe`).
 
 ## Next step
 
-Map every question in `aging/design/QUESTIONS.md` v0.3 onto these tables (`design/SCHEMA_COVERAGE.md`), starting with the top 10. That is the FRAMEWORK roadmap's step-0 test: "every question maps to tables/columns".
+Done: see `design/SCHEMA_COVERAGE.md` (all 168 mapped; 2 have no home). Originally: map every question in `aging/design/QUESTIONS.md` v0.3 onto these tables (`design/SCHEMA_COVERAGE.md`), starting with the top 10. That is the FRAMEWORK roadmap's step-0 test: "every question maps to tables/columns".

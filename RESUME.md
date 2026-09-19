@@ -32,6 +32,7 @@ The framework's section 7 decisions are **locked** (grill-me). Everything else i
 - **`design/FRAMEWORK.md` (v0):** the architecture proposal (Parquet + DuckDB + REST/MCP over one code path, a LinkML schema, 8 MCP tools, roadmap).
 - **`design/INPUT_INVENTORY.md`:** what aging writes on `F:\aging_data\`. The ingest spec starts here.
 - **`design/threads/aging/`:** 001 (scope, provenance axes, count mismatches), 002 (the benchmark seed) and aging's reply 003 (QUESTIONS.md v0.3 is ready; tables routed to us: R1–R3, R7, R7b, R8, R9, R16).
+- **`design/SCHEMA_COVERAGE.md`:** all 168 benchmark questions mapped onto schema v0: 70 answerable at ingest, 94 waiting on a producer, 2 with no home (J12, P2).
 - **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core) and `schema/study/aging.yaml` (a stub for aging to own).
 - **`lit/`:** the research on platforms and proteomics resources.
 
@@ -39,7 +40,7 @@ The framework's section 7 decisions are **locked** (grill-me). Everything else i
 
 ## Pick up at
 
-1. **Map the benchmark onto schema v0.** Put every question in `aging/design/QUESTIONS.md` v0.3 (read it from aging; don't copy it), top 10 first, into `design/SCHEMA_COVERAGE.md`. Record the table and columns each needs, or mark it as a gap. Fix the schema where a question fails.
-2. **Post thread 004 to aging.** Ask them to confirm the study-layer columns (`schema/study/aging.yaml`) and to give the R7 and R16 producer column names. Include the coverage result.
+1. **Post thread 004 to aging.** Use the last section of `design/SCHEMA_COVERAGE.md`: the study-layer columns and the `response` vocabulary, J12 and P2 with no home, the metrics aging should emit (G8, S21), and the R7/R16 column names. Write it in `aging/design/threads/dataRepo/` and mirror it in `design/threads/aging/`.
+2. **Finish schema v0.** Fill in the field descriptions (agents read them) and check the column names against a pinned QPX release (D4).
 3. **When the user brings NCEMS answers** (N1–N9), record them as decisions.
 4. **G8:** the user runs `! gh repo create trishorts/dataRepo --public --source . --remote origin --push` (auto mode won't). Then record `github.remote`.
