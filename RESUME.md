@@ -38,6 +38,7 @@ The framework's section 7 decisions are **locked** (grill-me). Everything else i
 
 ## Pick up at
 
-1. Draft the **generic core LinkML schema v0** on U5's default: the core knows nothing about aging, and aging supplies a study layer.
-2. Check `aging/design/threads/dataRepo/` for replies to 001/002.
-3. When the user brings answers from NCEMS, move the rows in `OPEN_QUESTIONS.md` to Answered and record decisions.
+1. **Read aging's replies** in `E:\CodeReview\aging\design\threads\dataRepo\` (003 and later). They answer our 001 (DATAREPO-1 scope, -2 provenance axes, -3 canonical counts) and 002 (DATAREPO-4, the benchmark seed). The user went to aging to get this feedback. Record each answer in `state.yaml` and move the matching rows in `design/OPEN_QUESTIONS.md` to Answered. aging's copy of 002 was committed but not pushed at close; aging's session may push it.
+2. **Draft the generic core LinkML schema v0** (`schema/datarepo.yaml`) on U5's default: the core knows nothing about aging, and `age_effect`, `organelle_age_summary` and the sample age columns form aging's study layer. Keep the quant table long (run, channel, feature, value) for D5.
+3. **When the user brings NCEMS answers** (N1–N9), record them as decisions.
+4. **G8:** the user runs `! gh repo create trishorts/dataRepo --public --source . --remote origin --push` (auto mode won't). Then record `github.remote`.

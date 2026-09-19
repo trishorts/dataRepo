@@ -6,7 +6,8 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** D1–D7 are locked (hosting, access, licences, QPX format, scope, aging owns the questions, question tracker). Next, draft the generic core LinkML schema v0 on U5's default (core generic, aging as a study layer). Check the aging thread for replies to 001/002.
+- **Pick up at:** Read the replies in `E:\CodeReview\aging\design\threads\dataRepo\` (003+) to our 001 (scope, provenance axes, count mismatches) and 002 (the benchmark seed). The user went to aging for this feedback. Record the answers, then draft the generic core LinkML schema v0 (`schema/datarepo.yaml`) on U5's default: core generic, aging as a study layer. D1–D7 are locked.
+- **Auto mode blocks `gh repo create --public`.** The user must run it themselves (G8 has the command). Don't retry it.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
 
