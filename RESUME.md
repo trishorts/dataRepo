@@ -6,12 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 1 |
+| Commits | 2 |
 | Sync | not synced -- no remote recorded |
 | Locked decisions | 0 |
-| Open gaps | 4 |
-
-> **1 document(s) in `design/` not referenced above** -- `INPUT_INVENTORY.md`. Add a line for each, or say why not.
+| Open gaps | 8 |
 
 <!-- END GENERATED -->
 
@@ -23,7 +21,29 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
+## Where it stands (2026-09-19 close)
+
+The research is done and the framework is **proposed, not agreed**. The user has not reviewed it yet.
+
+**Documents**
+- **`design/FRAMEWORK.md` (v0):** the proposal. Its sections:
+  - five lessons from the best projects;
+  - a three-layer architecture:
+    - per-dataset Parquet as the product;
+    - a prebuilt DuckDB catalog;
+    - Python, REST, MCP and static-site access over one code path;
+  - a 16-table LinkML data model that is a QPX superset with a USI per PSM;
+  - 8 MCP tools, including sandboxed SQL;
+  - a 6-step roadmap;
+  - the decisions it needs;
+  - aging count mismatches.
+- **`design/INPUT_INVENTORY.md`:** what the aging pipeline writes on `F:\aging_data\`. It lists the files, columns, row counts, provenance keys and volumes. It is the ingest spec's starting point.
+- **`lit/research_ai_ready_platforms.md` and `lit/research_proteomics_resources.md`:** the research with URLs. The closest precedent is bigbio's quantms portal (github.com/bigbio/quantms-portal).
+
+**No code yet. No GitHub remote yet** (G8; the user hasn't answered the offer).
+
 ## Pick up at
 
-1. Read `design/FRAMEWORK.md` (the proposed architecture and the research it rests on).
-2. Run `/grill-me` on it to lock decisions: hosting (G2) and access policy (G3).
+1. Run `/grill-me` on `design/FRAMEWORK.md` section 7. Lock hosting (G2), access (G3), and QPX compatibility plus v0 scope (G6), and record them as decisions in `state.yaml`.
+2. **Step 0 (G5):** write `design/QUESTIONS.md`, 50–100 real aging/organelle questions. This is the benchmark. Then write the LinkML schema v0.
+3. Tell aging about the count mismatches (G7), through its `design/threads/` or `results/SUSPICIOUS.md`.

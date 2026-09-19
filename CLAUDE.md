@@ -6,7 +6,18 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** Review `design/FRAMEWORK.md` (the proposed architecture), then run `/grill-me` on it to lock decisions.
+- **Pick up at:** Run `/grill-me` on `design/FRAMEWORK.md` §7 to lock G2 (hosting), G3 (access) and G6 (QPX / v0 scope). Then write `design/QUESTIONS.md`, the Step 0 benchmark (G5).
+
+## Things that will bite you here
+
+- **FRAMEWORK.md is a proposal.** Nothing in it is locked (`decisions: []`), so don't build on it as if it were decided.
+- **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
+- **Don't re-own other projects' work.**
+  - aging's rule (D1) applies here: the organelle map belongs to `go`, metric definitions (`DEF-*`) to QuantProject, and the age normalizer to sdrf/mzLib.
+  - Parse with pyMzLib typed readers where they exist.
+  - dataRepo only stores and serves.
+- **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
+- **No GitHub remote exists.** Ask before creating one (G8).
 
 **Sibling project: `E:\CodeReview\aging`** (the NCEMS pipeline). aging *produces* results under
 `F:\aging_data\<run>\<PXD>\` with `provenance.json` (schema `aging-provenance/2`). dataRepo *ingests and serves*
