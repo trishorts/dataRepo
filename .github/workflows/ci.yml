@@ -26,8 +26,10 @@ jobs:
           gen-json-schema schema/datarepo.yaml > /dev/null
           gen-json-schema schema/study/aging.yaml > /dev/null
 
-      - name: Valid example validates
-        run: linkml-validate -s schema/datarepo.yaml -C Bundle examples/minimal_bundle.yaml
+      - name: Valid examples validate
+        run: |
+          linkml-validate -s schema/datarepo.yaml -C Bundle examples/minimal_bundle.yaml
+          linkml-validate -s schema/datarepo.yaml -C Bundle examples/ingested_bundle.yaml
 
       - name: Invalid examples are rejected
         run: |
@@ -39,3 +41,29 @@ jobs:
 
       - name: Generated docs are up to date
         run: python tools/build_docs.py --check
+
+  ingester:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -e . -r requirements-dev.txt
+
+      - name: Generated Arrow schemas are up to date
+        run: python tools/build_tables.py --check
+
+      # pyMzLib's mzLib bridge is not built here, so the end-to-end ingest tests skip. Everything
+      # dataRepo itself decides -- the manifest gate, ProForma translation, the melting rules, the
+      # reconciliation predicate, referential integrity, bundle writing -- still runs.
+      - name: Tests
+        run: pytest -q -rs
+
+      - name: The CLI is wired up
+        run: |
+          datarepo --version
+          datarepo manifest tests/data/manifest.yaml
+          datarepo doctor || echo "doctor reports pyMzLib unavailable, as expected on CI"

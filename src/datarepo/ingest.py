@@ -1,0 +1,566 @@
+"""`datarepo ingest`: one dataset's pipeline output -> one immutable Parquet bundle.
+
+The order of work is the order of trust. The manifest decides whether the dataset may be ingested
+at all; the provenance decides how its numbers should be read; only then are the result files
+parsed. Nothing is inferred from directory names, and nothing the producer marked unfit is loaded.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from . import definitions as defs
+from ._tables import SCHEMA_VERSION
+from .bundle import BundleWriter
+from .errors import DatasetExcluded, IngestError
+from .manifest import DatasetEntry, Manifest, load_manifest
+from .modlist import ModRegistry
+from .proforma import ProformaCache
+from .readers import ReaderLog, read_psmtsv, read_results_txt
+from .reconcile import build as build_checks
+from .reconcile import finding_rows as reconciliation_findings
+from .sources import identifications, provenance as prov, quant, runs as runs_source, sdrf as sdrf_source
+from .sources import search_params
+from .usi import RunNameMap
+
+#: Manifest `quant_method` spellings mapped onto the schema's enum.
+QUANT_METHODS = {
+    "label-free": "label_free",
+    "label free": "label_free",
+    "labelfree": "label_free",
+    "lfq": "label_free",
+    "tmt": "isobaric",
+    "itraq": "isobaric",
+    "silac": "metabolic",
+}
+
+#: Enough instrument-name to vendor mapping for the instruments in scope.
+VENDORS = (
+    (("q exactive", "orbitrap", "lumos", "eclipse", "astral", "exploris", "velos", "elite", "ltq"), "Thermo"),
+    (("timstof", "maxis", "impact"), "Bruker"),
+    (("triple tof", "tripletof", "qtrap", "zenotof"), "SCIEX"),
+    (("synapt", "xevo"), "Waters"),
+)
+
+
+@dataclass
+class IngestResult:
+    """What one ingest produced, for the CLI and for tests."""
+
+    dataset_id: str
+    bundle_path: Path
+    bundle_id: str
+    row_counts: dict[str, int]
+    checks: list[dict[str, Any]]
+    findings: list[dict[str, Any]]
+    unresolved_modifications: dict[str, int] = field(default_factory=dict)
+    unmatched_runs: dict[str, int] = field(default_factory=dict)
+    skipped: bool = False
+    """True when the bundle already existed unchanged, so nothing was rewritten."""
+
+    @property
+    def mismatches(self) -> list[dict[str, Any]]:
+        return [c for c in self.checks if not c["ok"]]
+
+
+def _vendor(instruments: list[str]) -> str | None:
+    for name in instruments:
+        lowered = name.lower()
+        for needles, vendor in VENDORS:
+            if any(needle in lowered for needle in needles):
+                return vendor
+    return None
+
+
+def _find(run_dir: Path, *relative: str) -> Path | None:
+    for rel in relative:
+        candidate = run_dir / rel
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _lineage(work_root: Path, search_provenance_path: Path, search_provenance: dict[str, Any]) -> list[Path]:
+    """The search stage's provenance and every stage it declares upstream of itself.
+
+    Globbing the run folder for `provenance.json` would be wrong: a run folder can hold more than
+    one search of the same data (`04_search` beside `04_search_mm1111`), and only one of them is
+    the canonical run the manifest names. The provenance's own `upstream[]` is the authoritative
+    lineage, so the bundle records exactly the stages that produced it.
+    """
+    paths = [search_provenance_path]
+    for entry in search_provenance.get("upstream") or []:
+        candidate = work_root / str(entry.get("path", ""))
+        if candidate.is_file() and candidate not in paths:
+            paths.append(candidate)
+    return paths
+
+
+def _task_files(work_root: Path, search_provenance: dict[str, Any]) -> list[Path]:
+    """The MetaMorpheus task `.toml` files the run actually executed.
+
+    A MetaMorpheus `tasks/` folder also holds the shipped templates for tasks that did not run
+    (`GlycoSearchTask.toml`, `XLSearchTask.toml`). Reading those would put modifications into
+    `search_modifications` that this search never considered, which is the opposite of the point.
+    """
+    out = []
+    for entry in search_provenance.get("inputs") or []:
+        path = str(entry.get("path", ""))
+        if path.lower().endswith("task.toml"):
+            candidate = work_root / path
+            if candidate.is_file():
+                out.append(candidate)
+    return out
+
+
+def ingest_dataset(
+    manifest: Manifest,
+    entry: DatasetEntry,
+    *,
+    store: Path | None = None,
+    mm_settings: Path | None = None,
+    overwrite: bool = False,
+) -> IngestResult:
+    """Build the bundle for one dataset.
+
+    Args:
+        manifest: the producing instance's manifest.
+        entry: the dataset's entry, already checked as ingestable.
+        store: where to write; defaults to the manifest's store.
+        mm_settings: the MetaMorpheus install that did the search, for the modification registry.
+            Defaults to `<work_root>/mm_settings/<version from the manifest>`.
+        overwrite: rebuild a bundle that already exists at the same content hash.
+
+    Raises:
+        DatasetExcluded: the manifest does not mark the dataset `include`.
+        IngestError: a file the ingest cannot do without is missing.
+        UnsupportedProvenance: the run's provenance schema cannot be mapped safely.
+    """
+    # The refusal lives here, not only in the CLI: loading a run the producer marked unfit is the
+    # one thing this function must never do, however it is called.
+    if not entry.ingestable:
+        raise DatasetExcluded(
+            f"{entry.accession} has status '{entry.status}' in {manifest.path} and will not be "
+            f"ingested. The producer's reason: {(entry.reason or 'no reason given').strip()}"
+        )
+
+    dataset_id = entry.accession
+    run_dir = manifest.run_dir(entry)
+    if not run_dir.is_dir():
+        raise IngestError(f"{dataset_id}: run folder {run_dir} does not exist")
+
+    search_dir = manifest.stage_dir(entry, "search")
+    if search_dir is None or not search_dir.is_dir():
+        raise IngestError(f"{dataset_id}: the manifest's search stage folder is missing ({search_dir})")
+    results_dir = manifest.search_results_dir(entry)
+    if not results_dir.is_dir():
+        raise IngestError(f"{dataset_id}: search results folder {results_dir} does not exist")
+
+    writer = BundleWriter(store=store or manifest.store, dataset_id=dataset_id)
+    log = ReaderLog()
+
+    # --- provenance first: it tells us how to read every number that follows -------------------
+    search_provenance_path = search_dir / "provenance.json"
+    if not search_provenance_path.is_file():
+        raise IngestError(f"{dataset_id}: no provenance.json in {search_dir}")
+    search_provenance = prov.load(search_provenance_path)
+    provenance_version = prov.schema_version(search_provenance)
+
+    provenance_rows: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for path in _lineage(manifest.work_root, search_provenance_path, search_provenance):
+        doc = prov.load(path)
+        stage_name = path.parent.name
+        source = writer.add_source(path, f"provenance:{stage_name}", copy_as=f"provenance_{stage_name}.json")
+        provenance_rows.append(
+            prov.record_row(
+                doc,
+                dataset_id,
+                stage_dir_name=stage_name,
+                bundle_path=source["bundle_path"],
+                sha256=source["sha256"],
+            )
+        )
+        if path == search_provenance_path:
+            findings += prov.finding_rows(doc, dataset_id, f"provenance.json flags ({stage_name})")
+
+    metrics = prov.metric_rows(search_provenance, dataset_id, provenance_version)
+
+    # --- the modification registry from the build that did the search --------------------------
+    settings = mm_settings
+    if settings is None and entry.metamorpheus:
+        settings = manifest.work_root / "mm_settings" / entry.metamorpheus
+    registry = ModRegistry.from_metamorpheus(settings) if settings else ModRegistry()
+    proforma = ProformaCache(registry)
+
+    # --- samples and runs ----------------------------------------------------------------------
+    fetch_path = next(iter(sorted(run_dir.glob("*/fetch_manifest.json"))), None)
+    fetch = runs_source.load_fetch_manifest(fetch_path) if fetch_path else None
+    if fetch_path:
+        writer.add_source(fetch_path, "fetch_manifest")
+
+    qc_dir = manifest.stage_dir(entry, "qc")
+    qc_path = _find(qc_dir, "qc_report.json") if qc_dir else None
+    qc = runs_source.load_qc_report(qc_path) if qc_path else None
+    if qc_path:
+        writer.add_source(qc_path, "qc_report", copy_as="qc_report.json")
+
+    sdrf_path = next(iter(sorted(run_dir.glob("*/metadata/*.sdrf.tsv"))), None)
+    if sdrf_path:
+        writer.add_source(sdrf_path, "sdrf", copy_as=sdrf_path.name)
+        sdrf = sdrf_source.parse(sdrf_path, dataset_id, default_organism=entry.organism, log=log)
+    else:
+        sdrf = sdrf_source.SdrfTable([], [], [], {}, {}, ())
+
+    run_rows, run_metrics = runs_source.build(
+        dataset_id, fetch=fetch, qc=qc, run_facts=sdrf.run_facts
+    )
+    if not run_rows:
+        raise IngestError(
+            f"{dataset_id}: no runs found. Neither a fetch manifest nor a QC report was readable "
+            f"under {run_dir}, so there is nothing to attach measurements to."
+        )
+    metrics += run_metrics
+
+    samples = list(sdrf.samples)
+    assays = list(sdrf.assays)
+    if not samples:
+        # No SDRF at all: one synthetic sample per run, clearly flagged, so quantities still have
+        # something to hang on. Nothing biological is invented, only the identity of the sample.
+        for run in run_rows:
+            base = Path(run["file_name"]).stem
+            sample_id = f"{dataset_id}:{base}"
+            samples.append(
+                {
+                    "sample_id": sample_id,
+                    "dataset_id": dataset_id,
+                    "source_name": base,
+                    "organism": entry.organism,
+                }
+            )
+            assays.append(
+                {
+                    "assay_id": f"{dataset_id}:{base}:label_free",
+                    "run_id": run["run_id"],
+                    "channel": "label_free",
+                    "sample_id": sample_id,
+                }
+            )
+        findings.append(
+            {
+                "finding_id": f"{dataset_id}:no_sdrf",
+                "dataset_id": dataset_id,
+                "run_id": None,
+                "code": "no_sdrf",
+                "severity": "warning",
+                "status": "open",
+                "message": (
+                    "No SDRF was found for this dataset, so each run was given a synthetic sample "
+                    "of its own. There is no sample metadata: treat every sample as unannotated."
+                ),
+                "source": "datarepo ingest",
+            }
+        )
+    elif not any(
+        s.get(column) for s in samples for column in ("organism_part", "cell_type", "disease", "individual_id")
+    ):
+        findings.append(
+            {
+                "finding_id": f"{dataset_id}:sdrf_skeleton",
+                "dataset_id": dataset_id,
+                "run_id": None,
+                "code": "sdrf_skeleton",
+                "severity": "warning",
+                "status": "open",
+                "message": (
+                    "The deposited SDRF carries no biological annotation: organism part, cell "
+                    "type, disease and individual are all absent. Sample-level questions cannot "
+                    "be answered for this dataset until it is curated."
+                ),
+                "source": "datarepo ingest",
+            }
+        )
+
+    run_names = RunNameMap(tuple(Path(r["file_name"]).stem for r in run_rows))
+
+    # --- identifications -----------------------------------------------------------------------
+    all_psms_path = results_dir / "AllPSMs.psmtsv"
+    all_peptides_path = results_dir / "AllPeptides.psmtsv"
+    if not all_psms_path.is_file():
+        raise IngestError(f"{dataset_id}: no AllPSMs.psmtsv in {results_dir}")
+    writer.add_source(all_psms_path, "psms")
+
+    protein_groups: list[dict[str, Any]] = []
+    protein_group_count = 0
+    protein_group_quant: list[dict[str, Any]] = []
+    pg_path = results_dir / "AllQuantifiedProteinGroups.tsv"
+    if pg_path.is_file():
+        writer.add_source(pg_path, "protein_group_quant")
+        protein_groups, protein_group_quant, protein_group_count = quant.protein_group_rows(
+            pg_path, dataset_id, run_names=run_names, log=log
+        )
+
+    searches = [t.lower() for t in search_params.task_names(search_provenance)]
+    search_label = "gptmd" if "gptmd" in searches else "standard"
+
+    psm_columns = read_psmtsv(all_psms_path, log)
+    psm_rows = identifications.psm_rows(
+        psm_columns, dataset_id, proforma=proforma, run_names=run_names, search=search_label
+    )
+    ptm_sites = identifications.ptm_site_rows(psm_columns, dataset_id, proforma=proforma)
+
+    peptide_columns: dict[str, list[Any]] = {}
+    if all_peptides_path.is_file():
+        writer.add_source(all_peptides_path, "peptides")
+        peptide_columns = read_psmtsv(all_peptides_path, log)
+    peptidoforms = identifications.peptidoform_rows(
+        peptide_columns or psm_columns,
+        dataset_id,
+        proforma=proforma,
+        psm_counts=identifications.psm_counts_by_peptidoform(psm_rows),
+        protein_groups={g["protein_group_id"] for g in protein_groups},
+    )
+    proteins = identifications.add_group_proteins(
+        identifications.protein_rows(
+            [c for c in (psm_columns, peptide_columns) if c], dataset_id, organism=entry.organism
+        ),
+        protein_groups,
+        organism=entry.organism,
+    )
+
+    # --- quantities ----------------------------------------------------------------------------
+    mbr_threshold = float((search_provenance.get("mbr") or {}).get("mbr_fdr_threshold", 0.01))
+    peaks_path = results_dir / "AllQuantifiedPeaks.tsv"
+    if peaks_path.is_file():
+        writer.add_source(peaks_path, "peaks")
+    peak_quality = quant.peak_quality(
+        peaks_path, dataset_id, run_names=run_names, mbr_q_threshold=mbr_threshold, log=log
+    )
+
+    quant_values: list[dict[str, Any]] = list(protein_group_quant)
+    peptide_quant_path = results_dir / "AllQuantifiedPeptides.tsv"
+    if peptide_quant_path.is_file():
+        writer.add_source(peptide_quant_path, "peptide_quant")
+        quant_values += quant.peptide_quant_rows(
+            peptide_quant_path,
+            dataset_id,
+            run_names=run_names,
+            to_proforma=proforma,
+            peak_quality_index=peak_quality,
+            log=log,
+        )
+
+    # --- search parameters and reported totals -------------------------------------------------
+    task_files = _task_files(manifest.work_root, search_provenance)
+    for path in task_files:
+        writer.add_source(path, f"task:{path.stem}", copy_as=path.name)
+    search_modifications = search_params.modification_rows(task_files, dataset_id, registry)
+
+    results_path = results_dir / "results.txt"
+    results: dict[str, dict[str, int]] = {}
+    if results_path.is_file():
+        writer.add_source(results_path, "results_txt", copy_as="results.txt")
+        results = read_results_txt(results_path, log)
+        metrics += _results_metrics(results, dataset_id, run_names)
+
+    # --- the dataset row -------------------------------------------------------------------
+    instruments = sorted({f["instrument_model"] for f in sdrf.run_facts.values() if f.get("instrument_model")})
+    database_name, database_sha = search_params.searched_database(search_provenance)
+    tools = search_provenance.get("tools") or {}
+    engine_version = (tools.get("MetaMorpheus") or {}).get("release") or entry.metamorpheus
+    pipeline = search_provenance.get("pipeline") or {}
+    dataset_row = {
+        "dataset_id": dataset_id,
+        "title": None,
+        "organisms": [entry.organism] if entry.organism else [],
+        "acquisition": entry.acquisition,
+        "quant_method": QUANT_METHODS.get((entry.quant_method or "").lower(), entry.quant_method),
+        "labelling": entry.labelling,
+        "labelling_plex": entry.labelling_plex,
+        "enrichment": list(entry.enrichment),
+        "instrument_vendor": _vendor(instruments),
+        "instruments": instruments,
+        "axis_source": "provenance",
+        "submission_type": None,
+        "search_engine": "MetaMorpheus",
+        "search_engine_version": engine_version,
+        "search_database": database_name,
+        "search_database_sha256": database_sha,
+        "sdrf_status": "trusted" if sdrf_path else "absent",
+        "pipeline_repo": pipeline.get("repo"),
+        "pipeline_commit": pipeline.get("commit"),
+        "searches": [search_label],
+        "first_release_id": None,
+        "latest_release_id": None,
+    }
+
+    # --- reconciliation ------------------------------------------------------------------------
+    checks = build_checks(
+        psm_count_1pct=identifications.producer_counts(psm_columns),
+        peptidoform_count_1pct=identifications.producer_counts(peptide_columns or psm_columns),
+        protein_group_count_1pct=protein_group_count,
+        runs=run_rows,
+        results=results,
+        expected_files=entry.files,
+        provenance_ms2=(search_provenance.get("id_rate") or {}).get("ms2"),
+    )
+    findings += reconciliation_findings(checks, dataset_id)
+    findings += _modification_findings(proforma, dataset_id)
+    findings += _usi_findings(run_names, dataset_id)
+
+    # --- assemble ------------------------------------------------------------------------------
+    writer.add("datasets", [dataset_row])
+    writer.add("samples", samples)
+    writer.add("sample_characteristics", sdrf.characteristics)
+    writer.add("runs", run_rows)
+    writer.add("assays", assays)
+    writer.add("psms", psm_rows)
+    writer.add("peptidoforms", peptidoforms)
+    writer.add("protein_groups", protein_groups)
+    writer.add("proteins", proteins)
+    writer.add("ptm_sites", ptm_sites)
+    writer.add("quant_values", quant_values)
+    writer.add("search_modifications", search_modifications)
+    writer.add("metrics", metrics)
+    writer.add("provenance_records", provenance_rows)
+    writer.add("findings", findings)
+    writer.add("definitions", defs.rows({m["definition_id"] for m in metrics} | {q["definition_id"] for q in quant_values}))
+
+    writer.notes = {
+        "instance": manifest.instance,
+        "manifest": str(manifest.path),
+        "run": entry.run,
+        "provenance_schema": str(search_provenance.get("schema")),
+        "metamorpheus": engine_version,
+        "licence": manifest.licence,
+        "credit": manifest.credit,
+        "readers": log.entries,
+        "modification_registry": {
+            "source": str(settings) if settings else None,
+            "entries": len(registry),
+            "files": registry.sources,
+            "unresolved": proforma.unresolved,
+        },
+        "reconciliation": [c.as_dict() for c in checks],
+    }
+
+    # Re-ingesting unchanged inputs with unchanged code is a no-op, not an error: the pipeline
+    # that calls this runs it again after every stage, and it should be safe to do so.
+    existing = writer.path() / "bundle.json"
+    skipped = existing.is_file() and not overwrite
+    out = writer.path() if skipped else writer.write(overwrite=overwrite)
+    manifest_doc = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    return IngestResult(
+        dataset_id=dataset_id,
+        bundle_path=out,
+        bundle_id=writer.bundle_id,
+        row_counts=manifest_doc["tables"],
+        checks=[c.as_dict() for c in checks],
+        findings=findings,
+        unresolved_modifications=dict(proforma.unresolved),
+        unmatched_runs=dict(run_names.unmatched),
+        skipped=skipped,
+    )
+
+
+def _results_metrics(
+    results: dict[str, dict[str, int]], dataset_id: str, run_names: RunNameMap
+) -> list[dict[str, Any]]:
+    """Metric rows for every total MetaMorpheus's results.txt reports."""
+    definition_for = {
+        "psms": defs.PSM_1PCT.definition_id,
+        "peptides": defs.PEPTIDE_COUNT_1PCT.definition_id,
+        "protein_groups": defs.PROTEIN_GROUP_COUNT_1PCT.definition_id,
+        "ms2_scans": defs.MS2_COUNT.definition_id,
+        "precursors": defs.PRECURSOR_COUNT.definition_id,
+    }
+    rows = []
+    for scope, counts in results.items():
+        if scope:
+            resolved = run_names.resolve(scope)
+            if resolved is None:
+                continue
+            scope_kind, scope_id = "run", f"{dataset_id}:{resolved}"
+        else:
+            scope_kind, scope_id = "dataset", dataset_id
+        for name, value in counts.items():
+            definition = definition_for.get(name)
+            if definition is None:
+                continue
+            rows.append(
+                {
+                    "scope": scope_kind,
+                    "scope_id": scope_id,
+                    "name": name if name != "psms" else "psms_1pct",
+                    "value": value,
+                    "definition_id": definition,
+                    "source": "results.txt",
+                }
+            )
+    return rows
+
+
+def _modification_findings(proforma: ProformaCache, dataset_id: str) -> list[dict[str, Any]]:
+    if not proforma.unresolved:
+        return []
+    names = ", ".join(sorted(proforma.unresolved))
+    return [
+        {
+            "finding_id": f"{dataset_id}:unresolved_modifications",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "unresolved_modifications",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"{len(proforma.unresolved)} modification(s) could not be mapped to a UNIMOD "
+                f"accession or a mass, and are carried in ProForma as [Info:...] tags: {names}. "
+                f"Queries by modification will not find them."
+            ),
+            "source": "datarepo ingest",
+        }
+    ]
+
+
+def _usi_findings(run_names: RunNameMap, dataset_id: str) -> list[dict[str, Any]]:
+    if not run_names.unmatched:
+        return []
+    names = ", ".join(sorted(run_names.unmatched))
+    return [
+        {
+            "finding_id": f"{dataset_id}:unmatched_runs",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "unmatched_runs",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"Run name(s) the search reported could not be matched to a deposited file, so "
+                f"their PSMs carry no USI and their quantities are attached to an assay ID that "
+                f"has no run row: {names}."
+            ),
+            "source": "datarepo ingest",
+        }
+    ]
+
+
+def ingest(
+    manifest_path: str | Path,
+    accession: str,
+    *,
+    store: Path | None = None,
+    mm_settings: Path | None = None,
+    overwrite: bool = False,
+) -> IngestResult:
+    """Load a manifest and ingest one dataset from it."""
+    manifest = load_manifest(manifest_path)
+    entry = manifest.dataset(accession)
+    return ingest_dataset(
+        manifest, entry, store=store, mm_settings=mm_settings, overwrite=overwrite
+    )
+
+
+__all__ = ["ingest", "ingest_dataset", "IngestResult", "SCHEMA_VERSION"]

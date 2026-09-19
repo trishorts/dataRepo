@@ -49,3 +49,64 @@ Later that session: I mapped all 168 benchmark questions onto the schema (design
 Later still: the user created the public GitHub repo (G8 closed) and then set D8: dataRepo is code only, and aging hosts the data instance (bundles, releases, DOIs, the deployed service). U6 asks how much of running the service aging takes on. The user then asked for gold-standard repo docs. I added a README (code-vs-data split, schema at a glance, quick start, ownership, roadmap, ID glossary), LICENSE (MIT), CITATION.cff (U3 placeholder credit), CONTRIBUTING, CHANGELOG, docs/architecture.md (decided vs proposed), a generated schema reference (tools/build_docs.py → docs/schema/), examples with a must-fail case, and CI (lint, generators, validation, negative test, docs drift). Every schema element now has a description. The negative test exposed missing 0–1 bounds on the probability columns, which are fixed now.
 
 Close-out (same day): thread 005 went to aging with D8 (DATAREPO-9 accept the instance role; DATAREPO-10 = U6, does aging also run the service). It is committed and pushed in both repos. The user accepted the placeholder credit line, which closes U3. GitHub CI passed on its first run. During close-out I found that the D8 edit had merged `gaps:` onto the line of the first gap, which made state.yaml invalid YAML. RESUME rendering didn't fail; it silently counted 0 gaps. That was fixed and parsing verified. Lesson: after any hand edit to state.yaml, parse it.
+
+## 2026-09-19 - Fourth session: the ingester is built and has run on real data
+
+aging replied (thread 006) and said yes to everything in 005: they populate and host the instance,
+including the running service (their D18). The instance exists now — `aging/instance/manifest.yaml`
+with `F:\aging_data\repo\` underneath — and our ingester's input is that manifest, not a folder scan.
+S21 closed with two definitions (DEF-PSM-1PCT canonical, DEF-PSM-FDRENGINE the engine's log line,
+which is what provenance /2 stores under the misleading name `psms_1pct`). They asked for an ETA on
+step 1. The user asked for the ingester so aging could start using it, so that was the session.
+
+`datarepo ingest` is written, tested and run against PXD036557: 16 Parquet tables, 4.1 MB, about ten
+seconds. `src/datarepo/` is the package; `docs/ingest.md` is the reference; D9 records the contract.
+
+**What the build actually settled.** The manifest gate works as aging intended — PXD048658 is refused
+with their own reason printed. Bundle directories are a content hash of (inputs, schema version,
+ingester version), so re-ingest is a no-op and a changed input can never overwrite a cited bundle.
+The Parquet column list is generated from the LinkML schema (`tools/build_tables.py`, CI drift check),
+so there is no second list to drift. Definition IDs needed namespacing, because QuantProject's
+`DEF-QC-9` and aging's `DEF-CONTAM-PSM` are both "contaminant share": bundles write `<owner>:<ID>`,
+and numbers nobody has defined get `PROVISIONAL:<NAME>` whose own text says so (U7, G15).
+
+**Reconciliation was worth building first.** It caught three real bugs that would have shipped a
+plausible-looking bundle. A zero-is-missing helper was being used for q-values as well as
+intensities, so every protein group with q=0 lost its q — the protein-group count came out 1,195
+against 1,652. Peptidoform counts included decoys. And `peptidoform.protein_group_id` was being
+synthesized from the peptide's accessions rather than looked up in the producer's parsimony result,
+which dangled for 2,925 of 12,653 rows. The referential-integrity check, added after that, then
+caught a fourth: protein groups can name accessions that never appear in the PSM table at all.
+
+The counting predicate is MetaMorpheus's own: target, and **both** `QValue` and `QValueNotch` at or
+below 1%. That reproduces aging's peptide (5,541) and protein-group (1,652) totals exactly — and the
+protein-group headline turns out to include contaminants while the PSM headline does not. PSMs come
+out 12 too many (26,594 vs 26,582, 0.05%); nothing tried explains the 12, so it went to aging as
+DATAREPO-14 and is carried as a `count_mismatch` finding. Also noticed: aging's own per-file PSM
+lines sum to 26,746, not to their 26,582 total.
+
+**pyMzLib did the hard part and has three gaps.** 42,958 typed `.psmtsv` records in under three
+seconds. But `pro_forma` is null, so `src/datarepo/proforma.py` translates MetaMorpheus notation
+itself, reading the UNIMOD mapping out of the searching build's own `Mods/*.txt` and
+`Data/ptmlist.txt` rather than inventing it — that file is a stop-gap to delete (DATAREPO-12). The
+FlashLFQ peak reader fails on MetaMorpheus 1.1.11 output (`Header with name 'MBR Score' was not
+found`), and the SDRF projection joins header and cells with `;`, which SDRF values contain, so
+columns cannot be recovered (DATAREPO-13). Every in-house read is recorded with its reason in the
+bundle's reader log, so the code is deletable rather than permanent.
+
+**Schema changes, all additive:** `Psm.q_value_notch`, `Peptidoform.best_q_value_notch`,
+`Peptidoform.target_decoy`, `ProteinGroup.target_decoy` (without the last two a caller cannot exclude
+decoys from those tables at all), and `SearchModification.modification` is no longer required, since
+metal adducts have no UNIMOD accession.
+
+CI gained an `ingester` job: the generated-tables drift check, pytest (the `.psmtsv` tests skip
+without a built mzLib bridge, which CI has no way to build), and a CLI smoke test. Real ingester
+output is checked in as `examples/ingested_bundle.yaml` and validated by `linkml-validate`, which is
+what proves the writer emits rows the published schema accepts, not merely columns it recognizes.
+
+Thread 007 went to aging with all of it, including the ETA they asked for: step 1 is available now.
+
+One environment note for next time: pyMzLib is installed from the worktree at
+`E:\GitClones\_wt_pymzlib_585` and ships no built bridge, so `PYMZLIB_BRIDGE` has to point at
+`pkg\bridge\bin\Release\net10.0\win-x64\mzlib-bridge.exe` or every `.psmtsv` read fails.
+`datarepo doctor` reports this.

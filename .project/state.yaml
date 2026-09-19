@@ -40,13 +40,31 @@ decisions:
     date: 2026-09-19
     text: "dataRepo is code, not data (user: 'this should just be code. I think aging should host the data'). This repo holds the schema, ingester, API/MCP server and deploy package, and never data. aging owns the data instance: the Parquet bundles, the release/changelog entries and DOIs (R2 is now an aging-instance table; dataRepo only defines it), and deploying the service over its results. Refines D1 (NCEMS still runs production, as aging's deployment) and D2 (aging's releases carry the DOIs). How much of running the service aging takes on is U6."
 
+  - id: D9
+    date: 2026-09-19
+    text: >-
+      Ingest contract (implemented, FRAMEWORK step 1). `datarepo ingest` reads the producing
+      instance's manifest.yaml and never scans the work root: status include/hold/exclude is the
+      producer's call and a non-include dataset is refused with their reason. Bundles are
+      content-addressed on (inputs, schema version, ingester version), so re-ingest is a no-op and a
+      changed input cannot overwrite a cited bundle. Parquet columns are generated from the LinkML
+      schema (tools/build_tables.py, CI drift check), never hand-listed. pyMzLib parses producer
+      formats; where dataRepo reads one itself the reason is recorded in the bundle's reader log and
+      raised as a request. Every bundle reconciles its own counts against the producer's totals using
+      the producer's acceptance rule, and a disagreement becomes a Finding, never a silent
+      difference. Referential integrity is checked before any write. Definition IDs are namespaced
+      `<owner>:<ID>` (U7) and numbers with no published definition use `PROVISIONAL:<NAME>`.
+
 gaps:
-  - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). The user has not reviewed or locked it. Next: /grill-me on it, then record the locked choices as decisions."
+  - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). Step 1 (ingest) is now BUILT and its contract locked as D9; the rest (build, client/MCP, REST, deploy) is still a proposal the user has not reviewed. Next: /grill-me on the remaining steps, then record the locked choices as decisions."
   - "G5 Step 0 question set: OWNED BY AGING (D6). READY 2026-09-19 (aging 003): aging/design/QUESTIONS.md v0.3, 168 questions, top 10 = K1 D2 O1 D1 T2 N1 M1 C1 G1 J16. Read it from trishorts/aging master; never copy it. MAPPED 2026-09-19 in design/SCHEMA_COVERAGE.md: 70 answerable at ingest, 94 waiting on a producer, 2 no home (J12, P2), 2 out of v1. Re-map when QUESTIONS.md or the schema changes."
   - "G11 Tables aging 003 routed to dataRepo. OWN: R2 release/changelog. STORE (aging-produced): R1 census, R3 dataset axes (+ enrichment, labelling), R8 reference panels, R9 clock model. STORE (MetaMorpheus-produced): R7 PTM stoichiometry, R16 glycopeptides (compositions, not structures, J9), R7b proteoform inference with confidence (no top-down, J16). All drafted in schema v0; producers' column names still to confirm."
   - "G10 Genericity (U5 in design/OPEN_QUESTIONS.md): proposal = generic core schema + a pluggable study layer (aging supplies age_effect, organelle_age_summary, sample age columns). Not yet confirmed."
-  - "G7 Count mismatches: aging logged them 2026-09-19 as SUSPICIOUS.md S20 (dataset counts; the frozen census R1 will be canonical) and S21 (PSM counts; aging will answer with a definition ID). Both OPEN on aging's side. Nothing blocks here: ingest stores both PSM numbers with their source until S21 closes."
-  - "G12 D8 instance role: thread 005 (DATAREPO-9, and DATAREPO-10 = U6) asks aging to accept hosting the data instance (bundles on F:\\aging_data\\repo\\<release>\\, releases/DOIs, CC BY 4.0, service in its D5 handover). Default: accepted, and aging runs the service too. Awaiting aging's reply."
+  - "G7 Count mismatches: S21 CLOSED by aging 006 (two definitions: aging DEF-PSM-1PCT is canonical; DEF-PSM-FDRENGINE is the engine's log line, and is what provenance /2 stores under the name psms_1pct). S20 (dataset counts) still open on aging's side. New residual: the ingester reproduces aging's peptide (5,541) and protein-group (1,652) totals for PXD036557 exactly, but gets 26,594 PSMs against 26,582 - 12 rows, 0.05%. Asked as DATAREPO-14 (thread 007). Not blocking: both numbers are stored with their sources and a count_mismatch Finding."
+  - "G12 D8 instance role: CLOSED 2026-09-19 by aging 006. aging accepted populating and hosting the instance including the running service (their D18). Data at F:\\aging_data\\repo\\ (store/<PXD>/<bundle-hash>/, releases/<version>/), CC BY 4.0, credit 'NCEMS Aging Proteome Working Group', releases and DOIs in aging/instance/RELEASES.md. U6 answered yes. First release target: v0.1, PXD036557 alone, private to the working group."
+  - "G13 QPX version is unpinned. Bundles record qpx_version: 'unpinned' (src/datarepo/bundle.py) because the column mapping has never been checked against a QPX release. D4 requires every file to record the QPX version it matches. Next: pin a release of github.com/bigbio/qpx, map our column names onto its views, and set QPX_VERSION."
+  - "G14 pyMzLib reader gaps (DATAREPO-12/13, thread 007). pro_forma is null on .psmtsv records, so src/datarepo/proforma.py translates MetaMorpheus notation itself - delete it when the field is populated. AllQuantifiedPeaks.tsv fails with 'Header with name MBR Score was not found' on MetaMorpheus 1.1.11 output. The SDRF projection joins header and cells with ';', which SDRF values also contain, so columns cannot be recovered. The .psmtsv projection omits the matched-ion summary columns, so Psm.matched_ion_series and matched_ion_count are null. Each in-house read is recorded with its reason in the bundle's reader log."
+  - "G15 Provisional definitions (DATAREPO-11, thread 007). Eight numbers the ingester stores have no published definition and carry PROVISIONAL:<NAME> IDs whose own text says so: FlashLFQ peptide and protein intensity and protein spectral count (QuantProject's), and peptide/protein-group counts at 1% FDR, MS2 count, run minutes, precursor count (aging's). Swap them for the owners' IDs when published. Namespacing of definition IDs as <owner>:<ID> is U7."
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

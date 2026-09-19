@@ -28,3 +28,13 @@ bin/
 obj/
 __pycache__/
 .ipynb_checkpoints/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+/build/
+/dist/
+/.venv/
+
+# Bundle stores. dataRepo is code, not data (D8): bundles belong in the producing instance.
+/store/
+*.parquet
