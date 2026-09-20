@@ -6,15 +6,19 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest and build are done, and **aging's v0.1 is RELEASED** on bundle
-  `31fac552c5d748f0` / catalog `08fb3a5e3078dce5`, running datarepo **0.3.1**, schema **0.0.3**.
-  Next, in order: (1) **G20**, swap five `PROVISIONAL:` definition IDs for aging's real ones —
-  mechanical, needs no reply; (2) **G22**, emit contamination as metrics and not only a finding
-  (`contamination_intensity_share` per run, `contamination_psm_share` per dataset) **and** answer
-  their general question about per-run grain as a default — their 7.0% dataset figure hid a
-  2.6–18.9% per-file spread; (3) **G19**, instantiate the study layer — the largest lever at 46 of
-  168 benchmark questions, but **the definition of an age effect is aging's G6 and must not be
-  invented here**; (4) G17/G18, still free at 0 rows; (5) QPX pin (G13). D1–D11 locked.
+- **Pick up at:** ingest and build are done, aging's v0.1 is RELEASED (bundle `31fac552c5d748f0`
+  / catalog `08fb3a5e3078dce5`) and **aging is not re-cutting it** (their 019 §6). Code is now
+  datarepo **0.5.0**, schema **0.0.4**. Nothing is blocking us and nothing of ours is blocking them.
+  Next, in order: (1) **G19**, instantiate the study layer — the largest lever at 46 of 168 benchmark
+  questions, unblocked by `aging:DEF-AGE-EFFECT v1` (three tables: `age_effect`, `age_effect_meta`,
+  `age_effect_refusals`), but **the definition of an age effect is aging's and must not be invented
+  here**; build the SHAPE only and ask if a benchmark question needs a column the definition does not
+  name. Know before starting that PXD060431 — the only dataset carrying donor ages — is admitted for
+  **abundance only** under a scoped acquisition exception, so the tables may ship empty; (2) **G26**,
+  replace the in-house modification registry with QuantProject's loader-generated
+  `IdWithMotif-to-Unimod.<mzlib>.tsv` once aging and QuantProject answer the distribution question in
+  thread 021 §5; (3) **G28**, `search_modifications` says "every modification the search considered"
+  and means "declared"; (4) G17/G18, still free at 0 rows; (5) QPX pin (G13). D1–D11 locked.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -22,10 +26,13 @@ This folder is a `/project`-managed research project. **You are de facto working
 ## Things that will bite you here
 
 - **After editing `.project/state.yaml`, parse it:** `python -c "import yaml;yaml.safe_load(open('.project/state.yaml',encoding='utf-8'))"`. A broken file makes render_resume silently count 0 gaps. It happened on 2026-09-19.
-- **Anything that reaches a written row is an input to the bundle hash.** The manifest entry was not
-  hashed for a whole day because it felt like a contract rather than an input — but it supplies the
-  title and all five D5 axes, so an edited manifest changed bundle content under the same id. Fixed
-  via `BundleWriter.add_declaration`; the lesson generalizes to the next such field.
+- **Anything that reaches a written row is an input to the bundle hash — and nothing else is.** Both
+  halves have now bitten. The manifest entry was not hashed for a day because it felt like a contract
+  rather than an input, though it supplies the title and all five D5 axes. Then the fix over-corrected
+  and hashed `entry.raw`, so aging rewording a dataset's `reason` moved the bundle id while every row
+  stayed identical, and two sites ingesting byte-identical search output got different ids (their 019
+  §1). `manifest.CONTENT_FIELDS` / `NON_CONTENT_FIELDS` now classify every field with its reason and a
+  test fails on a `DatasetEntry` field in neither, so **adding a field means deciding which it is.**
 - **A bundle's content hash covers inputs, schema version and `__version__` — not the reader code.**
   Change how a file is parsed without bumping `__version__` and you get the same bundle id from
   different code. Bump the version in the same commit as any parsing or transform change.
@@ -39,6 +46,12 @@ This folder is a `/project`-managed research project. **You are de facto working
   That variable is only for a source checkout, which ships no bridge — this machine ran an editable
   install of the `_wt_pymzlib_585` worktree for a while, which is where the old warning came from.
   `datarepo doctor` prints the version and the bridge path it resolved.
+- **Reading mzLib's resource files is not the same as asking mzLib's loader.** `modlist.py` parses
+  `Mods/*.txt` and `Data/ptmlist.txt` itself, never reads `Data/unimod.xml`, and prefers `Mods.txt`
+  where the loader prefers Unimod. It agrees with the loader on all 100 modification names that have
+  actually reached `ptm_sites`, and differs on two that have not (`Decarboxylation on D`/`on E`, a
+  real mzLib defect). The authority is QuantProject's loader-generated
+  `IdWithMotif-to-Unimod.<mzlib>.tsv`; replacing the registry with it is G26.
 - **Parsing producer formats is pyMzLib's job.** Where the ingester reads one itself the reason is in
   `src/datarepo/readers.py` and in each bundle's reader log, with the request that lets it be deleted
   (G14). Don't add an in-house parser for a format pyMzLib covers, and **re-test the gaps against the

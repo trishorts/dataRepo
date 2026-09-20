@@ -410,3 +410,57 @@ on the same axis along which their S31 says the identification rate is structure
 dataset-level number hid all of it and would have been believed. They raise per-run grain as a
 general schema preference rather than a one-off, and that question deserves a real answer rather than
 just shipping the two metrics.
+
+## 2026-09-20 - Option (1), and the deletion was ten chemistries deep
+
+aging's 019 asked two things and their 020 arrived mid-session correcting the evidence under one of
+them. Both are answered, implemented and posted as 021, on datarepo **0.5.0** / schema **0.0.4**.
+
+**`ptm_site_id` keys on the engine's `IdWithMotif`, not the UNIMOD accession.** The decision was
+straightforward — a derived view cannot be a key, because a key has to be formable for every row —
+and their corrected coverage figure (93.2%, not 33.6%) did not change it. What changed was the size
+of the thing being fixed. aging measured one modification on one dataset. Re-ingesting all three and
+diffing against 0.4.0 recovered **42 sites over 10 chemistries, 195 PSMs**, and only **one** of the
+ten had ever been reported: the other nine resolve to a *mass* but not an accession, so they never
+entered `proforma.unresolved`, never produced the finding, and were deleted in complete silence.
+
+The one that stings: PXD036557's 0.4.0 bundle records `unresolved: {}` — a clean ingest, no finding,
+nothing to look at — and was missing `PXD036557:P16401:K37:N6-succinyllysine on K`. **The released
+v0.1 catalog is missing a row and contains nothing that could tell you so.** The recovered list is
+succinyl-, glutaryl-, malonyl-, crotonyl- and methacryl-lysine, nitrotyrosine, two hydroxylations and
+a palmitoleoylation. That is a lysine-acylation-shaped hole in an aging proteome repository, and it
+was invisible because the loss happened at exactly the level with the strongest constraint.
+
+**The new key costs something, and finding that out was the useful part of the day.** One chemistry
+can reach a dataset under two names — `Phosphorylation on S` from the variable-mod list,
+`Phosphoserine on S` from a UniProt annotation — so the name key is *finer* than the accession key
+and 5 sites in 35,615 split. The temptation was to not mention it. What settled it instead was
+noticing the shape: the split is recoverable and the deletion was not. `ptm_sites_by_chemistry`
+groups them back and **reproduces the accession-keyed table exactly on all 35,568 groups, zero
+mismatches**, `n_psms` summing and `best_q_value` taking the minimum. Which is U8's own grain rule —
+store at the grain measured, coarsen in a view — deciding a case where the coarser table was the one
+we already had and the finer one cost work. A rule earns its keep the first time it rules against
+you.
+
+**The bundle-id question answered itself into a defect.** aging asked whether a bundle id identifies
+the data or the data plus the ingest configuration. It identified both *plus their prose*:
+`add_declaration` hashed `entry.raw`, so rewording a `reason` moved the id with every row identical.
+Fixed, with the field list classified in code and a test that fails on an unclassified field. Worth
+recording that this is the *second* failure of the same boundary in two days, in opposite directions
+— under-hashing on Friday, over-hashing today — and that only the second one had a caller who could
+notice, because aging was the one holding two ids for one measurement.
+
+**And their postscript was about us.** They warned that a consumer parsing mzLib's resource files
+rather than asking its loader gets `Decarboxylation on D` wrong. We do parse them, we never read
+`unimod.xml`, and our precedence is backwards. Measured against QuantProject's loader-generated
+table: agrees on all 100 names that have reached `ptm_sites`, no entry at all for 2,445, differs on
+exactly two — the two they named, neither of which has fired. Nothing shipped is wrong; the registry
+is right by luck on a narrow corpus and blind on a wide one. Deliberately **not** fixed in the same
+change: it would wire a third repository's file into the bundle content hash on our own authority and
+confound two movements in one id. Logged as G26/U9 with the distribution question asked rather than
+guessed.
+
+The pattern from Friday held again, three for three: the three real findings today all came from
+checking a claim rather than building on it — aging's "the only trace is a WARN", our own assumption
+that the rekey was purely additive, and their warning about the loader. The claim that turned out
+true (their bundle-id hypothesis) was the one they had already checked themselves.
