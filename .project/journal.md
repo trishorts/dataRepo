@@ -110,3 +110,59 @@ One environment note for next time: pyMzLib is installed from the worktree at
 `E:\GitClones\_wt_pymzlib_585` and ships no built bridge, so `PYMZLIB_BRIDGE` has to point at
 `pkg\bridge\bin\Release\net10.0\win-x64\mzlib-bridge.exe` or every `.psmtsv` read fails.
 `datarepo doctor` reports this.
+
+## 2026-09-19 - Fifth session: the catalog is built, and the bridge problem was ours
+
+`datarepo build` exists and has run on the real store: PXD036557's bundle into one DuckDB file, 50
+checks, all passed. Contract locked as **D10**. Reference: `docs/build.md`.
+
+**The design question that mattered was what the catalog is *for*.** A bundle already answers
+"what is in this dataset", and materialising it into DuckDB would add nothing. What only the catalog
+can do is answer across datasets, so the derived tables are the deliverable, not a side effect:
+`protein_index`, `protein_datasets`, `peptide_index`, `dataset_overview`. Two consequences fell out
+of writing them. Every table needed `dataset_id` and `bundle_id` prepended, taken from the bundle
+rather than the row, because `proteins` and `definitions` have no dataset of their own and without
+one the same UniProt accession from two datasets is indistinguishable. And `protein_index` needed
+**two** counts: `proteins` is the search's protein list, decoys and sub-threshold matches included,
+not its answer, so `n_datasets` and `n_datasets_1pct` are both there with names that say which is
+which. 3,670 of PXD036557's 5,500 protein rows have no accepted evidence behind them.
+
+**The acceptance rule is the thing that would have drifted.** The first `dataset_overview` counted
+`target_decoy = 'target'` and reported 10,729 peptidoforms where the bundle had reconciled 5,541.
+A catalog whose front page disagrees with the bundle it was built from is worse than no front page.
+So the rule is applied once, as the views `psms_1pct` / `peptidoforms_1pct` / `protein_groups_1pct`,
+and everything counts through them — 26,594 / 5,541 / 1,652, exactly the bundle's numbers. It is
+MetaMorpheus's rule and it is not guessable: target, **both** q-values at or below 1%, except for
+protein groups where anything not a decoy counts, contaminants included. There are now two
+implementations of it, Python in the ingester and SQL in the catalog, so a test asserts they agree.
+
+**Checks are re-run rather than trusted.** Row counts against each `bundle.json` catch the one thing
+a content hash cannot — Parquet truncated or edited after the manifest was written. Uniqueness and
+references are re-checked from `integrity.py`'s own lists, so there is one statement of what points
+at what. A failure stops the build: a Finding is for something true about the dataset, and this
+would be something false about the catalog. The build stages to a temporary file beside the target,
+so a failed rebuild leaves the previous catalog serving.
+
+**The user was right about pyMzLib, and it was a bigger correction than it looked.** The standing
+warning was that "pyMzLib ships no built bridge here". It does. The distribution is **`mzlib`** on
+PyPI, imports as `pymzlib`, and its wheels are per-platform with the bridge inside. This machine had
+an *editable* install of the `_wt_pymzlib_585` worktree at 0.1.0.dev4, which is a source checkout and
+ships no bridge — that was the whole of it. `pyproject.toml` named `pymzlib`, a distribution that
+does not exist on PyPI, so the optional dependency could never have resolved. Both fixed. The full
+suite now runs the `.psmtsv` tests instead of skipping: **113 passed**, and CI installs `.[readers]`
+and runs ingest → build → query end to end on the fixture instance.
+
+Re-testing thread 007's reader gaps against 0.1.1 changed two of the four answers. **SDRF is fixed
+upstream** — `pymzlib.sdrf.read()` returns positional `columns` + `rows` and parses the real
+PXD036557 file, 19 columns by 18 rows — so our in-house SDRF read is deletable, which is the next
+thing to do. `pro_forma` is still null on every `.psmtsv` record and `AllQuantifiedPeaks.tsv` still
+fails on the missing `MBR Score` header, so DATAREPO-12 and 13b stand. The matched-ion columns turn
+out not to be a gap at all: they are deliberately excluded, listed in `NativeRecords.excluded_fields`
+with the reason and a typed-view alternative.
+
+**aging answered DATAREPO-14 and we have not acted on it yet.** The 12 extra PSMs are exactly the
+rows whose `Notch` cell contains a `|`. We do not store notch ambiguity at all — `q_value_notch` and
+`ambiguity_level` are both something else — so neither the bundle nor the catalog can apply the
+refined predicate, and both still report 26,594 with a `count_mismatch` finding. The column goes in
+the ingester first, then `producer_counts`, then the catalog view, in that order, so the two never
+disagree.

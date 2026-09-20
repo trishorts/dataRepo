@@ -51,14 +51,14 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements-dev.txt
-      - run: pip install -e . -r requirements-dev.txt
+      # `.[readers]` pulls pyMzLib from PyPI, where it is the `mzlib` distribution. Its wheels are
+      # per-platform and carry the mzLib bridge, so the end-to-end ingest tests run here rather
+      # than skipping, and nothing has to set PYMZLIB_BRIDGE.
+      - run: pip install -e .[readers] -r requirements-dev.txt
 
       - name: Generated Arrow schemas are up to date
         run: python tools/build_tables.py --check
 
-      # pyMzLib's mzLib bridge is not built here, so the end-to-end ingest tests skip. Everything
-      # dataRepo itself decides -- the manifest gate, ProForma translation, the melting rules, the
-      # reconciliation predicate, referential integrity, bundle writing -- still runs.
       - name: Tests
         run: pytest -q -rs
 
@@ -66,4 +66,17 @@ jobs:
         run: |
           datarepo --version
           datarepo manifest tests/data/manifest.yaml
-          datarepo doctor || echo "doctor reports pyMzLib unavailable, as expected on CI"
+          datarepo doctor
+
+      # The whole path, on the fixture instance: producer output -> bundle -> catalog -> an answer.
+      # It is the only check that the two commands agree about what a bundle is.
+      - name: Ingest then build then query
+        run: |
+          datarepo ingest tests/data/manifest.yaml PXD999999 \
+            --store "$RUNNER_TEMP/store" \
+            --mm-settings tests/data/work_root/mm_settings/1.1.11
+          datarepo build tests/data/manifest.yaml PXD999999 \
+            --store "$RUNNER_TEMP/store" --out "$RUNNER_TEMP/catalog.duckdb"
+          datarepo catalog "$RUNNER_TEMP/catalog.duckdb"
+          datarepo query "$RUNNER_TEMP/catalog.duckdb" \
+            "SELECT dataset_id, n_runs, n_psms_1pct FROM dataset_overview"

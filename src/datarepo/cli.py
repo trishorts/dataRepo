@@ -4,6 +4,9 @@
     datarepo manifest <manifest.yaml>            what does the producing instance offer?
     datarepo ingest <manifest.yaml> <PXD...>     build the bundle(s)
     datarepo inspect <bundle-dir>                what is in a bundle, and did it reconcile?
+    datarepo build <manifest.yaml> <PXD...>      load bundles into one DuckDB catalog
+    datarepo catalog <catalog.duckdb>            what is in a catalog, and did it check out?
+    datarepo query <catalog.duckdb> <sql>        run one read-only query against a catalog
 
 Exit codes are meant to be usable from the pipeline that calls this: 0 success, 1 a refusal or
 failure the operator must act on, 2 bad usage.
@@ -19,7 +22,14 @@ from pathlib import Path
 from . import __version__
 from ._tables import SCHEMA_VERSION
 from .bundle import BUNDLE_MANIFEST
-from .errors import DataRepoError, DatasetExcluded
+from .catalog import (
+    build_catalog,
+    describe_catalog,
+    format_rows,
+    run_query,
+    select_bundles,
+)
+from .errors import CatalogError, DataRepoError, DatasetExcluded
 from .ingest import ingest_dataset
 from .manifest import load_manifest
 
@@ -124,6 +134,100 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_pins(values: list[str] | None) -> dict[str, str]:
+    """`--bundle PXD036557=6fea2187` pairs, which is how a release pins its exact bundles."""
+    pins: dict[str, str] = {}
+    for value in values or []:
+        accession, _, bundle_id = value.partition("=")
+        if not bundle_id:
+            raise CatalogError(f"--bundle wants <accession>=<bundle id>, got {value!r}")
+        pins[accession] = bundle_id
+    return pins
+
+
+def cmd_build(args: argparse.Namespace) -> int:
+    manifest = load_manifest(args.manifest)
+    accessions = args.accession or [e.accession for e in manifest.ingestable()]
+    if not accessions:
+        print(f"{manifest.path}: no dataset has status 'include'", file=sys.stderr)
+        return 1
+
+    store = Path(args.store) if args.store else manifest.store
+    out = Path(args.out) if args.out else store.parent / "catalog.duckdb"
+
+    try:
+        bundles = select_bundles(
+            manifest,
+            accessions,
+            store=store,
+            pins=_parse_pins(args.bundle),
+            latest=args.latest,
+        )
+    except DatasetExcluded as exc:
+        print(f"refused  {exc}", file=sys.stderr)
+        return 1
+
+    result = build_catalog(
+        bundles,
+        out,
+        overwrite=args.overwrite,
+        instance=manifest.instance,
+        notes={"manifest": str(manifest.path), "release": args.release} if args.release else
+              {"manifest": str(manifest.path)},
+    )
+
+    print(f"catalog  {result.path}")
+    print(f"  id       {result.catalog_id}")
+    if result.skipped:
+        print("  unchanged: these bundles are already the catalog's contents; --overwrite to rebuild")
+        return 0
+    for ref in result.bundles:
+        print(f"  dataset  {ref.dataset_id:<12} bundle {ref.bundle_id}")
+    counts = ", ".join(f"{k} {v:,}" for k, v in sorted(result.row_counts.items()))
+    print(f"  tables   {counts}")
+    print(f"  indexes  {result.indexes}")
+    print(f"  checks   {len(result.checks)} run, all passed")
+    if args.verbose:
+        for check in result.checks:
+            print(f"    ok     {check['kind']:<10} {check['name']}")
+    return 0
+
+
+def cmd_catalog(args: argparse.Namespace) -> int:
+    doc = describe_catalog(Path(args.catalog))
+    if args.json:
+        print(json.dumps(doc, indent=2, default=str))
+        return 0
+    meta = doc["meta"]
+    print(f"{doc['path']}  catalog {meta.get('catalog_id')}")
+    print(
+        f"  built    {meta.get('built_utc')} by {meta.get('builder')} "
+        f"{meta.get('builder_version')} (catalog v{meta.get('catalog_version')})"
+    )
+    print(f"  schema   {meta.get('schema_version')}  qpx {meta.get('qpx_version')}")
+    print(f"  instance {meta.get('instance')}")
+    for ref in doc["bundles"]:
+        mark = " " if ref["reconciliation_ok"] else "!"
+        print(f"  {mark} {ref['dataset_id']:<12} bundle {ref['bundle_id']}  {ref['written_utc']}")
+        for name in ref["reconciliation_failed"] or []:
+            print(f"      bundle reconciliation mismatch carried through: {name}")
+    for row in doc["tables"]:
+        if row["rows"]:
+            kind = "" if row["kind"] == "bundle" else row["kind"]
+            print(f"    {row['table_name']:<24} {row['rows']:>10,} {kind}")
+    failed = [c for c in doc["checks"] if not c["ok"]]
+    print(f"  checks   {len(doc['checks'])} run, {len(failed)} failed")
+    for check in failed:
+        print(f"    FAILED {check['name']}: {check['observed']} vs {check['expected']}")
+    return 0
+
+
+def cmd_query(args: argparse.Namespace) -> int:
+    columns, rows = run_query(Path(args.catalog), args.sql, limit=args.limit or None)
+    print(format_rows(columns, rows, args.format))
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"datarepo {__version__}  schema {SCHEMA_VERSION}")
     ok = True
@@ -134,6 +238,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except ImportError:  # pragma: no cover
         print("  pyarrow          MISSING")
         ok = False
+    try:
+        import duckdb  # noqa: PLC0415
+
+        print(f"  duckdb           {duckdb.__version__}")
+    except ImportError:  # pragma: no cover
+        print("  duckdb           MISSING (needed by `datarepo build`, not by `ingest`)")
     try:
         from .readers import require_pymzlib  # noqa: PLC0415
 
@@ -171,6 +281,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("bundle", help="bundle directory or its bundle.json")
     p.add_argument("--json", action="store_true", help="print the manifest verbatim")
     p.set_defaults(func=cmd_inspect)
+
+    p = sub.add_parser("build", help="load bundles into one DuckDB catalog")
+    p.add_argument("manifest", help="the producing instance's manifest.yaml")
+    p.add_argument("accession", nargs="*", help="datasets to load; default is every 'include'")
+    p.add_argument("--store", help="where bundles live; default is the manifest's store")
+    p.add_argument("--out", help="catalog file to write; default is <store>/../catalog.duckdb")
+    p.add_argument(
+        "--bundle",
+        action="append",
+        metavar="PXD=ID",
+        help="pin a dataset to one bundle id; repeatable",
+    )
+    p.add_argument(
+        "--latest",
+        action="store_true",
+        help="when a dataset has several bundles, take the newest instead of refusing",
+    )
+    p.add_argument("--release", help="release version this catalog is built for, recorded in it")
+    p.add_argument("--overwrite", action="store_true", help="rebuild a catalog that is current")
+    p.add_argument("-v", "--verbose", action="store_true", help="list every check that ran")
+    p.set_defaults(func=cmd_build)
+
+    p = sub.add_parser("catalog", help="summarise a built catalog")
+    p.add_argument("catalog", help="the catalog .duckdb file")
+    p.add_argument("--json", action="store_true", help="print the catalog's own tables verbatim")
+    p.set_defaults(func=cmd_catalog)
+
+    p = sub.add_parser("query", help="run one read-only SQL query against a catalog")
+    p.add_argument("catalog", help="the catalog .duckdb file")
+    p.add_argument("sql", help="the statement to run")
+    p.add_argument("--format", choices=("table", "tsv", "json"), default="table")
+    p.add_argument("--limit", type=int, default=50, help="row cap; 0 for no cap")
+    p.set_defaults(func=cmd_query)
 
     p = sub.add_parser("doctor", help="check this machine can ingest")
     p.set_defaults(func=cmd_doctor)

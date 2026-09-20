@@ -81,7 +81,7 @@ class Manifest:
             reason = (entry.reason or "no reason given").strip()
             raise DatasetExcluded(
                 f"{accession} has status '{entry.status}' in {self.path} and will not be "
-                f"ingested. The producer's reason: {reason}"
+                f"loaded. The producer's reason: {reason}"
             )
         return entry
 

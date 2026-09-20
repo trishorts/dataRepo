@@ -6,12 +6,15 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** `datarepo ingest` is **built and run against real data** (PXD036557 → 16 Parquet
-  tables, 4.1 MB, ~10 s). Reference: `docs/ingest.md`; contract locked as D9. Thread 007 is posted to
-  aging with DATAREPO-11..14 and is awaiting reply — nothing is blocked, every one has a default in
-  the code. Next: **`datarepo build`** (FRAMEWORK step 2, the DuckDB catalog). Then pin the QPX
-  version (G13), and re-map `design/SCHEMA_COVERAGE.md` against what the ingester actually fills.
-  D1–D9 are locked.
+- **Pick up at:** `datarepo ingest` **and** `datarepo build` are built and run against real data
+  (PXD036557 → 16 Parquet tables → one DuckDB catalog, 50 checks, headline counts matching the
+  bundle). References: `docs/ingest.md`, `docs/build.md`; contracts locked as D9 and D10. aging's
+  threads 008/009 are in and they are **waiting on us** (`next=010`): their v0.1 release needed
+  `datarepo build`, which now exists. Next, in order: (1) reply to aging with the catalog and to
+  pyMzLib with the 0.1.1 re-test; (2) **delete the in-house SDRF reader** — pyMzLib 0.1.1 fixed it
+  (G14); (3) store notch ambiguity so the 12-PSM difference closes (G7); (4) pin the QPX version
+  (G13); (5) re-map `design/SCHEMA_COVERAGE.md` against what the ingester actually fills.
+  D1–D10 are locked.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -24,10 +27,11 @@ This folder is a `/project`-managed research project. **You are de facto working
   also `python tools/build_example_bundle.py`. Lint with `--config .linkmllint.yaml`: enum values like
   DDA and TMT are kept on purpose. LinkML isn't installed globally; use `pip install -r requirements-dev.txt`
   in a venv.
-- **pyMzLib ships no built bridge here.** It is installed from the worktree
-  `E:\GitClones\_wt_pymzlib_585`, so set `PYMZLIB_BRIDGE` to
-  `pkg/bridge/bin/Release/net10.0/win-x64/mzlib-bridge.exe` under it, or every `.psmtsv` read
-  fails. `datarepo doctor` reports this, and the `.psmtsv` tests skip rather than fail without it.
+- **pyMzLib is `mzlib` on PyPI**, and imports as `pymzlib`. Its wheels are per-platform and carry
+  the mzLib bridge, so `pip install mzlib` is all it takes and **`PYMZLIB_BRIDGE` is not needed**.
+  That variable is only for a source checkout, which ships no bridge — this machine ran an editable
+  install of the `_wt_pymzlib_585` worktree for a while, which is where the old warning came from.
+  `datarepo doctor` prints the version and the bridge path it resolved.
 - **Parsing producer formats is pyMzLib's job.** Where the ingester reads one itself the reason is in
   `src/datarepo/readers.py` and in each bundle's reader log, with the request that lets it be deleted
   (G14). Don't add an in-house parser for a format pyMzLib covers.
@@ -41,7 +45,7 @@ This folder is a `/project`-managed research project. **You are de facto working
   aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.
   Its DIVERGED check normalizes line endings, so CRLF/LF differences between the two copies are fine.
 
-- **FRAMEWORK.md is still mostly a proposal.** Its step 1 (ingest) is built and its contract is locked as D9; steps 2-6 (DuckDB catalog, client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
+- **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**
   - aging's rule (D1) applies here: the organelle map belongs to `go`, metric definitions (`DEF-*`) to QuantProject, and the age normalizer to sdrf/mzLib.

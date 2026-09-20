@@ -1,0 +1,373 @@
+"""Building the catalog: union, provenance, acceptance, checks and content addressing.
+
+These build their own miniature bundles rather than ingesting the fixture dataset, so they run
+everywhere -- including CI, where pyMzLib's mzLib bridge is not built. What is under test here is
+what dataRepo itself decides once the bundles exist, and none of that needs a parser.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from datarepo.bundle import BundleWriter
+from datarepo.catalog import (
+    ACCEPTED_VIEWS,
+    BundleRef,
+    build_catalog,
+    catalog_id,
+    describe_catalog,
+    discover_bundles,
+    run_query,
+    select_bundles,
+)
+from datarepo.errors import CatalogError, DatasetExcluded
+
+ACCEPTED = 0.005  # comfortably inside 1%
+REJECTED = 0.5
+
+
+def _dataset(dataset_id: str) -> dict:
+    return {
+        "dataset_id": dataset_id,
+        "organisms": ["NCBITaxon:9606"],
+        "acquisition": "DDA",
+        "quant_method": "label_free",
+        "labelling": "none",
+        "enrichment": ["none"],
+        "axis_source": "manifest",
+        "search_engine": "MetaMorpheus",
+        "search_engine_version": "1.1.11",
+    }
+
+
+def write_bundle(
+    store: Path,
+    dataset_id: str,
+    *,
+    accessions: tuple[str, ...] = ("P11111",),
+    peptide_q: float = ACCEPTED,
+    group_q: float = 0.0,
+    extra_source: str | None = None,
+) -> BundleRef:
+    """One small but complete bundle: a dataset, a run, an assay, and one protein's evidence."""
+    store.mkdir(parents=True, exist_ok=True)
+    writer = BundleWriter(store=store, dataset_id=dataset_id)
+    run_id = f"{dataset_id}:run1"
+    sample_id = f"{dataset_id}:sample1"
+    assay_id = f"{run_id}:label_free"
+    group_id = f"{dataset_id}:{accessions[0]}"
+
+    writer.add("datasets", [_dataset(dataset_id)])
+    writer.add("samples", [{
+        "sample_id": sample_id, "dataset_id": dataset_id,
+        "source_name": "s1", "organism": "NCBITaxon:9606",
+    }])
+    writer.add("runs", [{"run_id": run_id, "dataset_id": dataset_id, "file_name": "r1.raw"}])
+    writer.add("assays", [{
+        "assay_id": assay_id, "run_id": run_id, "channel": "label_free", "sample_id": sample_id,
+    }])
+    writer.add("proteins", [
+        {"protein_accession": acc, "organism": "NCBITaxon:9606", "source_db": "uniprot",
+         "gene": "GENE1" if acc == "P11111" else "GENE2"}
+        for acc in accessions
+    ])
+    writer.add("protein_groups", [{
+        "protein_group_id": group_id, "dataset_id": dataset_id,
+        "protein_accessions": list(accessions), "target_decoy": "target", "q_value": group_q,
+    }])
+    writer.add("peptidoforms", [
+        {"peptidoform_id": f"{dataset_id}:PEPTIDEK", "dataset_id": dataset_id,
+         "peptidoform": "PEPTIDEK", "base_sequence": "PEPTIDEK", "target_decoy": "target",
+         "best_q_value": peptide_q, "best_q_value_notch": peptide_q,
+         "protein_group_id": group_id, "protein_accessions": list(accessions)},
+        {"peptidoform_id": f"{dataset_id}:DECOYK", "dataset_id": dataset_id,
+         "peptidoform": "DECOYK", "base_sequence": "DECOYK", "target_decoy": "decoy",
+         "best_q_value": 0.0, "best_q_value_notch": 0.0,
+         "protein_group_id": group_id, "protein_accessions": list(accessions)},
+    ])
+    writer.add("psms", [{
+        "psm_id": f"{dataset_id}:psm1", "run_id": run_id, "scan": 1,
+        "usi": f"mzspec:{dataset_id}:r1:scan:1:PEPTIDEK/2", "peptidoform": "PEPTIDEK",
+        "base_sequence": "PEPTIDEK", "precursor_charge": 2, "q_value": ACCEPTED,
+        "q_value_notch": ACCEPTED, "target_decoy": "target", "protein_accessions": [accessions[0]],
+    }])
+    writer.add("definitions", [{
+        "definition_id": "PROVISIONAL:PROTEIN-INTENSITY", "version": "v0",
+        "owner_project": "dataRepo", "text": "test",
+    }])
+    writer.add("quant_values", [{
+        "assay_id": assay_id, "feature_type": "protein_group", "feature_id": group_id,
+        "value": 1000.0, "definition_id": "PROVISIONAL:PROTEIN-INTENSITY",
+    }])
+
+    source = store / f"{dataset_id}-input.txt"
+    source.write_text(extra_source or dataset_id, encoding="utf-8")
+    writer.add_source(source, "test")
+    path = writer.write()
+
+    # The manifest's row counts are what a build reconciles against, so they have to be real.
+    manifest = json.loads((path / "bundle.json").read_text(encoding="utf-8"))
+    assert manifest["tables"]["psms"] == 1
+    return BundleRef.load(path)
+
+
+@pytest.fixture
+def store(tmp_path) -> Path:
+    return tmp_path / "store"
+
+
+@pytest.fixture
+def two_datasets(store) -> list[BundleRef]:
+    """Two datasets sharing protein P11111, which is what makes a cross-dataset answer possible."""
+    return [
+        write_bundle(store, "PXD000001"),
+        write_bundle(store, "PXD000002", accessions=("P11111", "P22222")),
+    ]
+
+
+@pytest.fixture
+def catalog(tmp_path, two_datasets) -> Path:
+    result = build_catalog(two_datasets, tmp_path / "catalog.duckdb")
+    return result.path
+
+
+def rows(catalog: Path, sql: str) -> list[dict]:
+    columns, data = run_query(catalog, sql)
+    return [dict(zip(columns, r)) for r in data]
+
+
+# --- the union ---------------------------------------------------------------------------------
+
+
+def test_every_row_says_which_bundle_it_came_from(catalog):
+    found = rows(catalog, "SELECT dataset_id, bundle_id, count(*) n FROM psms GROUP BY 1, 2")
+    assert len(found) == 2
+    assert all(r["bundle_id"] for r in found)
+
+
+def test_a_table_with_no_dataset_id_of_its_own_gets_one(catalog):
+    # `proteins` has no dataset_id in the schema: it is a protein list, not a dataset table. Without
+    # one, the same accession from two datasets would be indistinguishable in the catalog.
+    found = rows(catalog, "SELECT dataset_id FROM proteins WHERE protein_accession = 'P11111'")
+    assert sorted(r["dataset_id"] for r in found) == ["PXD000001", "PXD000002"]
+
+
+def test_every_schema_table_exists_even_when_no_bundle_filled_it(catalog):
+    # An empty table and a missing one mean different things to a caller that cannot see the store.
+    assert rows(catalog, "SELECT count(*) n FROM glycopeptides")[0]["n"] == 0
+    assert rows(catalog, "SELECT count(*) n FROM protein_localizations")[0]["n"] == 0
+
+
+def test_the_catalog_records_the_bundles_it_was_built_from(catalog):
+    doc = describe_catalog(catalog)
+    assert [b["dataset_id"] for b in doc["bundles"]] == ["PXD000001", "PXD000002"]
+    assert all(b["reconciliation_ok"] for b in doc["bundles"])
+    assert doc["meta"]["n_datasets"] == 2
+
+
+# --- the acceptance rule -----------------------------------------------------------------------
+
+
+def test_the_accepted_views_apply_the_producers_rule_not_ours(catalog):
+    assert rows(catalog, "SELECT count(*) n FROM peptidoforms")[0]["n"] == 4  # 2 per dataset
+    assert rows(catalog, "SELECT count(*) n FROM peptidoforms_1pct")[0]["n"] == 2  # decoys dropped
+
+
+def test_a_sub_threshold_peptidoform_is_out_of_the_accepted_view(tmp_path, store):
+    bundles = [
+        write_bundle(store, "PXD000001"),
+        write_bundle(store, "PXD000002", peptide_q=REJECTED),
+    ]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    found = rows(catalog, "SELECT dataset_id FROM peptidoforms_1pct")
+    assert [r["dataset_id"] for r in found] == ["PXD000001"]
+
+
+def test_the_sql_acceptance_rule_agrees_with_the_ingesters_own_counter(catalog):
+    """The one thing that stops the rule drifting: two implementations, one answer.
+
+    `producer_counts` is what a bundle reconciles itself with, in Python over the producer's
+    columns. `psms_1pct` is what the catalog serves, in SQL over the written rows. If somebody
+    changes one, this fails.
+    """
+    from datarepo.sources.identifications import producer_counts
+
+    psms = rows(catalog, "SELECT q_value, q_value_notch, target_decoy FROM psms")
+    as_columns = {
+        "q_value": [r["q_value"] for r in psms],
+        "q_value_notch": [r["q_value_notch"] for r in psms],
+        "decoy_contam_target": ["T" if r["target_decoy"] == "target" else "D" for r in psms],
+    }
+    assert rows(catalog, "SELECT count(*) n FROM psms_1pct")[0]["n"] == producer_counts(as_columns)
+
+
+def test_the_overview_headline_is_the_number_the_bundle_reconciled(catalog):
+    overview = rows(catalog, "SELECT * FROM dataset_overview ORDER BY dataset_id")
+    assert [r["n_peptidoforms_1pct"] for r in overview] == [1, 1]
+    assert [r["n_psms_all"] for r in overview] == [1, 1]
+
+
+# --- the cross-dataset indexes -----------------------------------------------------------------
+
+
+def test_the_protein_index_answers_which_datasets_have_this_protein(catalog):
+    shared = rows(catalog, "SELECT * FROM protein_index WHERE protein_accession = 'P11111'")[0]
+    assert shared["n_datasets"] == 2
+    assert shared["dataset_ids_1pct"] == ["PXD000001", "PXD000002"]
+    only_one = rows(catalog, "SELECT * FROM protein_index WHERE protein_accession = 'P22222'")[0]
+    assert only_one["n_datasets"] == 1
+
+
+def test_a_protein_with_no_accepted_evidence_is_listed_but_not_counted(tmp_path, store):
+    bundles = [write_bundle(store, "PXD000001", peptide_q=REJECTED, group_q=REJECTED)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    entry = rows(catalog, "SELECT * FROM protein_index WHERE protein_accession = 'P11111'")[0]
+    assert entry["n_datasets"] == 1  # the search saw it
+    assert entry["n_datasets_1pct"] == 0  # nothing about it passed
+
+
+def test_the_peptide_index_spans_datasets(catalog):
+    entry = rows(catalog, "SELECT * FROM peptide_index WHERE base_sequence = 'PEPTIDEK'")[0]
+    assert entry["n_datasets"] == 2
+
+
+# --- content addressing ------------------------------------------------------------------------
+
+
+def test_rebuilding_from_the_same_bundles_is_a_no_op(tmp_path, two_datasets):
+    out = tmp_path / "catalog.duckdb"
+    first = build_catalog(two_datasets, out)
+    again = build_catalog(two_datasets, out)
+    assert not first.skipped and again.skipped
+    assert again.catalog_id == first.catalog_id
+
+
+def test_overwrite_rebuilds_a_current_catalog(tmp_path, two_datasets):
+    out = tmp_path / "catalog.duckdb"
+    build_catalog(two_datasets, out)
+    assert not build_catalog(two_datasets, out, overwrite=True).skipped
+
+
+def test_a_different_set_of_bundles_is_a_different_catalog(two_datasets):
+    assert catalog_id(two_datasets) != catalog_id(two_datasets[:1])
+
+
+# --- refusals ----------------------------------------------------------------------------------
+
+
+def test_two_bundles_for_one_dataset_are_refused(tmp_path, store):
+    bundle = write_bundle(store, "PXD000001")
+    with pytest.raises(CatalogError, match="appears twice"):
+        build_catalog([bundle, bundle], tmp_path / "catalog.duckdb")
+
+
+def test_a_bundle_from_another_schema_version_is_refused(tmp_path, store):
+    bundle = write_bundle(store, "PXD000001")
+    stale = BundleRef(path=bundle.path, manifest={**bundle.manifest, "schema_version": "0.0.0"})
+    with pytest.raises(CatalogError, match="schema 0.0.0"):
+        build_catalog([stale], tmp_path / "catalog.duckdb")
+
+
+def test_a_truncated_bundle_is_caught_by_the_row_count_check(tmp_path, store):
+    bundle = write_bundle(store, "PXD000001")
+    manifest = {**bundle.manifest, "tables": {**bundle.manifest["tables"], "psms": 99}}
+    with pytest.raises(CatalogError, match="do not hold together"):
+        build_catalog(
+            [BundleRef(path=bundle.path, manifest=manifest)], tmp_path / "catalog.duckdb"
+        )
+
+
+def test_a_failed_build_leaves_the_previous_catalog_serving(tmp_path, store):
+    out = tmp_path / "catalog.duckdb"
+    good = write_bundle(store, "PXD000001")
+    build_catalog([good], out)
+    broken = BundleRef(
+        path=good.path, manifest={**good.manifest, "tables": {**good.manifest["tables"], "psms": 99}}
+    )
+    with pytest.raises(CatalogError):
+        build_catalog([broken], out, overwrite=True)
+    assert describe_catalog(out)["meta"]["n_datasets"] == 1
+    assert not list(tmp_path.glob(".catalog.duckdb.*"))
+
+
+def test_nothing_to_build_is_refused_rather_than_written(tmp_path):
+    with pytest.raises(CatalogError, match="no bundles"):
+        build_catalog([], tmp_path / "catalog.duckdb")
+
+
+# --- choosing bundles --------------------------------------------------------------------------
+
+
+def test_a_dataset_with_two_bundles_is_not_guessed_at(manifest, store):
+    write_bundle(store, "PXD999999", extra_source="one")
+    write_bundle(store, "PXD999999", extra_source="two")
+    with pytest.raises(CatalogError, match="nothing says which one"):
+        select_bundles(manifest, ["PXD999999"], store=store)
+
+
+def test_latest_takes_the_newest_of_several(manifest, store):
+    write_bundle(store, "PXD999999", extra_source="one")
+    newest = write_bundle(store, "PXD999999", extra_source="two")
+    chosen = select_bundles(manifest, ["PXD999999"], store=store, latest=True)
+    assert [c.bundle_id for c in chosen] == [newest.bundle_id]
+
+
+def test_a_pin_names_the_exact_bundle_a_release_was_built_from(manifest, store):
+    first = write_bundle(store, "PXD999999", extra_source="one")
+    write_bundle(store, "PXD999999", extra_source="two")
+    chosen = select_bundles(manifest, ["PXD999999"], store=store, pins={"PXD999999": first.bundle_id})
+    assert [c.bundle_id for c in chosen] == [first.bundle_id]
+
+
+def test_a_pin_that_matches_nothing_is_an_error_not_a_fallback(manifest, store):
+    write_bundle(store, "PXD999999")
+    with pytest.raises(CatalogError, match="matches 0"):
+        select_bundles(manifest, ["PXD999999"], store=store, pins={"PXD999999": "nope"})
+
+
+def test_a_dataset_with_no_bundle_says_to_ingest_it(manifest, store):
+    store.mkdir(parents=True, exist_ok=True)
+    with pytest.raises(CatalogError, match="datarepo ingest"):
+        select_bundles(manifest, ["PXD999999"], store=store)
+
+
+def test_the_producers_refusal_still_stands_at_build_time(manifest, store):
+    # The manifest is the contract for building as much as for ingesting (D9): a dataset the
+    # producer withdrew must not reappear in a catalog just because its bundle is still on disk.
+    write_bundle(store, "PXD000000")
+    with pytest.raises(DatasetExcluded, match="The producer's reason"):
+        select_bundles(manifest, ["PXD000000"], store=store)
+
+
+def test_discover_finds_every_bundle_a_dataset_has(store):
+    write_bundle(store, "PXD999999", extra_source="one")
+    write_bundle(store, "PXD999999", extra_source="two")
+    assert len(discover_bundles(store, "PXD999999")) == 2
+    assert discover_bundles(store, "PXD111111") == []
+
+
+# --- querying ----------------------------------------------------------------------------------
+
+
+def test_a_query_cannot_write_to_the_catalog(catalog):
+    with pytest.raises(CatalogError):
+        run_query(catalog, "DELETE FROM psms")
+
+
+def test_a_query_against_a_missing_catalog_says_so(tmp_path):
+    with pytest.raises(CatalogError, match="no catalog at"):
+        run_query(tmp_path / "nope.duckdb", "SELECT 1")
+
+
+def test_the_limit_caps_an_exploratory_query(catalog):
+    _, data = run_query(catalog, "SELECT * FROM peptidoforms", limit=1)
+    assert len(data) == 1
+
+
+def test_the_accepted_views_are_listed_in_the_catalogs_own_tables(catalog):
+    listed = {r["table_name"]: r["kind"] for r in describe_catalog(catalog)["tables"]}
+    assert all(listed[name] == "view" for name in ACCEPTED_VIEWS)
+    assert listed["psms"] == "bundle"

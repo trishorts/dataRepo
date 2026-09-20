@@ -34,3 +34,7 @@ class ReaderUnavailable(DataRepoError):
 
 class IngestError(DataRepoError):
     """The inputs are present and readable but do not add up."""
+
+
+class CatalogError(DataRepoError):
+    """The bundles a catalog was asked to load are missing, ambiguous, or do not hold together."""
