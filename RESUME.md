@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 31 |
+| Commits | 33 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 11 |
-| Open gaps | 17 |
+| Open gaps | 18 |
 
 <!-- END GENERATED -->
 
