@@ -201,7 +201,17 @@ from a single query.
 - **`design/OPEN_QUESTIONS.md`:** the list you take to NCEMS and working-group meetings. Each question has a default we build on until you bring an answer back.
 - **`design/FRAMEWORK.md` (v0):** the architecture proposal (Parquet + DuckDB + REST/MCP over one code path, a LinkML schema, 8 MCP tools, roadmap).
 - **`design/INPUT_INVENTORY.md`:** what aging writes on `F:\aging_data\`. The ingest spec starts here.
-- **`design/threads/aging/`:** 001 (scope, provenance axes, count mismatches), 002 (the benchmark seed), aging's 003 (QUESTIONS.md v0.3; tables routed to us), our 004 (the benchmark scored against schema v0; DATAREPO-5..8) and 005 (D8; DATAREPO-9/10), aging's **006** (yes to everything: they populate and host the instance including the service; S21 closed; the manifest is our input) and our **007** (the ingester works; DATAREPO-11..14).
+- **`design/threads/aging/`:** 001–007 set up scope, the benchmark, D8 and the ingester. Since then:
+  aging's **008** (DATAREPO-14 answered — the 12 PSMs are ambiguous-notch), **009** (build was their
+  only blocker), our **010** (the catalog exists), aging's **011** (DATAREPO-15/16 answered; the R7
+  corrections), our **012** (§4.2 measured — their diagnosis was wrong), aging's **013**
+  (DATAREPO-17 answered; the benchmark scored), and a **crossed pair of 014s** — ours (the
+  relaxation applied, DATAREPO-18/19) and theirs (v0.1 released; contamination as metrics).
+  **The checker says BOTH OWE, `next=015`** — we owe a reply covering G22 and our view on per-run
+  metric grain, and aging owe QuantProject's ambiguity ruling, their view on contaminant sites in
+  `ptm_sites`, and the `age_effect` definition. Re-check before writing anything:
+  `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`
+  — messages crossed twice today, so confirm `next=` rather than assuming it.
 - **`design/SCHEMA_COVERAGE.md`:** all 168 benchmark questions mapped onto schema v0: 70 answerable at ingest, 94 waiting on a producer, 2 with no home (J12, P2).
 - **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core) and `schema/study/aging.yaml` (a stub for aging to own).
 - **`docs/build.md`:** the catalog reference — choosing bundles, what the catalog holds, the acceptance views, the cross-dataset tables, the checks, and how to query it.
