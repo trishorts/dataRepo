@@ -6,19 +6,16 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest and build are done, aging's v0.1 is RELEASED (bundle `31fac552c5d748f0`
-  / catalog `08fb3a5e3078dce5`) and **aging is not re-cutting it** (their 019 §6). Code is now
-  datarepo **0.5.0**, schema **0.0.4**. Nothing is blocking us and nothing of ours is blocking them.
-  Next, in order: (1) **G19**, instantiate the study layer — the largest lever at 46 of 168 benchmark
-  questions, unblocked by `aging:DEF-AGE-EFFECT v1` (three tables: `age_effect`, `age_effect_meta`,
-  `age_effect_refusals`), but **the definition of an age effect is aging's and must not be invented
-  here**; build the SHAPE only and ask if a benchmark question needs a column the definition does not
-  name. Know before starting that PXD060431 — the only dataset carrying donor ages — is admitted for
-  **abundance only** under a scoped acquisition exception, so the tables may ship empty; (2) **G26**,
+- **Pick up at:** ingest, build and the study layer are done. Code is datarepo **0.6.0**, schema
+  **0.0.4**, study layer `aging` **0.1.0**; aging's v0.1 stays as released and is not being re-cut.
+  **aging owes us a reply on threads 021 and 022** and nothing of ours blocks them. Next, in order:
+  (1) **DATAREPO-20(a)**, how stage 7's rows reach the repository — the study tables cannot be filled
+  until this is answered, and the default is a separate study bundle loaded by `build`; (2) **G26**,
   replace the in-house modification registry with QuantProject's loader-generated
-  `IdWithMotif-to-Unimod.<mzlib>.tsv` once aging and QuantProject answer the distribution question in
-  thread 021 §5; (3) **G28**, `search_modifications` says "every modification the search considered"
-  and means "declared"; (4) G17/G18, still free at 0 rows; (5) QPX pin (G13). D1–D11 locked.
+  `IdWithMotif-to-Unimod.<mzlib>.tsv` once the distribution question is answered; (3) **G28**,
+  `search_modifications` says "every modification the search considered" and means "declared";
+  (4) FRAMEWORK steps 3-6 (client/MCP, REST, deploy) are still a proposal and want a `/grill-me`
+  before anything is built on them; (5) QPX pin (G13). D1–D11 locked.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.

@@ -464,3 +464,39 @@ The pattern from Friday held again, three for three: the three real findings tod
 checking a claim rather than building on it — aging's "the only trace is a WARN", our own assumption
 that the rekey was purely additive, and their warning about the loader. The claim that turned out
 true (their bundle-id hypothesis) was the one they had already checked themselves.
+
+## 2026-09-20 - The study layer, and a version doing two jobs
+
+G19 is built. `schema/study/aging.yaml` went from a stub to eight tables generated the same way the
+core's are, and `age_effects` / `age_effect_refusals` / `age_effect_meta` are transcribed
+column-for-column from `aging:DEF-AGE-EFFECT v1`. The thing worth recording is *how* the definition
+got into the schema: wherever it says something must be true, the shape refuses a null rather than a
+comment discouraging one. "A `beta` without an `se` is not an age effect" is a write error. §5's "no
+row, not a row with a null" is enforced by a refused fit having a different table, so there is
+nowhere to write the null. Five enums carry, in their own descriptions, the benchmark question that
+forces them to exist — the `ptm_site_id` residue lesson, applied ahead of time.
+
+Every table is empty and will stay empty. That was the deliverable, not a shortfall: aging's own
+benchmark distinguishes `NO_TABLE` from `EMPTY_TABLE`, and the 46 blocked questions scored the first.
+Section D's query now parses, joins `protein_localizations`, and returns nothing — which is the
+honest answer and was previously not even expressible.
+
+**Four decisions turned out to be ours and not aging's**, which is the part a schema always forces
+out of a definition. How the rows arrive at all (stage 7 runs long after a search, so `ingest` cannot
+carry them). `glycosite`, which their §4 names and our core enum does not have. Whether `stratum`
+closes, when their own §5 uses a value their §2 does not list. And the one that is a real gap rather
+than a preference: **`feature_id` at meta grain cannot mean what it means at dataset grain** — a
+`protein_group_id` here is scoped to its dataset, so it cannot be a cross-dataset key, and §6 does
+not say what replaces it. All four asked as DATAREPO-20, none guessed silently.
+
+**And the same boundary failed a third time.** 0.6.0 is entirely a `build` change, but `__version__`
+was in the *bundle* hash, so releasing it would have re-identified every bundle in every store for
+byte-identical rows — the over-hashing of 021 §4, one level up and one release later. Now
+`bundle.INGESTER_VERSION` is the only version in a bundle's hash and lags `__version__` on purpose;
+`catalog_id` carries the package version, the catalog version and every study layer's version.
+Verified: adding the entire study layer moved every catalog id and not one bundle id.
+
+Three times in two days: manifest entry under-hashed, manifest prose over-hashed, package version
+over-hashed. Each time the test is one sentence — *does this change what the rows say* — and each
+time it was available and nobody asked it. That sentence is now in CLAUDE.md's bite-list rather than
+in a journal entry, which is the only place it can do any good.
