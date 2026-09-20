@@ -290,3 +290,45 @@ Thread 012 carries all of it, plus DATAREPO-17: which PSM population `DEF-OCC-PS
 a worked example of one of the 36. Our default if they do not answer is to emit a site from any
 accepted PSM whose modification position is determinate and add a column recording the best
 ambiguity level that placed it, so today's table stays reproducible as a filter.
+
+## 2026-09-19 - DATAREPO-17 answered, and both of our ptm_sites filters were wrong
+
+aging 013 came back with QuantProject's actual `DEF-OCC-PSMS` text rather than a paraphrase, and it
+settled the question in one sentence: the occupancy population is every PSM passing the q-value
+threshold **at PSM level**, with no ambiguity-level filter of any kind, on a protein group whose
+definition includes contaminants. So `ptm_site_rows` had two filters and both were wrong, and
+between them they were the whole of the gap.
+
+Removing them: **1,370 -> 1,997 sites, and uncovered occupancy sites 217 -> 29.** 93% of the gap,
+from deleting two conditions. 113 of the new rows are contaminant sites, all BSA and trypsin — the
+half of the answer we would never have guessed, because a contaminant group has occupancy and by
+construction no "target" PSM.
+
+**Neither filter was replaced with nothing.** `best_ambiguity_level` and `target_decoy` make the old
+derivation a `WHERE` clause instead of a lost option, which matters because aging flagged that the
+no-level-filter reading is *their* interpretation of QuantProject's text and not QuantProject's
+ruling. If it reverses, the reversal is a query.
+
+**One honesty correction I had to make to myself mid-flight.** I told aging the relaxation would
+"reproduce today's table exactly". The site *set* does — 1,370 ids, verified identical — but 25 of
+those rows now carry a higher `n_psms`, because `n_psms` aggregates every accepted PSM that placed
+the site rather than only the level-1 target ones. That is the right measure (it is what the
+occupancy denominator is built from), but "exactly" was wrong and the schema now spells out which
+reading applies rather than leaving "number of PSMs supporting this row" ambiguous.
+
+**The residual is 29 and 13 of them have a clean cause:** they sit at **position 0**, which is
+`DEF-OCC-CELL`'s encoding of the protein N-terminus, and `ptm_site_rows` skips N-terminal
+modifications entirely. Representing them means deciding how a terminal modification is keyed —
+`residue` is currently a one-letter code. The other 16 are scattered internal positions and have no
+explanation yet.
+
+**What aging's benchmark says, and what it does not.** 63 of 168 answerable; `age_effect` alone
+blocks 46 and would unlock 42 by itself; section D — the proposal's own question, whether organelles
+age at different rates — scores 1 of 19. Section B scores 0 of 11 because there is no `age` column
+anywhere. But the line worth keeping is theirs: **no question failed because a table was shaped
+wrongly.** Every failure is designed-but-unbuilt, built-but-unfilled, or metadata the deposit never
+carried. The schema is not what needs revisiting.
+
+Two questions from them are unanswered and are the next thing to send: whether the study layer is
+what we instantiate next (our view: yes, and it is one piece of work with section B, not two), and
+whether contaminant sites stay — already implemented their way, kept and marked.
