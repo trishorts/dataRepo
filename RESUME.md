@@ -21,11 +21,44 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Where it stands (2026-09-19, fifth session)
+## Where it stands (2026-09-20, sixth session)
 
 The framework's section 7 decisions are **locked** (grill-me). Everything else in `design/FRAMEWORK.md` v0 is still a proposal.
 
 **Locked:** D1 hosting (prototype local; NCEMS runs production) · D2 public from day one, no login · D3 CC BY 4.0 data, MIT code · D4 QPX-compatible superset · D5 human and rodent, DDA and DIA, LFQ and TMT (the table shape now, the ingesters when aging produces the data) · D6 aging owns the benchmark questions; dataRepo stays generic · D7 every open question goes in `design/OPEN_QUESTIONS.md` · **D8 this repo is code only; aging hosts the data instance** (bundles, releases, DOIs, the deployed service) · **D9 the ingest contract** (manifest-driven, content-addressed bundles, schema-generated columns, pyMzLib for producer formats, mandatory reconciliation and integrity checks) · **D10 the catalog contract** (manifest-driven again, derived and content-addressed, materialised tables, the producer's acceptance rule applied once as views, checks re-run before anything is served).
+
+## Today: the site key, and the study layer
+
+Two releases, both driven by aging's threads 019 and 020, and both measured on all three datasets.
+
+**datarepo 0.5.0 - `ptm_site_id` keys on the engine's name, not the UNIMOD accession.** A key ending
+in the accession cannot be formed for a modification that has none, so those sites were not written
+as nulls - **they were not written at all**. Recovering them added **42 sites over 10 chemistries**
+(195 PSMs), and only *one* of the ten had ever been reported: the other nine resolve to a *mass* but
+not an accession, so they never entered the `unresolved_modifications` finding and vanished in
+silence. PXD036557's bundle recorded `unresolved: {}` - a clean ingest - and was missing
+`P16401:K37:N6-succinyllysine on K`, so **the released v0.1 catalog is missing a row and contains
+nothing that says so**. The recovered list is succinyl-, glutaryl-, malonyl-, crotonyl- and
+methacryl-lysine, nitrotyrosine and two hydroxylations: a lysine-acylation-shaped hole in an aging
+repository. aging's 020 added the decisive case - `GG (Ubiquitination Site) on K`, the diGly remnant,
+has no cross-reference in mzLib 1.0.591.
+
+The cost is that the new key is **finer**: one chemistry can arrive under two names, and 5 sites in
+35,615 split. That is recoverable and the deletion was not - `ptm_sites_by_chemistry` groups them
+back and reproduces the accession-keyed table exactly on all 35,568 groups, zero mismatches. Store at
+the grain measured, coarsen in a view.
+
+**datarepo 0.6.0 - the study layer is real (G19).** `schema/study/aging.yaml` went from a stub to
+eight tables, generated into `STUDY_TABLES` the same way the core's are and created by
+`datarepo build`. `age_effects`, `age_effect_refusals` and `age_effect_meta` are transcribed
+column-for-column from `aging:DEF-AGE-EFFECT v1`, with the definition's rules enforced by the shape:
+`beta`, `se`, `age_span_years`, `covariates`, `normalization`, `method`, `method_version` are all NOT
+NULL, and a refused fit has a table of its own so there is **nowhere to write a null beta**.
+
+**Every study table is empty and will stay empty until aging answers DATAREPO-20(a).** That is the
+deliverable, not a shortfall: their benchmark distinguishes `NO_TABLE` from `EMPTY_TABLE`, and the 46
+age-effect questions scored the first. Section D's own query - do organelles age at different rates -
+now parses, joins `protein_localizations` and returns nothing.
 
 ## The ingester works
 
@@ -169,17 +202,32 @@ exactly, though 25 of them now carry a higher `n_psms`.
 protein N-terminus, and all 13 are `N-acetylmethionine on M`. `ptm_site_rows` skips N-terminal
 modifications entirely. DATAREPO-18 asks how to key one.
 
-## A content-hash defect that was live all day
+## The hash boundary, which has now failed three times in three directions
 
-aging added `title:` to their manifest entry, we read it into the `datasets` row, and **the bundle id
-did not move**. The manifest entry supplies the title and all five D5 axes; we hashed only the
-producer's files. A bundle built from an edited manifest held different content under the same id —
-the exact failure content addressing exists to prevent, on the artifact a release pins.
+The most reusable thing this project has learned, and it took three failures in two days.
 
-Fixed: the manifest **entry** is hashed as a declared input (`BundleWriter.add_declaration`), the
-entry rather than the file so an unrelated dataset's edit cannot churn this bundle. The lesson is
-narrower than "hash more things" — the manifest did not feel like an input because it is a contract.
-**Anything that reaches a written row is an input.**
+**Under-hashed (2026-09-19).** aging added `title:` to their manifest entry, we read it into the
+`datasets` row, and the bundle id did not move - a bundle built from an edited manifest held
+different content under the same id. Fixed by hashing the manifest **entry** as a declared input.
+The manifest did not feel like an input because it is a contract.
+
+**Over-hashed (2026-09-20, 0.5.0).** The fix hashed `entry.raw`, so `reason`, `notes` and `flags`
+went into the id too. aging reworded a `reason` between their ingest and ours and got a different
+bundle id from byte-identical search output - which destroys the one property they most want from an
+id, that it means *these are the same measurements*. Fixed: `manifest.CONTENT_FIELDS` and
+`NON_CONTENT_FIELDS` classify every field with its reason, and a test fails on a `DatasetEntry`
+field in neither.
+
+**Over-hashed again, one level up (2026-09-20, 0.6.0).** `__version__` was in the *bundle* hash, and
+0.6.0 is entirely a `build` change - so releasing it would have re-identified every bundle in every
+store for byte-identical rows. Fixed: `bundle.INGESTER_VERSION` is now the only version in a
+bundle's hash, bumped with any change to what an ingest reads or writes, and it **lags
+`__version__` on purpose**. `catalog_id` carries the package version, `CATALOG_VERSION` and every
+study layer's version. Verified: adding the whole study layer moved every catalog id and **not one
+bundle id**.
+
+**The test is one sentence: *does this change what the rows say?*** It was available all three times
+and nobody asked it. It is in `CLAUDE.md`'s bite-list now, which is the only place it can help.
 
 ## What the benchmark says
 
@@ -201,19 +249,22 @@ from a single query.
 - **`design/OPEN_QUESTIONS.md`:** the list you take to NCEMS and working-group meetings. Each question has a default we build on until you bring an answer back.
 - **`design/FRAMEWORK.md` (v0):** the architecture proposal (Parquet + DuckDB + REST/MCP over one code path, a LinkML schema, 8 MCP tools, roadmap).
 - **`design/INPUT_INVENTORY.md`:** what aging writes on `F:\aging_data\`. The ingest spec starts here.
-- **`design/threads/aging/`:** 001–007 set up scope, the benchmark, D8 and the ingester. Since then:
-  aging's **008** (DATAREPO-14 answered — the 12 PSMs are ambiguous-notch), **009** (build was their
-  only blocker), our **010** (the catalog exists), aging's **011** (DATAREPO-15/16 answered; the R7
-  corrections), our **012** (§4.2 measured — their diagnosis was wrong), aging's **013**
-  (DATAREPO-17 answered; the benchmark scored), and a **crossed pair of 014s** — ours (the
-  relaxation applied, DATAREPO-18/19) and theirs (v0.1 released; contamination as metrics).
-  **The checker says BOTH OWE, `next=015`** — we owe a reply covering G22 and our view on per-run
-  metric grain, and aging owe QuantProject's ambiguity ruling, their view on contaminant sites in
-  `ptm_sites`, and the `age_effect` definition. Re-check before writing anything:
+- **`design/threads/aging/`:** 001-014 set up scope, the benchmark, D8, the ingester, the catalog
+  and v0.1. Since then: our **018** (AGING-Q2's duplicate collapse, per-run contamination, the grain
+  rule), aging's **019** (PXD027318 ingested; the PSM gap has two mechanisms; `ptm_site_id` keys on
+  UNIMOD and deletes sites; PXD060431 failed their acquisition gate) and their **020** (correcting
+  the Unimod coverage figures and hardening the same ask), then our **021** (option (1) taken, the
+  hole measured at 10 chemistries, the bundle-id question answered) and **022** (the study layer
+  exists and is empty; DATAREPO-20's four shape questions).
+  **The checker says AGING OWE, `next=023`.** They owe: DATAREPO-20 (how stage 7's rows arrive,
+  `glycosite` vs `glycopeptide`, a feature's cross-dataset identity, whether `stratum` closes),
+  G26's distribution question, the `search_modifications` meaning, how PXD060431's abundance-only
+  restriction is enforced, and DATAREPO-18. **We owe nothing.** Re-check before writing anything -
+  aging were working in parallel today and their 020 landed mid-session:
   `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`
-  — messages crossed twice today, so confirm `next=` rather than assuming it.
+  Confirm `next=` rather than assuming it; messages have crossed three times now.
 - **`design/SCHEMA_COVERAGE.md`:** all 168 benchmark questions mapped onto schema v0: 70 answerable at ingest, 94 waiting on a producer, 2 with no home (J12, P2).
-- **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core) and `schema/study/aging.yaml` (a stub for aging to own).
+- **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core, 27 tables) and `schema/study/aging.yaml` (the aging study layer, 8 tables, all empty). A study layer adds tables keyed on core identifiers and never alters a core table, so the core stays usable by a project that is not aging.
 - **`docs/build.md`:** the catalog reference — choosing bundles, what the catalog holds, the acceptance views, the cross-dataset tables, the checks, and how to query it.
 - **`docs/ingest.md`:** the ingester reference — the manifest contract, what it reads and who parses it, what it writes, the rules the writer enforces, reconciliation, USIs, ProForma, and the findings a bundle can carry.
 - **Public repo docs:** `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `CITATION.cff`, `docs/architecture.md`, and `docs/schema/` (generated by `tools/build_docs.py`; never hand-edit). CI has two jobs: **schema** (lint, validate `examples/`, require `examples/invalid/` to fail, docs drift) and **ingester** (generated-tables drift, pytest with pyMzLib installed, a CLI smoke test, and a full ingest → build → query on the fixture instance).
@@ -223,31 +274,45 @@ from a single query.
 
 ## Pick up at
 
-1. **Swap the five definition IDs** (G20). `MS2-COUNT`, `PEPTIDE-COUNT-1PCT`, `PRECURSOR-COUNT`,
-   `PROTEIN-GROUP-COUNT-1PCT` and `RUN-MINUTES` have real `aging:DEF-*` IDs under aging's D20; edit
-   `src/datarepo/definitions.py`. `PROTEIN-INTENSITY` and `PROTEIN-SPECTRAL-COUNT` stay
-   `PROVISIONAL:` — QuantProject has not ruled. Mechanical, needs no reply, do it first.
-2. **Instantiate the study layer** (G19). `SampleAge`, `ClockModel`, `ClockFeature` and `AgeMapping`
-   from `schema/study/aging.yaml`, plus the `age_effect` table **shape**. Do **not** write the
-   definition of an age effect — model, covariates, normalization is aging's G6, and a shape built
-   around a guess at it is worse than no table. This is the largest lever in the project: 46 of 168
-   benchmark questions.
-3. **Contamination as metrics, not only a finding** (G22). aging's provenance carries the full
-   contamination block; we raise a `high_contamination` finding and emit no metric rows, so
-   benchmark G8 can only be answered by reading prose. They want
-   `contamination_intensity_share` **per run** (`QuantProject:DEF-QC-9 v2`) and
-   `contamination_psm_share` at dataset scope (`aging:DEF-CONTAM-PSM v1`). Answer the general
-   question too — they ask whether per-run grain should be the default, and their evidence is
-   strong: 7.0% at dataset level hid a 2.6–18.9% per-file spread structured by cell line.
-4. **DATAREPO-18** (G16): how a protein-terminal modification is keyed. Default is `position = 0`,
-   `residue = 'N-term'`. It is a join key, so do not implement it ahead of their answer unless they
-   go quiet.
-5. **G17 / G18** — the `ptm_stoichiometry` corrections and the `ptm_sites` hygiene items. Still free
-   while both tables are 0 rows. The count/intensity split is the one that must not be got wrong:
-   the two estimators differ 3x overall and 7x at 21-50 PSM sites, and must never be averaged.
-6. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
-7. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD. It
-   was left alone deliberately; advancing is a gated step, not a close-out edit.
+**Nothing of ours blocks aging, and aging owe replies on 021 and 022.** Code is datarepo **0.6.0**,
+schema **0.0.4**, study layer `aging` **0.1.0**; `bundle.INGESTER_VERSION` sits at **0.5.0** and
+should stay there until an ingest reads or writes something differently. 188 tests pass, the schema
+lints, there is no generated-file drift, and the three datasets build an 80-check catalog.
+
+**First, always:** run the thread checker (command in the `design/threads/aging/` bullet above).
+aging work in parallel and a reply may have landed; read it before starting anything below, because
+items 1 and 2 are the things they were asked.
+
+1. **The API layer is the biggest unstarted thing, and it needs the user, not aging.** `FRAMEWORK.md`
+   steps 3-6 - the Python client and MCP server, the REST API, the deploy package - are still a v0
+   proposal nobody has reviewed. Steps 1 and 2 are built and locked as D9/D10; **do not build on
+   3-6 as if they were decided.** This is a `/grill-me`, and the user is not a server or
+   infrastructure person: keep the choices few and give a recommendation each time. The locked
+   answers become D12+. The project's own goal says *API-accessible*, and none of it exists.
+2. **DATAREPO-20(a) - how do stage 7's rows reach the repository?** The study tables cannot be
+   filled until this is answered. Default recorded in `design/OPEN_QUESTIONS.md`: a separate study
+   bundle, written by a new command and loaded by `build`, so delivering a model result never forces
+   a re-ingest. Buildable on the default under D7 if aging go quiet, and cheap to change while no
+   data exists.
+3. **G26 - the modification registry reads mzLib's resource files instead of asking its loader.**
+   It agrees with the loader on all 100 names that have reached `ptm_sites` and differs on exactly
+   two that have not (`Decarboxylation on D`/`on E`), so nothing shipped is wrong. The fix is to
+   consume QuantProject's `IdWithMotif-to-Unimod.<mzlib>.tsv`; the open part is **distribution**
+   (how it reaches an operator, what an ingest does when the searching mzLib version has no table),
+   asked in 021 section 5. Do not wire a third repository's file into the bundle hash before that
+   is answered.
+4. **G28 - `search_modifications` says "every modification the search considered" and means
+   "declared".** All three datasets declare 33 UNIMOD accessions; their peptidoforms carry 16, 46
+   and 57. Small, entirely ours, default is to fix the description and add a view for what was
+   actually placed.
+5. **DATAREPO-18** (G16): how a protein-terminal modification is keyed. Smaller than it was now that
+   the key no longer depends on an accession, but still a join key and still aging's to rule on.
+6. **G17 / G18** - the `ptm_stoichiometry` corrections and the remaining `ptm_sites` hygiene. Still
+   free while both tables are 0 rows. The count/intensity split is the one that must not be got
+   wrong: the estimators differ 3x overall and 7x at 21-50 PSM sites, and must never be averaged.
+7. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
+8. **`/project advance`** - the phase field still says INCEPTION and the work is plainly BUILD. Left
+   alone deliberately; advancing is a gated step, not a close-out edit.
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI
 fails on drift. If the ingester's output changes, also `python tools/build_example_bundle.py`.

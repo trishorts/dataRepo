@@ -113,7 +113,22 @@ gaps:
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
-skip_log: []
+skip_log:
+  - date: 2026-09-20
+    item: "G26 - replace the in-house modification registry with QuantProject's loader-generated IdWithMotif-to-Unimod.1.0.591.tsv"
+    reason: >-
+      Correctness is not in doubt (the loader is authoritative and we differ from it on two names,
+      neither of which has fired), but consuming it would wire a third repository's file into the
+      bundle content hash on our own authority, in the same release as the ptm_site_id rekey - two
+      large movements confounded in one bundle id. The open part is distribution, not correctness,
+      and it is asked in thread 021 section 5 with a default recorded as U9.
+  - date: 2026-09-20
+    item: "DATAREPO-20(a) - build the delivery path that lets aging hand over stage 7's age_effect rows"
+    reason: >-
+      The study layer's SHAPE is what aging asked for and what shipped. Building the command that
+      carries rows into the repository would have fixed a hand-off contract before asking them how
+      they want to hand rows over, on an object that does not exist yet. The default (a separate
+      study bundle loaded by `build`) is recorded and is buildable under D7 if they go quiet.
 
 repos: []
 
