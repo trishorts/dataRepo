@@ -51,6 +51,7 @@ def write_bundle(
     peptide_q: float = ACCEPTED,
     group_q: float = 0.0,
     ambiguous_psm: bool = False,
+    ptm_sites: bool = False,
     extra_source: str | None = None,
 ) -> BundleRef:
     """One small but complete bundle: a dataset, a run, an assay, and one protein's evidence."""
@@ -102,6 +103,30 @@ def write_bundle(
                      "usi": f"mzspec:{dataset_id}:r1:scan:2:PEPTIDEK/2",
                      "notch": "0.00000|1.00290", "notch_ambiguous": True})
     writer.add("psms", psms)
+    if ptm_sites:
+        acc = accessions[0]
+        # Two engine names for one chemistry at S6 -- the split the rekey introduces -- and two
+        # different chemistries with no UNIMOD term at K10, which must NOT merge.
+        writer.add("ptm_sites", [
+            {"ptm_site_id": f"{dataset_id}:{acc}:S6:Phosphorylation on S", "dataset_id": dataset_id,
+             "protein_accession": acc, "position": 6, "residue": "S", "modification": "UNIMOD:21",
+             "modification_name": "Phosphorylation on S", "target_decoy": "target",
+             "best_ambiguity_level": "2A", "n_psms": 11, "best_q_value": 0.004},
+            {"ptm_site_id": f"{dataset_id}:{acc}:S6:Phosphoserine on S", "dataset_id": dataset_id,
+             "protein_accession": acc, "position": 6, "residue": "S", "modification": "UNIMOD:21",
+             "modification_name": "Phosphoserine on S", "target_decoy": "target",
+             "best_ambiguity_level": "1", "n_psms": 3, "best_q_value": 0.001},
+            {"ptm_site_id": f"{dataset_id}:{acc}:K10:Hydroxybutyrylation on K",
+             "dataset_id": dataset_id, "protein_accession": acc, "position": 10, "residue": "K",
+             "modification": None, "modification_name": "Hydroxybutyrylation on K",
+             "target_decoy": "target", "best_ambiguity_level": "1", "n_psms": 5,
+             "best_q_value": 0.002},
+            {"ptm_site_id": f"{dataset_id}:{acc}:K10:N6-glutaryllysine on K",
+             "dataset_id": dataset_id, "protein_accession": acc, "position": 10, "residue": "K",
+             "modification": None, "modification_name": "N6-glutaryllysine on K",
+             "target_decoy": "target", "best_ambiguity_level": "1", "n_psms": 2,
+             "best_q_value": 0.003},
+        ])
     writer.add("definitions", [{
         "definition_id": "PROVISIONAL:PROTEIN-INTENSITY", "version": "v0",
         "owner_project": "dataRepo", "text": "test",
@@ -398,6 +423,59 @@ def test_the_excluded_psm_keeps_the_text_the_exclusion_rests_on(tmp_path, store)
     catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
     excluded = rows(catalog, "SELECT notch FROM psms WHERE notch_ambiguous")
     assert [r["notch"] for r in excluded] == ["0.00000|1.00290"]
+
+
+# --- ptm_sites is stored at the engine's grain, and coarsened by a view ---------------------------
+
+
+def test_the_chemistry_view_merges_two_names_for_one_modification(tmp_path, store):
+    # `Phosphorylation on S` and `Phosphoserine on S` are one chemistry reaching the dataset under
+    # two names. The stored table keeps them apart, because that is what the engine measured; this
+    # view puts them back together, and it is the only place the merge happens.
+    bundles = [write_bundle(store, "PXD000001", ptm_sites=True)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    merged = rows(
+        catalog,
+        "SELECT * FROM ptm_sites_by_chemistry WHERE modification = 'UNIMOD:21'",
+    )
+    assert len(merged) == 1
+    assert merged[0]["n_names"] == 2
+    assert sorted(merged[0]["modification_names"]) == ["Phosphorylation on S", "Phosphoserine on S"]
+    # n_psms sums and best_q_value is the minimum -- the numbers a UNIMOD-keyed row carried.
+    assert merged[0]["n_psms"] == 14
+    assert merged[0]["best_q_value"] == 0.001
+    assert merged[0]["best_ambiguity_level"] == "1"
+
+
+def test_the_chemistry_view_keeps_two_unmapped_chemistries_apart(tmp_path, store):
+    # Both have no UNIMOD term and sit on the same residue. Grouping on the accession alone would
+    # merge them into one meaningless row, so the view groups on the name where there is no term.
+    bundles = [write_bundle(store, "PXD000001", ptm_sites=True)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    unmapped = rows(
+        catalog,
+        "SELECT chemistry_key, n_psms FROM ptm_sites_by_chemistry "
+        "WHERE modification IS NULL ORDER BY chemistry_key",
+    )
+    assert unmapped == [
+        {"chemistry_key": "Hydroxybutyrylation on K", "n_psms": 5},
+        {"chemistry_key": "N6-glutaryllysine on K", "n_psms": 2},
+    ]
+
+
+def test_a_site_with_no_unimod_term_is_in_the_catalog_and_findable_by_name(tmp_path, store):
+    # The regression this rekey fixes: these rows used to be absent, and an empty answer could not
+    # be told from "never identified".
+    bundles = [write_bundle(store, "PXD000001", ptm_sites=True)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    found = rows(
+        catalog,
+        "SELECT ptm_site_id, modification FROM ptm_sites "
+        "WHERE modification_name = 'Hydroxybutyrylation on K'",
+    )
+    assert len(found) == 1
+    assert found[0]["modification"] is None
+    assert found[0]["ptm_site_id"].endswith(":Hydroxybutyrylation on K")
 
 
 # --- releases pin, and are made to ---------------------------------------------------------------

@@ -85,6 +85,37 @@ ACCEPTED_VIEWS: dict[str, str] = {
     ),
 }
 
+#: Views that restate a table at a coarser grain than it is stored at, so a caller never has to.
+#:
+#: `ptm_sites` is keyed on the search engine's own name for a modification, which is the grain the
+#: engine measured at and the only grain at which every site can be represented (aging 019 section
+#: 3). One chemistry can reach a dataset under two names -- `Phosphorylation on S` from the search's
+#: variable-mod list and `Phosphoserine on S` from a UniProt annotation are the same thing -- so the
+#: stored table splits a handful of sites that a UNIMOD-keyed table merged: 2 in PXD027318 and 3 in
+#: PXD032202, out of 20,044 and 13,527. This view puts them back together.
+#:
+#: The split is finer, not wrong, and this view is the proof: grouping the stored table this way
+#: reproduces the UNIMOD-keyed table exactly -- all 20,044 and 13,527 groups, `n_psms` summing to
+#: the old row's value and `best_q_value` to its minimum, zero mismatches. Storing the merged row
+#: instead would have been storing coarser than the measurement, which is the half of the grain rule
+#: (thread 018 section 3) that is easiest to break without noticing.
+#:
+#: A site whose chemistry has no UNIMOD term groups on its name instead, so two different unmapped
+#: chemistries on one residue stay two rows. `_site_key_name` forbids ':' in a name, which is what
+#: makes `coalesce` safe: a name can never be mistaken for an accession.
+GRAIN_VIEWS: dict[str, str] = {
+    "ptm_sites_by_chemistry": (
+        "SELECT dataset_id, protein_accession, position, residue, modification, "
+        "       coalesce(modification, modification_name) AS chemistry_key, "
+        "       count(*) AS n_names, list(DISTINCT modification_name) AS modification_names, "
+        "       sum(n_psms) AS n_psms, min(best_q_value) AS best_q_value, "
+        "       min(best_ambiguity_level) AS best_ambiguity_level, "
+        "       max(target_decoy) AS target_decoy "
+        "FROM ptm_sites "
+        "GROUP BY dataset_id, protein_accession, position, residue, modification, chemistry_key"
+    ),
+}
+
 #: Point-lookup indexes. Built only where the column exists and is not a list: DuckDB's ART index
 #: does not accept list types, and the list columns are covered by the derived tables instead.
 INDEX_COLUMNS: tuple[tuple[str, str], ...] = (
@@ -100,6 +131,8 @@ INDEX_COLUMNS: tuple[tuple[str, str], ...] = (
     ("proteins", "gene"),
     ("ptm_sites", "protein_accession"),
     ("ptm_sites", "modification"),
+    # The queryable identity of a site whose chemistry has no UNIMOD term (aging 019 section 3).
+    ("ptm_sites", "modification_name"),
     ("quant_values", "feature_id"),
     ("quant_values", "assay_id"),
     ("assays", "sample_id"),
@@ -370,6 +403,8 @@ def _build_derived(con: Any) -> None:
 
     for name, body in ACCEPTED_VIEWS.items():
         con.execute(f'CREATE VIEW "{name}" AS {body.format(t=PRODUCER_THRESHOLD)}')
+    for name, body in GRAIN_VIEWS.items():
+        con.execute(f'CREATE VIEW "{name}" AS {body}')
 
     con.execute(
         """
@@ -695,9 +730,9 @@ def _write_catalog_tables(
         con.execute(
             "INSERT INTO catalog_tables VALUES (?, ?, 'bundle')", [name, row_counts.get(name, 0)]
         )
-    for name in (*DERIVED_TABLES, *ACCEPTED_VIEWS):
+    for name in (*DERIVED_TABLES, *ACCEPTED_VIEWS, *GRAIN_VIEWS):
         rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
-        kind = "view" if name in ACCEPTED_VIEWS else "derived"
+        kind = "view" if name in ACCEPTED_VIEWS or name in GRAIN_VIEWS else "derived"
         con.execute("INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, rows, kind])
 
     con.execute(

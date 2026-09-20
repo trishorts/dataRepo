@@ -165,8 +165,10 @@ def ingest_dataset(
 
     # The manifest entry is an input like any other: it supplies the title and the D5 axes that the
     # `datasets` row is built from, so it belongs in the content hash (aging 013 added a title and
-    # the id did not move, which is how this was found).
-    writer.add_declaration("manifest_entry", entry.raw)
+    # the id did not move, which is how this was found). Only the fields that shape content are
+    # hashed, never the producer's prose -- see manifest.CONTENT_FIELDS for the classification and
+    # aging 019 section 1 for why an id that moves when a `reason` is reworded is the wrong id.
+    writer.add_declaration("manifest_entry", entry.content_declaration())
     log = ReaderLog()
 
     # --- provenance first: it tells us how to read every number that follows -------------------
@@ -603,7 +605,8 @@ def _modification_findings(proforma: ProformaCache, dataset_id: str) -> list[dic
             "message": (
                 f"{len(proforma.unresolved)} modification(s) could not be mapped to a UNIMOD "
                 f"accession or a mass, and are carried in ProForma as [Info:...] tags: {names}. "
-                f"Queries by modification will not find them."
+                f"Their ptm_sites rows exist and carry modification_name, with modification null, "
+                f"so a query by name finds them and a query by UNIMOD accession will not."
             ),
             "source": "datarepo ingest",
         }

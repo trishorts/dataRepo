@@ -20,6 +20,45 @@ SUPPORTED_MANIFEST_VERSIONS = {1}
 #: Statuses that may be ingested. Everything else is a deliberate refusal.
 INGESTABLE = {"include"}
 
+#: Manifest fields that shape what a bundle CONTAINS -- either because they are read into a row, or
+#: because they choose which files are read. These go into the bundle's content hash, so changing
+#: one of them changes the bundle id, which is exactly right: the bundle now holds something else.
+CONTENT_FIELDS: tuple[str, ...] = (
+    "accession",       # the dataset_id on every row
+    "run",             # chooses the run folder, and so every file read
+    "stages",          # chooses the stage folders
+    "search_results",  # chooses the search results folder
+    "title",           # Dataset.title
+    "files",           # the expected file count a reconciliation check is made against
+    "organism",        # Dataset.organisms, and the SDRF's default organism
+    "acquisition",     # Dataset.acquisition (D5 axis)
+    "quant_method",    # Dataset.quant_method (D5 axis)
+    "labelling",       # Dataset.labelling (D5 axis)
+    "labelling_plex",  # Dataset.labelling_plex (D5 axis)
+    "enrichment",      # Dataset.enrichment (D5 axis)
+    "metamorpheus",    # chooses the modification registry, and is the engine_version fallback
+)
+
+#: Fields that do NOT go into the content hash, each with the reason. A bundle id has to mean "these
+#: are the same measurements" for an operator who re-runs the pipeline elsewhere (aging 019 section
+#: 1), and hashing the producer's prose breaks that for no gain: rewording a `reason` moved the id
+#: while every row stayed identical.
+#:
+#: Adding a field to `DatasetEntry` means classifying it here or in `CONTENT_FIELDS`; a test asserts
+#: the two lists together cover the dataclass, so a new field cannot arrive unclassified. The rule
+#: to apply is the one that has already bitten once: **anything that reaches a written row is an
+#: input to the content hash.**
+NON_CONTENT_FIELDS: dict[str, str] = {
+    "status": "gates whether a bundle is written at all; every bundle that exists was 'include'",
+    "reason": "the producer's prose for a status; never read into a row",
+    "notes": "the producer's prose; never read into a row",
+    "flags": "shown by `datarepo manifest`; nothing in the ingest reads it",
+    "provenance_schema": "the producer's declared expectation; the ingest reads the schema from "
+                         "provenance.json itself and refuses a version it cannot map",
+    "sdrf": "declared but not read -- the SDRF is found under the run folder and hashed as a file",
+    "raw": "the source row itself, which is the container for every field above",
+}
+
 
 @dataclass(frozen=True)
 class DatasetEntry:
@@ -49,6 +88,14 @@ class DatasetEntry:
     @property
     def ingestable(self) -> bool:
         return self.status in INGESTABLE
+
+    def content_declaration(self) -> dict[str, Any]:
+        """The manifest's contribution to the bundle's content hash: `CONTENT_FIELDS` only.
+
+        Not the raw row. A bundle id answers "are these the same measurements", so it covers what
+        the manifest puts into the bundle and not what the producer wrote about the dataset.
+        """
+        return {name: getattr(self, name) for name in CONTENT_FIELDS}
 
 
 @dataclass(frozen=True)

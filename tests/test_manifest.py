@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from datarepo.errors import DatasetExcluded, ManifestError
-from datarepo.manifest import load_manifest
+from datarepo.manifest import (
+    CONTENT_FIELDS,
+    NON_CONTENT_FIELDS,
+    DatasetEntry,
+    load_manifest,
+)
 
 from conftest import MANIFEST
 
@@ -82,3 +89,70 @@ def test_a_utf8_bom_does_not_break_the_manifest(tmp_path):
     path = tmp_path / "manifest.yaml"
     path.write_bytes(b"\xef\xbb\xbf" + MANIFEST.read_bytes())
     assert load_manifest(path).manifest_version == 1
+
+
+def test_every_manifest_field_is_classified_for_the_content_hash():
+    # The bundle id has to mean "these are the same measurements" (aging 019 section 1). That holds
+    # only while every DatasetEntry field is deliberately either in the hash or out of it, so a new
+    # field must fail here until somebody decides which it is. The rule: anything that reaches a
+    # written row, or chooses which file is read, is an input to the content hash.
+    declared = {f.name for f in dataclasses.fields(DatasetEntry)}
+    classified = set(CONTENT_FIELDS) | set(NON_CONTENT_FIELDS)
+    assert declared == classified, (
+        f"unclassified manifest field(s): {sorted(declared - classified)}; "
+        f"classified but not a field: {sorted(classified - declared)}"
+    )
+    assert not set(CONTENT_FIELDS) & set(NON_CONTENT_FIELDS)
+    assert all(NON_CONTENT_FIELDS.values()), "every excluded field needs its reason in the code"
+
+
+def test_the_content_declaration_carries_the_axes_and_not_the_prose(manifest):
+    entry = manifest.dataset("PXD999999")
+    declaration = entry.content_declaration()
+    assert set(declaration) == set(CONTENT_FIELDS)
+    assert declaration["acquisition"] == "DDA"
+    assert declaration["organism"] == "NCBITaxon:9606"
+    for prose in ("reason", "notes", "flags", "status"):
+        assert prose not in declaration
+
+
+ENTRY = """manifest_version: 1
+work_root: .
+store: .
+datasets:
+  - accession: PXD999999
+    status: include
+    run: run_test/PXD999999
+    title: {title}
+    organism: NCBITaxon:9606
+    reason: {reason}
+    notes: {notes}
+    flags: [{flag}]
+"""
+
+
+def _declaration(tmp_path, name, **fields):
+    path = tmp_path / name
+    path.write_text(
+        ENTRY.format(**{"title": "A title", "reason": "because", "notes": "a note",
+                        "flag": "low_id_rate", **fields}),
+        encoding="utf-8",
+    )
+    return load_manifest(path).dataset("PXD999999").content_declaration()
+
+
+def test_rewording_the_producers_prose_does_not_move_the_bundle_id(tmp_path):
+    # aging edited a `reason` between their ingest and ours and got a different bundle id from
+    # byte-identical search output. Identical measurements must land on identical ids, so none of
+    # the producer's prose may reach the hash.
+    before = _declaration(tmp_path, "before.yaml")
+    after = _declaration(tmp_path, "after.yaml", reason="a different wording", notes="rewritten",
+                         flag="no_design_file")
+    assert before == after
+
+
+def test_retitling_a_dataset_does_move_the_bundle_id(tmp_path):
+    # The converse, and the reason the declaration is hashed at all: the title reaches a row.
+    before = _declaration(tmp_path, "before.yaml")
+    after = _declaration(tmp_path, "after.yaml", title="Another title")
+    assert before != after

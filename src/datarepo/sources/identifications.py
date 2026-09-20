@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Sequence
 
+from ..errors import IngestError
 from ..proforma import N_TERMINUS, ProformaCache
 from ..usi import RunNameMap, mint
 
@@ -356,11 +357,20 @@ def ptm_site_rows(
 ) -> list[dict[str, Any]]:
     """Derive PtmSite rows from accepted, non-decoy PSMs that place a modification.
 
-    A site is emitted when three things hold: the match is not a decoy and is at or below
-    `q_threshold`, the modification resolved to a UNIMOD accession, and the peptide's position in
-    the protein is known.
+    A site is emitted when two things hold: the match is not a decoy and is at or below
+    `q_threshold`, and the peptide's position in the protein is known.
 
-    Two conditions this used to impose are gone, both measured against PXD036557 (aging 012/013):
+    Three conditions this used to impose are gone. The first two were measured against PXD036557
+    (aging 012/013); the third against PXD027318 and PXD032202 (aging 019):
+
+    * **No UNIMOD requirement.** The site key used to end in the UNIMOD accession, so a
+      modification the registry could not cross-reference could not form a key -- and the rows were
+      not written as nulls, they were not written at all. The evidence survived at PSM and
+      peptidoform level, where the id comes from the sequence, and vanished at site level, which is
+      the table PTM stoichiometry reads. `Hydroxybutyrylation on K` in PXD027318: 43 PSMs, 10
+      peptidoforms, 0 sites, and a query for it could not tell that from "never identified". The
+      key now ends in the engine's own name for the modification, which is always present, and
+      `modification` carries the UNIMOD accession when there is one and null when there is not.
 
     * **No ambiguity-level filter.** Requiring level 1 dropped 83% of the sites the producer can
       compute an occupancy for -- 181 of 217 missing sites were covered only by accepted PSMs at
@@ -403,12 +413,13 @@ def ptm_site_rows(
             continue
         parsed = proforma(_first(full[i]))
         for mod in parsed.mods:
-            if not mod.resolved or mod.position == N_TERMINUS:
+            if mod.position == N_TERMINUS:
                 continue
+            name = _site_key_name(mod.name, full[i])
             for index, acc in enumerate(_accessions(accession[i])):
                 start = starts[index] if index < len(starts) else starts[0]
                 position = start + mod.position - 1
-                key = f"{dataset_id}:{acc}:{mod.residue}{position}:{mod.unimod}"
+                key = f"{dataset_id}:{acc}:{mod.residue}{position}:{name}"
                 row = sites.get(key)
                 if row is None:
                     sites[key] = {
@@ -418,6 +429,7 @@ def ptm_site_rows(
                         "position": position,
                         "residue": mod.residue,
                         "modification": mod.unimod,
+                        "modification_name": name,
                         "target_decoy": state,
                         "best_ambiguity_level": level,
                         "localization_score": None,
@@ -434,6 +446,25 @@ def ptm_site_rows(
                         row["target_decoy"] = "target"
                     row["best_ambiguity_level"] = _better_level(row["best_ambiguity_level"], level)
     return [sites[k] for k in sorted(sites)]
+
+
+def _site_key_name(name: str, full_sequence: str) -> str:
+    """The modification name, checked for the one thing that would corrupt a site key.
+
+    `ptm_site_id` joins its components with ':', so a name containing one would make the key
+    unsplittable and could collide two different sites. Every name MetaMorpheus writes is of the
+    form "<id> on <residue>" and carries none -- a colon here means the mod token did not parse and
+    the whole bracket was taken as the name, so what we hold is not a modification name at all.
+    That is worth stopping for: unlike a missing UNIMOD accession, it leaves us unable to say what
+    the modification IS, so there is nothing honest to write.
+    """
+    if ":" in name:
+        raise IngestError(
+            f"modification name {name!r} (from full sequence {full_sequence!r}) contains ':', "
+            f"which is the ptm_site_id separator. The mod token did not parse, so the name is not "
+            f"trustworthy as a site key; fix the token's parsing rather than storing this row."
+        )
+    return name
 
 
 def _group_id(dataset_id: str, accessions: list[str], groups: set[str] | None) -> str | None:
