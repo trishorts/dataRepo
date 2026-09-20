@@ -6,16 +6,16 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest and build are done; **aging v0.1 is cut** —
-  `F:\aging_data\repo\releases\v0.1\catalog.duckdb`, pinned to bundle `84ca279df425c0a2`, all five
-  checks green. Thread 012 is posted and aging owes us **DATAREPO-17**: which PSM population
-  `DEF-OCC-PSMS` counts over. That is the one answer that unblocks R7, because we measured that
-  `ptm_sites` misses 83% of the occupancy sites through our own **ambiguity-level-1 filter**, not
-  through protein-group keying as aging guessed (G16). Next, in order: (1) **G17**, the five
-  `ptm_stoichiometry` corrections — free while both tables are 0 rows, and the count/intensity split
-  is the one that must not be got wrong; (2) **G18**, the `ptm_sites` hygiene items; (3) relax the
-  ambiguity filter once DATAREPO-17 lands, or on our default; (4) pin the QPX version (G13).
-  D1–D11 are locked. datarepo **0.2.1**, schema **0.0.2**.
+- **Pick up at:** ingest and build are both done and run on real data. aging's **v0.1 is built and
+  pinned but HELD from citation by them** (their `id_rate` uses the wrong PSM definition; their fix,
+  their S28/G34). **Do not re-ingest their store until DATAREPO-19 is answered** — `F:\aging_data\repo\store\PXD036557\84ca279df425c0a2`
+  is what v0.1 pins and what they verified. Next, in order: (1) **G20**, swap five `PROVISIONAL:`
+  definition IDs for aging's real ones — mechanical, needs no reply; (2) **G19**, instantiate the
+  study layer (`SampleAge`/`ClockModel`/`ClockFeature`/`AgeMapping` + the `age_effect` table
+  **shape**) — the largest lever, 46 of 168 benchmark questions, but **the definition of an age
+  effect is aging's G6 and must not be invented here**; (3) G17/G18, the `ptm_stoichiometry` and
+  `ptm_sites` corrections, still free at 0 rows; (4) QPX pin (G13). D1–D11 locked. datarepo
+  **0.3.1**, schema **0.0.3**.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -23,6 +23,10 @@ This folder is a `/project`-managed research project. **You are de facto working
 ## Things that will bite you here
 
 - **After editing `.project/state.yaml`, parse it:** `python -c "import yaml;yaml.safe_load(open('.project/state.yaml',encoding='utf-8'))"`. A broken file makes render_resume silently count 0 gaps. It happened on 2026-09-19.
+- **Anything that reaches a written row is an input to the bundle hash.** The manifest entry was not
+  hashed for a whole day because it felt like a contract rather than an input — but it supplies the
+  title and all five D5 axes, so an edited manifest changed bundle content under the same id. Fixed
+  via `BundleWriter.add_declaration`; the lesson generalizes to the next such field.
 - **A bundle's content hash covers inputs, schema version and `__version__` — not the reader code.**
   Change how a file is parsed without bumping `__version__` and you get the same bundle id from
   different code. Bump the version in the same commit as any parsing or transform change.

@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 23 |
+| Commits | 31 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 11 |
-| Open gaps | 14 |
+| Open gaps | 17 |
 
 <!-- END GENERATED -->
 
@@ -129,6 +129,73 @@ Re-tested against 0.1.1, the three gaps we reported in thread 007 resolve differ
 | DATAREPO-12, `pro_forma` null | **still open** — the column is there, every value is `None` |
 | matched-ion columns | **not a gap** — deliberately excluded, with the reason and a typed-view alternative in `excluded_fields` |
 
+## Where v0.1 stands: built, pinned, and HELD by aging
+
+`F:\aging_data\repo\releases\v0.1\catalog.duckdb` — catalog `d8b3e1cd055c56a9`, pinned to bundle
+`84ca279df425c0a2`, 50 checks green, `dataset_overview` reading 26,582 / 5,541 / 1,652. aging froze
+their `manifest.yaml` beside it and filled `instance/RELEASES.md`.
+
+**They then held it from citation, and they were right to.** The bundle's `id_rate` metric and
+`low_id_rate` finding report 10.5% — `DEF-PSM-FDRENGINE` as the numerator instead of the canonical
+`DEF-PSM-1PCT`, which gives 9.98%. It is their number out of their `provenance.json` and their fix.
+
+**Do not re-ingest their store until DATAREPO-19 is answered.** Their corrected provenance moves the
+bundle hash anyway, so the open question is which ingester writes the replacement: pin 0.2.0 / schema
+0.0.2 and keep v0.1 exactly as scoped, or take 0.3.1 / 0.0.3 with the 1,997-row `ptm_sites`. We
+recommended the second **conditional on QuantProject confirming** the no-ambiguity-filter reading,
+because aging flagged that reading as theirs rather than QuantProject's ruling.
+
+## PTM sites: both filters were wrong, and the gap closed
+
+aging 013 supplied QuantProject's actual `DEF-OCC-PSMS` text: the occupancy population is every PSM
+passing the q-value threshold **at PSM level**, no ambiguity filter of any kind, on a protein group
+whose definition **includes contaminants**. Both of our filters were wrong and between them they were
+the whole gap.
+
+```
+                              before   after
+ptm_sites rows                 1,370   1,997
+occupancy sites uncovered        217      29     (93% of the gap)
+  contaminant sites               —      113     (19 accessions, not just BSA + trypsin)
+```
+
+`PtmSite.best_ambiguity_level` and `PtmSite.target_decoy` keep the old derivation available as a
+`WHERE` clause — which matters, because if QuantProject rules the other way the reversal is a query
+rather than a re-ingest. `level = '1' AND target_decoy = 'target'` reproduces the old 1,370 ids
+exactly, though 25 of them now carry a higher `n_psms`.
+
+**Residual 29, and 13 have an exact cause:** they sit at position 0, `DEF-OCC-CELL`'s encoding of the
+protein N-terminus, and all 13 are `N-acetylmethionine on M`. `ptm_site_rows` skips N-terminal
+modifications entirely. DATAREPO-18 asks how to key one.
+
+## A content-hash defect that was live all day
+
+aging added `title:` to their manifest entry, we read it into the `datasets` row, and **the bundle id
+did not move**. The manifest entry supplies the title and all five D5 axes; we hashed only the
+producer's files. A bundle built from an edited manifest held different content under the same id —
+the exact failure content addressing exists to prevent, on the artifact a release pins.
+
+Fixed: the manifest **entry** is hashed as a declared input (`BundleWriter.add_declaration`), the
+entry rather than the file so an unrelated dataset's edit cannot churn this bundle. The lesson is
+narrower than "hash more things" — the manifest did not feel like an input because it is a contract.
+**Anything that reaches a written row is an input.**
+
+## What the benchmark says
+
+aging scored all 168 questions against the built catalog, 18 executed as SQL
+(`results/BENCHMARK_v0.1.md` in their repo): **63 answerable**, 65 no-table, 25 empty-table, 10
+no-metadata, 5 one-dataset. **`age_effect` alone blocks 46 and would unlock 42 by itself.** Section D
+— whether organelles age at different rates, the proposal's own question — scores **1 of 19**.
+Section B scores **0 of 11** because no table anywhere has an `age` column.
+
+The line worth keeping: **no question failed because a table was shaped wrongly.** Every failure is
+designed-but-unbuilt, built-but-unfilled, or metadata the deposit never carried. The schema is not
+what needs revisiting.
+
+The repository also produced its first real scientific answer: O1, progerin in PXD036557. Four
+peptides, 18 PSMs, none spanning the 50-residue deletion — a qualified no with the evidence attached,
+from a single query.
+
 **Documents**
 - **`design/OPEN_QUESTIONS.md`:** the list you take to NCEMS and working-group meetings. Each question has a default we build on until you bring an answer back.
 - **`design/FRAMEWORK.md` (v0):** the architecture proposal (Parquet + DuckDB + REST/MCP over one code path, a LinkML schema, 8 MCP tools, roadmap).
@@ -145,17 +212,28 @@ Re-tested against 0.1.1, the three gaps we reported in thread 007 resolve differ
 
 ## Pick up at
 
-1. **Wait on DATAREPO-16 before touching aging's instance.** Their store still holds the 0.0.1
-   bundle and a catalog built from it; the notch fix makes a new bundle, and whether v0.1 pins the
-   old one or the new one is their decision, not ours. Everything else below is independent of it.
-2. **Pin the QPX version** (G13). Bundles and catalogs record `qpx_version: "unpinned"`. Pin a
-   release of github.com/bigbio/qpx, map our column names onto its views, set `QPX_VERSION` in
-   `src/datarepo/bundle.py` (D4), and only then add QPX-compatible views to the catalog.
-3. **Re-map the benchmark** (`design/SCHEMA_COVERAGE.md`) by *running* the 70 "answerable at ingest"
-   questions against the catalog instead of asserting them. This is the first time that is possible,
-   and it is also aging's release checklist step 3.
-4. **`/grill-me` on FRAMEWORK steps 3-6** (G1) before building the client, MCP server or REST.
-5. **When the user brings NCEMS answers** (N1-N9), record them as decisions.
+1. **Swap the five definition IDs** (G20). `MS2-COUNT`, `PEPTIDE-COUNT-1PCT`, `PRECURSOR-COUNT`,
+   `PROTEIN-GROUP-COUNT-1PCT` and `RUN-MINUTES` have real `aging:DEF-*` IDs under aging's D20; edit
+   `src/datarepo/definitions.py`. `PROTEIN-INTENSITY` and `PROTEIN-SPECTRAL-COUNT` stay
+   `PROVISIONAL:` — QuantProject has not ruled. Mechanical, needs no reply, do it first.
+2. **Instantiate the study layer** (G19). `SampleAge`, `ClockModel`, `ClockFeature` and `AgeMapping`
+   from `schema/study/aging.yaml`, plus the `age_effect` table **shape**. Do **not** write the
+   definition of an age effect — model, covariates, normalization is aging's G6, and a shape built
+   around a guess at it is worse than no table. This is the largest lever in the project: 46 of 168
+   benchmark questions.
+3. **Wait on aging for DATAREPO-19 before touching their store** (G21) — which ingester re-cuts
+   v0.1. `F:/aging_data/repo/store/PXD036557/84ca279df425c0a2` is what v0.1 pins and what they
+   verified. Re-check with
+   `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`.
+4. **DATAREPO-18** (G16): how a protein-terminal modification is keyed. Default is `position = 0`,
+   `residue = 'N-term'`. It is a join key, so do not implement it ahead of their answer unless they
+   go quiet.
+5. **G17 / G18** — the `ptm_stoichiometry` corrections and the `ptm_sites` hygiene items. Still free
+   while both tables are 0 rows. The count/intensity split is the one that must not be got wrong:
+   the two estimators differ 3x overall and 7x at 21-50 PSM sites, and must never be averaged.
+6. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
+7. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD. It
+   was left alone deliberately; advancing is a gated step, not a close-out edit.
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI
 fails on drift. If the ingester's output changes, also `python tools/build_example_bundle.py`.

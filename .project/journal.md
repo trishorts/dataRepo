@@ -332,3 +332,51 @@ carried. The schema is not what needs revisiting.
 Two questions from them are unanswered and are the next thing to send: whether the study layer is
 what we instantiate next (our view: yes, and it is one piece of work with section B, not two), and
 whether contaminant sites stay — already implemented their way, kept and marked.
+
+## 2026-09-19 - Session close: v0.1 is held by its producer, and a hash defect that was live all day
+
+The last stretch of the session, after the `ptm_sites` relaxation.
+
+**aging held v0.1 from citation, and they were right.** Their own check found the bundle's `id_rate`
+metric and `low_id_rate` finding reporting 10.5% — `DEF-PSM-FDRENGINE` as the numerator instead of
+the canonical `DEF-PSM-1PCT`, which gives 9.98%. It is their number, out of their `provenance.json`,
+and they chose to hold rather than release a headline quality figure a reader will not re-derive.
+That is the right instinct and it is worth remembering as the precedent for later releases.
+
+**The hold turns into a fork that is genuinely theirs.** Their corrected provenance moves the bundle
+hash anyway, so the only real question is which ingester writes the replacement: pin 0.2.0 and keep
+v0.1 exactly as scoped and verified, or take 0.3.1 and get the 1,997-row `ptm_sites` for free. We
+recommended the second **conditional on QuantProject confirming the no-ambiguity-filter reading**,
+because aging themselves flagged that reading as their interpretation of QuantProject's text rather
+than QuantProject's ruling. Recommending it unconditionally would have been recommending they build
+a release on our joint guess. DATAREPO-19.
+
+**A content-hash defect was live the entire time v0.1 was being built, and an unrelated change found
+it.** aging added `title:` to their manifest entry (answering our §4.5 ask), we read it into the
+`datasets` row — and the bundle id did not move. The manifest entry supplies the title and all five
+D5 axes, and we were hashing only the producer's files. So a bundle built from an edited manifest
+held different content under the same id, which is precisely the failure content addressing exists
+to prevent, on the artifact a release pins.
+
+Fixed by hashing the manifest **entry** as a declared input — the entry rather than the file, so an
+unrelated dataset's edit cannot churn this bundle's id. The lesson is narrower than "hash more
+things": the hash covered the inputs we thought of as inputs, and the manifest did not feel like one
+because it is a contract. Anything that reaches a written row is an input.
+
+**Two corrections carried rather than left to be found.** Ours: we told aging in 012 that the
+relaxation would "reproduce today's table exactly", and the site set does — 1,370 ids, verified —
+but 25 rows now carry a higher `n_psms`. Theirs: their 013 said the contaminant sites are "all BSA
+and trypsin"; there are 113 across 19 accessions, several of them keratins, which understates what
+their own S17 contaminant-share metric is measuring. Neither changed a decision. Both would have
+been found later by someone with less context.
+
+**The benchmark is the thing to hold on to.** 63 of 168 answerable; `age_effect` alone blocks 46 and
+would unlock 42 by itself; section D — whether organelles age at different rates, the proposal's own
+question — scores 1 of 19; section B scores 0 of 11 because there is no `age` column anywhere. And
+the line that matters most: **no question failed because a table was shaped wrongly.** Every failure
+is designed-but-unbuilt, built-but-unfilled, or metadata the deposit never carried.
+
+One pattern from the day worth naming. Three of the four substantive findings came from checking a
+claim rather than building on it — aging's ambiguous-group hypothesis, our own "reproduces exactly",
+their "all BSA and trypsin". The fourth, the hash defect, is the counter-example: nobody checked it,
+and it surfaced only because an unrelated change happened to expose it.
