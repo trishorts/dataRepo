@@ -189,6 +189,7 @@ def select_bundles(
     store: Path | None = None,
     pins: dict[str, str] | None = None,
     latest: bool = False,
+    release: str | None = None,
 ) -> list[BundleRef]:
     """Choose exactly one bundle per dataset, and refuse to guess.
 
@@ -202,6 +203,10 @@ def select_bundles(
         pins: `{accession: bundle id or unique prefix}`, for pinning a release to exact bundles.
         latest: when a dataset has several bundles and none is pinned, take the newest instead of
             refusing.
+        release: the release this catalog is for. Every dataset must then be pinned, and `latest`
+            is refused: a release that can silently pick up a later re-ingest is not a release
+            (aging thread 011). Pinning is enforced here rather than merely defaulted, because the
+            failure it prevents is invisible -- the catalog builds fine and says the wrong thing.
 
     Raises:
         CatalogError: a dataset has no bundle, a pin matches none or several, or a dataset has
@@ -210,6 +215,21 @@ def select_bundles(
     """
     root = Path(store) if store else manifest.store
     pins = pins or {}
+    if release:
+        if latest:
+            raise CatalogError(
+                f"--release {release} and --latest are mutually exclusive. A release names the "
+                f"exact bundles it was checked against; --latest would let it pick up a later "
+                f"re-ingest silently. Pin each dataset with --bundle <accession>=<id>."
+            )
+        unpinned = [a for a in accessions if a not in pins]
+        if unpinned:
+            raise CatalogError(
+                f"--release {release} needs every dataset pinned, and "
+                f"{', '.join(sorted(unpinned))} {'is' if len(unpinned) == 1 else 'are'} not. Add "
+                f"--bundle {unpinned[0]}=<id>; `datarepo build` without --release will list the "
+                f"ids on offer."
+            )
     chosen: list[BundleRef] = []
     for accession in accessions:
         manifest.dataset(accession)  # the producer's gate, and it raises for us

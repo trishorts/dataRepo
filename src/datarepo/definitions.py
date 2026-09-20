@@ -43,7 +43,22 @@ PSM_1PCT = Def(
     "v1",
     "aging",
     "Target PSMs at 1% FDR, as MetaMorpheus's results.txt summary line reports them: "
-    "'All target PSMs with q-value <= 0.01'. Target PSMs only. This is the canonical PSM count.",
+    "'All target PSMs with q-value <= 0.01'. Target PSMs only. This is the canonical PSM count. "
+    "Four conditions, all required (aging thread 011): Decoy/Contaminant/Target == 'T', "
+    "QValue <= 0.01, QValue Notch <= 0.01, and notch_ambiguous == false "
+    "(aging:DEF-PSM-NOTCH-AMBIGUOUS). The fourth is not inferable from the written file alone, "
+    "which is why a count taken without it comes out high.",
+)
+NOTCH_AMBIGUOUS = Def(
+    "aging:DEF-PSM-NOTCH-AMBIGUOUS",
+    "v1",
+    "aging",
+    "A PSM is notch-ambiguous when the Notch cell of AllPSMs.psmtsv contains a '|' separator, i.e. "
+    "MetaMorpheus wrote more than one notch hypothesis for the match. For such a PSM, "
+    "SpectralMatch.ResolveAllAmbiguities leaves the in-memory PsmFdrInfo.QValueNotch unresolved at "
+    "> 1, while PsmTsvWriter.AddMatchScoreData writes the MINIMUM notch q-value across hypotheses. "
+    "The written 'QValue Notch' can therefore pass a threshold the counted one fails, which is why "
+    "aging:DEF-PSM-1PCT needs this condition as well as the two q-values.",
 )
 PSM_FDR_ENGINE = Def(
     "aging:DEF-PSM-FDRENGINE",
@@ -129,6 +144,7 @@ PRECURSOR_COUNT = Def(
 
 ALL: tuple[Def, ...] = (
     PSM_1PCT,
+    NOTCH_AMBIGUOUS,
     PSM_FDR_ENGINE,
     ID_RATE,
     MBR,

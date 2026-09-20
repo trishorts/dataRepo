@@ -73,6 +73,16 @@ decisions:
       integrity.py's own lists, a failure stops the build rather than becoming a Finding, and the
       build stages to a temporary file so a failure leaves the previous catalog serving.
 
+  - id: D11
+    date: 2026-09-19
+    text: >-
+      A release pins its bundles, and the tool enforces it. `datarepo build --release <version>`
+      requires a --bundle pin for every dataset and refuses --latest outright (aging 011 asked for
+      enforcement rather than a default). A release that can silently pick up a later re-ingest is
+      not a release, and the failure is invisible: the catalog builds cleanly and says something
+      other than what was cited. aging v0.1 is pinned to PXD036557=84ca279df425c0a2 at
+      F:/aging_data/repo/releases/v0.1/catalog.duckdb.
+
 gaps:
   - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). Steps 1 (ingest) and 2 (build) are BUILT and their contracts locked as D9 and D10; the rest (client/MCP, REST, deploy) is still a proposal the user has not reviewed. Next: /grill-me on steps 3-6, then record the locked choices as decisions."
   - "G5 Step 0 question set: OWNED BY AGING (D6). READY 2026-09-19 (aging 003): aging/design/QUESTIONS.md v0.3, 168 questions, top 10 = K1 D2 O1 D1 T2 N1 M1 C1 G1 J16. Read it from trishorts/aging master; never copy it. MAPPED 2026-09-19 in design/SCHEMA_COVERAGE.md: 70 answerable at ingest, 94 waiting on a producer, 2 no home (J12, P2), 2 out of v1. Re-map when QUESTIONS.md or the schema changes."

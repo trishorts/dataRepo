@@ -211,3 +211,46 @@ their release candidate points at while that question is open would be answering
 
 Also: `linkml` is now installed in the working environment, so `tools/build_docs.py --check` and the
 example-bundle validation run locally instead of only on CI. 122 tests pass.
+
+## 2026-09-19 - aging 011 answered both questions, and v0.1 is pinned
+
+Thread 011 arrived while the notch work was in flight and confirmed both defaults, so nothing built
+on them had to be undone. Three refinements came with it, all now implemented.
+
+**`aging DEF-PSM-NOTCH-AMBIGUOUS v1` exists.** aging published the definition rather than leaving the
+boolean as a habit, and the mechanism is worth knowing: `ResolveAllAmbiguities` leaves the in-memory
+`QValueNotch` unresolved at > 1 while `PsmTsvWriter` writes the **minimum** across hypotheses, so the
+written `QValue Notch` can pass a threshold the counted one fails. That is why the file alone cannot
+give you the count. `aging:DEF-PSM-1PCT` now carries all four conditions in its own text, and the
+notch definition travels in every bundle that has PSMs -- a stored conclusion has to carry the text
+behind it, not point at a thread.
+
+**`Psm.notch` stays a string, `'0'` and not NULL**, which was their one request on it. Already true:
+41,269 rows read `0` and none are null. A nullable column would have made "no notch" and "notch 0"
+the same thing, and notch 0 is the commonest value in the file.
+
+**Releases now enforce pinning rather than defaulting to it**, which they asked for explicitly:
+`--release` refuses `--latest` outright and requires a `--bundle` pin per dataset. The reason it is
+worth a guard is that the failure is invisible -- a release that quietly picks up a later re-ingest
+still builds cleanly and still answers questions, just not the ones that were cited. D11.
+
+**v0.1 is built.** They chose "fix the notch, re-ingest, pin the new hash" over cutting on the old
+bundle, on the grounds that the first release sets the precedent and they would rather demonstrate
+that a finding can be *closed* than carried. So: re-ingested into their store (20 s, all five checks
+green), and `releases/v0.1/catalog.duckdb` is pinned to `84ca279df425c0a2`. The working catalog at
+`repo/catalog.duckdb` was rebuilt onto the same bundle. Both bundles remain in the store; the 0.0.1
+one is still citable and a 0.0.2 catalog refuses it by design.
+
+`Dataset.title` can now come from the manifest (`title:` on a dataset entry). aging offered to supply
+it from PRIDE's `GetProjectAsync` and asked where it should live; the manifest is the answer, because
+dataRepo does not call PRIDE. Their manifest has no `title:` yet, so it is still null -- theirs to add.
+
+**Queued from 011, none of it release-blocking** (both tables are 0 rows, which is why it arrives
+cheaply): five `ptm_stoichiometry` column corrections from QuantProject, including splitting
+`modified_fraction` into count- and intensity-based columns that must never be averaged (they differ
+by 3-7x), adding `intensity_is_floor`, and dropping `uncertainty`; `proteoform_inferences.
+inference_confidence` becoming an enum of evidence classes or being dropped; and four findings about
+`ptm_sites` -- 81% of it is carbamidomethyl, which `DEF-OCC-PSMS` excludes from occupancy by
+construction, and the occupancy site population overlaps ours by only 212 of 433, most likely because
+the occupancy writer emits one entry per protein in an ambiguous group while we key on the leading
+one. That last one decides whether R7 can key to `ptm_sites` at all, so it is the first to look at.

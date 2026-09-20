@@ -28,6 +28,7 @@ class DatasetEntry:
     accession: str
     status: str
     run: str
+    title: str | None = None
     stages: dict[str, str] = field(default_factory=dict)
     search_results: str | None = None
     files: int | None = None
@@ -163,6 +164,7 @@ def load_manifest(path: str | Path) -> Manifest:
             accession=str(accession),
             status=status,
             run=str(row.get("run", "")),
+            title=row.get("title"),
             stages={str(k): str(v) for k, v in (row.get("stages") or {}).items()},
             search_results=row.get("search_results"),
             files=row.get("files"),

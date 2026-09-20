@@ -374,7 +374,8 @@ def ingest_dataset(
     pipeline = search_provenance.get("pipeline") or {}
     dataset_row = {
         "dataset_id": dataset_id,
-        "title": None,
+        # The producer holds it (they fetch it from PRIDE); dataRepo does not call PRIDE itself.
+        "title": entry.title,
         "organisms": [entry.organism] if entry.organism else [],
         "acquisition": entry.acquisition,
         "quant_method": QUANT_METHODS.get((entry.quant_method or "").lower(), entry.quant_method),
@@ -427,7 +428,13 @@ def ingest_dataset(
     writer.add("metrics", metrics)
     writer.add("provenance_records", provenance_rows)
     writer.add("findings", findings)
-    writer.add("definitions", defs.rows({m["definition_id"] for m in metrics} | {q["definition_id"] for q in quant_values}))
+    # A definition is carried when something in the bundle depends on it. That is every metric and
+    # quantity, plus the notch rule: `Psm.notch_ambiguous` is a stored conclusion, so the text
+    # behind it has to travel with the rows rather than live only in aging's thread.
+    used = {m["definition_id"] for m in metrics} | {q["definition_id"] for q in quant_values}
+    if psm_rows:
+        used.add(defs.NOTCH_AMBIGUOUS.definition_id)
+    writer.add("definitions", defs.rows(used))
 
     writer.notes = {
         "instance": manifest.instance,

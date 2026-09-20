@@ -162,6 +162,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             store=store,
             pins=_parse_pins(args.bundle),
             latest=args.latest,
+            release=args.release,
         )
     except DatasetExcluded as exc:
         print(f"refused  {exc}", file=sys.stderr)
@@ -298,7 +299,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="when a dataset has several bundles, take the newest instead of refusing",
     )
-    p.add_argument("--release", help="release version this catalog is built for, recorded in it")
+    p.add_argument(
+        "--release",
+        help="release version this catalog is for; requires every dataset pinned with --bundle",
+    )
     p.add_argument("--overwrite", action="store_true", help="rebuild a catalog that is current")
     p.add_argument("-v", "--verbose", action="store_true", help="list every check that ran")
     p.set_defaults(func=cmd_build)

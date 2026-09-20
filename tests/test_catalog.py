@@ -398,3 +398,27 @@ def test_the_excluded_psm_keeps_the_text_the_exclusion_rests_on(tmp_path, store)
     catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
     excluded = rows(catalog, "SELECT notch FROM psms WHERE notch_ambiguous")
     assert [r["notch"] for r in excluded] == ["0.00000|1.00290"]
+
+
+# --- releases pin, and are made to ---------------------------------------------------------------
+
+
+def test_a_release_refuses_latest_because_it_would_move_under_it(manifest, store):
+    write_bundle(store, "PXD999999", extra_source="one")
+    write_bundle(store, "PXD999999", extra_source="two")
+    with pytest.raises(CatalogError, match="mutually exclusive"):
+        select_bundles(manifest, ["PXD999999"], store=store, latest=True, release="v0.1")
+
+
+def test_a_release_refuses_a_dataset_that_is_not_pinned(manifest, store):
+    write_bundle(store, "PXD999999")
+    with pytest.raises(CatalogError, match="needs every dataset pinned"):
+        select_bundles(manifest, ["PXD999999"], store=store, release="v0.1")
+
+
+def test_a_fully_pinned_release_is_allowed(manifest, store):
+    only = write_bundle(store, "PXD999999")
+    chosen = select_bundles(
+        manifest, ["PXD999999"], store=store, release="v0.1", pins={"PXD999999": only.bundle_id}
+    )
+    assert [c.bundle_id for c in chosen] == [only.bundle_id]
