@@ -311,3 +311,37 @@ def test_a_repeated_characteristics_column_is_kept_rather_than_overwritten(tmp_p
     table = sdrf_source.parse(path, "PXD000000")
     diseases = [c["value"] for c in table.characteristics if c["name"] == "characteristics[disease]"]
     assert diseases == ["progeria", "cardiomyopathy"]
+
+
+# --- a shared peptide sits at a different residue in each protein --------------------------------
+
+
+def test_residue_starts_keeps_one_span_per_protein():
+    from datarepo.sources.identifications import _residue_starts
+
+    assert _residue_starts("[10 to 20]|[155 to 165]") == [10, 155]
+    assert _residue_starts("[10 to 20]") == [10]
+    assert _residue_starts("") == []
+
+
+@needs_pymzlib
+def test_a_site_is_placed_in_each_protein_at_that_proteins_own_coordinates(registry):
+    """Taking the leading protein's start for all of them is right once and wrong thereafter.
+
+    PXD036557 carries 3,154 PSMs whose accessions have differing spans; none is at ambiguity
+    level 1, so only the level filter has kept this from producing wrong positions.
+    """
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    columns = {
+        "full_sequence": ["PEPTC[Common Fixed:Carbamidomethyl on C]IDEK"],
+        "accession": ["P11111|P22222"],
+        "start_and_end_residues_in_parent_sequence": ["[10 to 20]|[155 to 165]"],
+        "ambiguity_level": ["1"],
+        "q_value": [0.001],
+        "decoy_contam_target": ["T"],
+    }
+    rows = ptm_site_rows(columns, "PXD999999", proforma=ProformaCache(registry))
+    placed = {r["protein_accession"]: r["position"] for r in rows}
+    assert placed == {"P11111": 14, "P22222": 159}

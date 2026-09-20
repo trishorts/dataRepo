@@ -254,3 +254,39 @@ inference_confidence` becoming an enum of evidence classes or being dropped; and
 construction, and the occupancy site population overlaps ours by only 212 of 433, most likely because
 the occupancy writer emits one entry per protein in an ambiguous group while we key on the leading
 one. That last one decides whether R7 can key to `ptm_sites` at all, so it is the first to look at.
+
+## 2026-09-19 - §4.2 investigated: aging's diagnosis was wrong, and a latent bug was hiding behind it
+
+aging asked us to check whether the 221 occupancy sites missing from `ptm_sites` are an
+ambiguous-protein-group problem, because it decides whether R7 can key to `ptm_sites` at all. It is
+not. Measuring which accepted PSMs actually cover each missing residue:
+
+- **0** of 217 are covered by an accepted level-1 PSM;
+- **181** (83%) exist only in accepted PSMs at ambiguity level >= 2;
+- **36** are covered by no accepted PSM at all.
+
+The cause is a rule of ours that had never been stated outside the code: `ptm_site_rows` emits a
+site only from a level-1 PSM, on the reasoning that anything else is "a site the evidence does not
+place". On the 18-file run that keeps 22,730 accepted PSMs and drops 4,027, of which level 2D alone
+is 3,651. So R7 *can* key to `ptm_sites`, but only once `ptm_sites` stops being level-1-only —
+keying to it today would silently drop 83% of the sites occupancy can be computed for.
+
+**The methodological lesson.** aging's hypothesis was plausible, specific, and came with a number
+(46 accessions) that looked like support. Taking it at face value and "fixing" the protein-group
+keying would have produced a change that measured as an improvement on that number and left the real
+cause untouched. Asking the more basic question — which PSMs actually cover this residue — took one
+query and inverted the answer.
+
+**A latent bug surfaced on the way, and the two compound.** A peptide shared between proteins starts
+at a different residue in each; MetaMorpheus writes one span per protein, `|`-separated and aligned
+with the accession column. `ptm_site_rows` took the *first* span and applied it to every accession —
+right for the leading protein, wrong for the rest. PXD036557 has 3,154 accepted PSMs with differing
+spans and **none at level 1**, so only the filter we are about to relax has kept it from firing.
+Fixed by pairing each accession with its own span; verified byte-identical on real data (1,370 rows
+in, 1,370 identical out), so aging's v0.1 pin is unaffected. Patch bump to 0.2.1 because the hash
+covers `__version__` and not the reader code.
+
+Thread 012 carries all of it, plus DATAREPO-17: which PSM population `DEF-OCC-PSMS` counts over, and
+a worked example of one of the 36. Our default if they do not answer is to emit a site from any
+accepted PSM whose modification position is determinate and add a column recording the best
+ambiguity level that placed it, so today's table stays reproducible as a filter.

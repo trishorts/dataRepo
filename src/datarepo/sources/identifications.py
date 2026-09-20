@@ -71,6 +71,15 @@ def _residue_range(value: Any) -> tuple[int | None, int | None]:
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
+def _residue_starts(value: Any) -> list[int]:
+    """Every start residue in a `[a to b]|[c to d]` field, in the order the accessions are in.
+
+    MetaMorpheus writes one span per protein the peptide maps to, `|`-separated and positionally
+    aligned with the accession column, so the two must be zipped rather than reduced.
+    """
+    return [int(m.group(1)) for m in _RANGE.finditer("" if value is None else str(value))]
+
+
 def _accessions(value: Any) -> list[str]:
     text = "" if value is None else str(value)
     return [a.strip() for a in text.split("|") if a.strip()]
@@ -351,15 +360,22 @@ def ptm_site_rows(
             continue
         if str(levels[i] or "").strip() != "1":
             continue
-        start, _ = _residue_range(ranges[i])
-        if start is None:
+        # One span per accession, paired by position. A peptide shared between proteins starts at a
+        # different residue in each, so taking the first span for all of them would place the site
+        # correctly in the leading protein and wrongly in every other. The file carries 3,154 such
+        # PSMs in PXD036557; none is at ambiguity level 1, so the filter below is the only reason
+        # this has never fired. Relaxing that filter without this pairing would put wrong positions
+        # in the repository.
+        starts = _residue_starts(ranges[i])
+        if not starts:
             continue
         parsed = proforma(_first(full[i]))
         for mod in parsed.mods:
             if not mod.resolved or mod.position == N_TERMINUS:
                 continue
-            position = start + mod.position - 1
-            for acc in _accessions(accession[i]):
+            for index, acc in enumerate(_accessions(accession[i])):
+                start = starts[index] if index < len(starts) else starts[0]
+                position = start + mod.position - 1
                 key = f"{dataset_id}:{acc}:{mod.residue}{position}:{mod.unimod}"
                 row = sites.get(key)
                 if row is None:

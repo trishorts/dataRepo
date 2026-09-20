@@ -6,17 +6,16 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** `datarepo ingest` and `datarepo build` are both built and run on real data.
-  PXD036557 now **reconciles on all five checks** (26,582 / 5,541 / 1,652 / 18 / 266,402) since the
-  notch clause landed, and the in-house SDRF read is deleted — pyMzLib 0.1.1 does it. References:
-  `docs/ingest.md`, `docs/build.md`; contracts locked as D9 and D10. Versions moved: datarepo
-  **0.2.0**, schema **0.0.2**, so PXD036557 is a new bundle (`84ca279df425c0a2`) and the old
-  `6fea2187b2d9f737` is un-catalogable by design. Thread 010 is posted; aging owes us DATAREPO-15
-  (notch storage — already built on the default) and **DATAREPO-16 (which bundle v0.1 pins)**, which
-  is the one thing worth waiting for before touching their instance again. Next: (1) pin the QPX
-  version (G13); (2) re-map `design/SCHEMA_COVERAGE.md` by *running* the 70 "answerable at ingest"
-  questions against the catalog; (3) `/grill-me` on FRAMEWORK steps 3-6 before building the client
-  or MCP server. D1–D10 are locked.
+- **Pick up at:** ingest and build are done; **aging v0.1 is cut** —
+  `F:\aging_data\repo\releases\v0.1\catalog.duckdb`, pinned to bundle `84ca279df425c0a2`, all five
+  checks green. Thread 012 is posted and aging owes us **DATAREPO-17**: which PSM population
+  `DEF-OCC-PSMS` counts over. That is the one answer that unblocks R7, because we measured that
+  `ptm_sites` misses 83% of the occupancy sites through our own **ambiguity-level-1 filter**, not
+  through protein-group keying as aging guessed (G16). Next, in order: (1) **G17**, the five
+  `ptm_stoichiometry` corrections — free while both tables are 0 rows, and the count/intensity split
+  is the one that must not be got wrong; (2) **G18**, the `ptm_sites` hygiene items; (3) relax the
+  ambiguity filter once DATAREPO-17 lands, or on our default; (4) pin the QPX version (G13).
+  D1–D11 are locked. datarepo **0.2.1**, schema **0.0.2**.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
