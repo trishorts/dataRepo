@@ -345,3 +345,59 @@ def test_a_site_is_placed_in_each_protein_at_that_proteins_own_coordinates(regis
     rows = ptm_site_rows(columns, "PXD999999", proforma=ProformaCache(registry))
     placed = {r["protein_accession"]: r["position"] for r in rows}
     assert placed == {"P11111": 14, "P22222": 159}
+
+
+# --- ptm_sites after aging 013: no level filter, contaminants kept and marked --------------------
+
+
+def _site_columns(**over):
+    columns = {
+        "full_sequence": ["PEPTC[Common Fixed:Carbamidomethyl on C]IDEK"],
+        "accession": ["P11111"],
+        "start_and_end_residues_in_parent_sequence": ["[10 to 20]"],
+        "ambiguity_level": ["1"],
+        "q_value": [0.001],
+        "decoy_contam_target": ["T"],
+    }
+    columns.update({k: [v] for k, v in over.items()})
+    return columns
+
+
+@needs_pymzlib
+def test_a_site_is_emitted_at_any_ambiguity_level(registry):
+    """DEF-OCC-PSMS applies no level filter, so a level filter here cannot key the R7 table."""
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    rows = ptm_site_rows(_site_columns(ambiguity_level="2D"), "PXD1", proforma=ProformaCache(registry))
+    assert [r["best_ambiguity_level"] for r in rows] == ["2D"]
+
+
+@needs_pymzlib
+def test_a_contaminant_site_is_kept_and_marked_rather_than_dropped(registry):
+    """Occupancy is computed on groups that include contaminants, so dropping them loses real sites."""
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    rows = ptm_site_rows(_site_columns(decoy_contam_target="C"), "PXD1", proforma=ProformaCache(registry))
+    assert [r["target_decoy"] for r in rows] == ["contaminant"]
+
+
+@needs_pymzlib
+def test_a_decoy_site_is_still_dropped(registry):
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    assert ptm_site_rows(
+        _site_columns(decoy_contam_target="D"), "PXD1", proforma=ProformaCache(registry)
+    ) == []
+
+
+def test_the_best_ambiguity_level_is_the_lowest_one_seen():
+    from datarepo.sources.identifications import _better_level
+
+    assert _better_level("2D", "1") == "1"
+    assert _better_level("1", "2D") == "1"
+    assert _better_level(None, "3") == "3"
+    assert _better_level("2A", None) == "2A"
+    assert _better_level("2D", "unknown-level") == "2D"

@@ -71,6 +71,21 @@ def _residue_range(value: Any) -> tuple[int | None, int | None]:
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
+#: Producer ambiguity levels, best first. A site is credited with the best level that placed it.
+AMBIGUITY_ORDER = ("1", "2A", "2B", "2C", "2D", "3", "4", "5")
+
+
+def _better_level(current: str | None, candidate: str | None) -> str | None:
+    """The lower of two producer ambiguity levels, tolerating one this list does not know."""
+    if candidate is None:
+        return current
+    if current is None:
+        return candidate
+    order = {name: i for i, name in enumerate(AMBIGUITY_ORDER)}
+    fallback = len(AMBIGUITY_ORDER)
+    return candidate if order.get(candidate, fallback) < order.get(current, fallback) else current
+
+
 def _residue_starts(value: Any) -> list[int]:
     """Every start residue in a `[a to b]|[c to d]` field, in the order the accessions are in.
 
@@ -339,11 +354,26 @@ def ptm_site_rows(
     proforma: ProformaCache,
     q_threshold: float = 0.01,
 ) -> list[dict[str, Any]]:
-    """Derive PtmSite rows from unambiguous, target, below-threshold PSMs.
+    """Derive PtmSite rows from accepted, non-decoy PSMs that place a modification.
 
-    A site is emitted only when all four hold: the match is a target at or below `q_threshold`, its
-    ambiguity level is 1, the modification resolved to a UNIMOD accession, and the peptide's
-    position in the protein is known. Anything else would be a site the evidence does not place.
+    A site is emitted when three things hold: the match is not a decoy and is at or below
+    `q_threshold`, the modification resolved to a UNIMOD accession, and the peptide's position in
+    the protein is known.
+
+    Two conditions this used to impose are gone, both measured against PXD036557 (aging 012/013):
+
+    * **No ambiguity-level filter.** Requiring level 1 dropped 83% of the sites the producer can
+      compute an occupancy for -- 181 of 217 missing sites were covered only by accepted PSMs at
+      level >= 2, and level 2D alone is 3,651 accepted PSMs. `DEF-OCC-PSMS` counts every PSM
+      passing the q-value threshold at PSM level with no level restriction, so a level filter here
+      made `ptm_sites` unable to key the stoichiometry table. `best_ambiguity_level` records the
+      lowest level that placed each site, so `WHERE best_ambiguity_level = '1'` reproduces the old
+      table exactly.
+    * **No target-only filter.** Occupancy is computed on the protein group, and the producer's
+      group definition includes contaminants, so a contaminant group has occupancy and no "target"
+      PSM. That accounted for the other 36. Contaminant sites are kept and marked rather than
+      dropped: they are real measurements, and BSA and trypsin sites are used as a process control.
+      Decoys are still excluded.
     """
     n = len(columns.get("full_sequence", ()))
     full = columns.get("full_sequence", [])
@@ -356,10 +386,12 @@ def ptm_site_rows(
     sites: dict[str, dict[str, Any]] = {}
     for i in range(n):
         q = _float(qs[i])
-        if q is None or q > q_threshold or _target_decoy(status[i]) != "target":
+        if q is None or q > q_threshold:
             continue
-        if str(levels[i] or "").strip() != "1":
+        state = _target_decoy(status[i])
+        if state == "decoy":
             continue
+        level = str(levels[i] or "").strip() or None
         # One span per accession, paired by position. A peptide shared between proteins starts at a
         # different residue in each, so taking the first span for all of them would place the site
         # correctly in the leading protein and wrongly in every other. The file carries 3,154 such
@@ -386,6 +418,8 @@ def ptm_site_rows(
                         "position": position,
                         "residue": mod.residue,
                         "modification": mod.unimod,
+                        "target_decoy": state,
+                        "best_ambiguity_level": level,
                         "localization_score": None,
                         "n_psms": 1,
                         "best_q_value": q,
@@ -394,6 +428,11 @@ def ptm_site_rows(
                     row["n_psms"] += 1
                     if q < row["best_q_value"]:
                         row["best_q_value"] = q
+                    # A site seen by both a target and a contaminant PSM is a target site: the
+                    # contaminant database also contains real proteins.
+                    if state == "target":
+                        row["target_decoy"] = "target"
+                    row["best_ambiguity_level"] = _better_level(row["best_ambiguity_level"], level)
     return [sites[k] for k in sorted(sites)]
 
 

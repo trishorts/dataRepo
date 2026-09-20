@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.2"
+SCHEMA_VERSION = "0.0.3"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -169,6 +169,8 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("position", pa.int64(), nullable=False),
         pa.field("residue", pa.string(), nullable=False),
         pa.field("modification", pa.string(), nullable=False),
+        pa.field("target_decoy", pa.string(), nullable=True),
+        pa.field("best_ambiguity_level", pa.string(), nullable=True),
         pa.field("localization_score", pa.float64(), nullable=True),
         pa.field("n_psms", pa.int64(), nullable=True),
         pa.field("best_q_value", pa.float64(), nullable=True),
