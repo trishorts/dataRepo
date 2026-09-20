@@ -380,3 +380,33 @@ One pattern from the day worth naming. Three of the four substantive findings ca
 claim rather than building on it — aging's ambiguous-group hypothesis, our own "reproduces exactly",
 their "all BSA and trypsin". The fourth, the hash defect, is the counter-example: nobody checked it,
 and it surfaced only because an unrelated change happened to expose it.
+
+## 2026-09-19 - Postscript: v0.1 released while the close-out was being written
+
+aging's own 014 crossed with ours — the second crossing today — and it changed the headline the
+close-out had just recorded. **v0.1 is RELEASED**, not held: catalog `08fb3a5e3078dce5` on bundle
+`31fac552c5d748f0`, `id_rate` 0.0998, title filled. They took the second fork of DATAREPO-19, so the
+release runs on datarepo 0.3.1 / schema 0.0.3 and carries the 1,997-row `ptm_sites`. The earlier
+`84ca279df425c0a2` is superseded, not withdrawn, and their `RELEASES.md` records what changed.
+
+Worth noticing that the close-out's verification step is what caught it. The survey listed a commit
+that was not there when the session's summary was written, and every file I had just finished writing
+said "HELD". Had the close-out ended one command earlier, the next session would have opened on a
+confident, wrong statement about the most important fact in the project.
+
+**A framing of theirs worth stealing.** They corrected the id rate without re-running MetaMorpheus,
+via a new `reprovenance.py`, on the argument that a provenance record holds two different kinds of
+thing: **history** — commands, tool versions, hashes, timings, true forever and never rewritten — and
+**interpretations** — metrics computed under versioned definitions, which move when a definition is
+corrected. Only the second kind goes stale, and only it is recomputed, through the same function the
+search stage calls, with a `rederived` entry naming what changed from what to what. Our bundles have
+the same shape of problem and no such distinction.
+
+**And a schema argument that is better than the request attached to it.** They want contamination as
+metrics rather than only a finding, which is easy. The reason is the interesting part: the
+dataset-level contaminant share is 7.0%, the per-file values run **2.6% to 18.9%**, and they are
+structured by cell line — fetal bovine serum carryover differing sevenfold inside one experiment,
+on the same axis along which their S31 says the identification rate is structured. A single
+dataset-level number hid all of it and would have been believed. They raise per-run grain as a
+general schema preference rather than a one-off, and that question deserves a real answer rather than
+just shipping the two metrics.

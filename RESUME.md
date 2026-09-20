@@ -129,21 +129,22 @@ Re-tested against 0.1.1, the three gaps we reported in thread 007 resolve differ
 | DATAREPO-12, `pro_forma` null | **still open** — the column is there, every value is `None` |
 | matched-ion columns | **not a gap** — deliberately excluded, with the reason and a typed-view alternative in `excluded_fields` |
 
-## Where v0.1 stands: built, pinned, and HELD by aging
+## v0.1 is RELEASED
 
-`F:\aging_data\repo\releases\v0.1\catalog.duckdb` — catalog `d8b3e1cd055c56a9`, pinned to bundle
-`84ca279df425c0a2`, 50 checks green, `dataset_overview` reading 26,582 / 5,541 / 1,652. aging froze
-their `manifest.yaml` beside it and filled `instance/RELEASES.md`.
+`F:\aging_data\repo\releases\v0.1\` — catalog `08fb3a5e3078dce5`, pinned to bundle
+`31fac552c5d748f0`, 50 checks passed, `id_rate` 0.0998, title filled, reconciliation green.
 
-**They then held it from citation, and they were right to.** The bundle's `id_rate` metric and
-`low_id_rate` finding report 10.5% — `DEF-PSM-FDRENGINE` as the numerator instead of the canonical
-`DEF-PSM-1PCT`, which gives 9.98%. It is their number out of their `provenance.json` and their fix.
+aging held it briefly over the `id_rate` number (their `provenance.json` used `DEF-PSM-FDRENGINE`
+where the canonical `DEF-PSM-1PCT` was meant), fixed it, and re-cut. **They took the second fork of
+DATAREPO-19**, so the release runs on datarepo **0.3.1** / schema **0.0.3** and carries the 1,997-row
+`ptm_sites`. The earlier `84ca279df425c0a2` build is **superseded, not withdrawn** — both bundles stay
+in the store and their `RELEASES.md` records what changed.
 
-**Do not re-ingest their store until DATAREPO-19 is answered.** Their corrected provenance moves the
-bundle hash anyway, so the open question is which ingester writes the replacement: pin 0.2.0 / schema
-0.0.2 and keep v0.1 exactly as scoped, or take 0.3.1 / 0.0.3 with the 1,997-row `ptm_sites`. We
-recommended the second **conditional on QuantProject confirming** the no-ambiguity-filter reading,
-because aging flagged that reading as theirs rather than QuantProject's ruling.
+They fixed the id rate **without re-searching**, via a new `pipeline/bin/reprovenance.py`. The framing
+is worth borrowing: a provenance record holds **history** (commands, tool versions, hashes, timings —
+true forever) and **interpretations** (metrics computed under versioned definitions — these move).
+Only the second kind goes stale, and only it is recomputed, through the same function the search stage
+calls, with a `rederived` entry naming what changed from what to what.
 
 ## PTM sites: both filters were wrong, and the gap closed
 
@@ -221,10 +222,13 @@ from a single query.
    definition of an age effect — model, covariates, normalization is aging's G6, and a shape built
    around a guess at it is worse than no table. This is the largest lever in the project: 46 of 168
    benchmark questions.
-3. **Wait on aging for DATAREPO-19 before touching their store** (G21) — which ingester re-cuts
-   v0.1. `F:/aging_data/repo/store/PXD036557/84ca279df425c0a2` is what v0.1 pins and what they
-   verified. Re-check with
-   `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`.
+3. **Contamination as metrics, not only a finding** (G22). aging's provenance carries the full
+   contamination block; we raise a `high_contamination` finding and emit no metric rows, so
+   benchmark G8 can only be answered by reading prose. They want
+   `contamination_intensity_share` **per run** (`QuantProject:DEF-QC-9 v2`) and
+   `contamination_psm_share` at dataset scope (`aging:DEF-CONTAM-PSM v1`). Answer the general
+   question too — they ask whether per-run grain should be the default, and their evidence is
+   strong: 7.0% at dataset level hid a 2.6–18.9% per-file spread structured by cell line.
 4. **DATAREPO-18** (G16): how a protein-terminal modification is keyed. Default is `position = 0`,
    `residue = 'N-term'`. It is a join key, so do not implement it ahead of their answer unless they
    go quiet.

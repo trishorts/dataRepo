@@ -6,16 +6,15 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest and build are both done and run on real data. aging's **v0.1 is built and
-  pinned but HELD from citation by them** (their `id_rate` uses the wrong PSM definition; their fix,
-  their S28/G34). **Do not re-ingest their store until DATAREPO-19 is answered** — `F:\aging_data\repo\store\PXD036557\84ca279df425c0a2`
-  is what v0.1 pins and what they verified. Next, in order: (1) **G20**, swap five `PROVISIONAL:`
-  definition IDs for aging's real ones — mechanical, needs no reply; (2) **G19**, instantiate the
-  study layer (`SampleAge`/`ClockModel`/`ClockFeature`/`AgeMapping` + the `age_effect` table
-  **shape**) — the largest lever, 46 of 168 benchmark questions, but **the definition of an age
-  effect is aging's G6 and must not be invented here**; (3) G17/G18, the `ptm_stoichiometry` and
-  `ptm_sites` corrections, still free at 0 rows; (4) QPX pin (G13). D1–D11 locked. datarepo
-  **0.3.1**, schema **0.0.3**.
+- **Pick up at:** ingest and build are done, and **aging's v0.1 is RELEASED** on bundle
+  `31fac552c5d748f0` / catalog `08fb3a5e3078dce5`, running datarepo **0.3.1**, schema **0.0.3**.
+  Next, in order: (1) **G20**, swap five `PROVISIONAL:` definition IDs for aging's real ones —
+  mechanical, needs no reply; (2) **G22**, emit contamination as metrics and not only a finding
+  (`contamination_intensity_share` per run, `contamination_psm_share` per dataset) **and** answer
+  their general question about per-run grain as a default — their 7.0% dataset figure hid a
+  2.6–18.9% per-file spread; (3) **G19**, instantiate the study layer — the largest lever at 46 of
+  168 benchmark questions, but **the definition of an age effect is aging's G6 and must not be
+  invented here**; (4) G17/G18, still free at 0 rows; (5) QPX pin (G13). D1–D11 locked.
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
