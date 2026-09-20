@@ -31,6 +31,20 @@ from .integrity import check as check_integrity
 #: checked against a pinned QPX release; tracked as gap G13.
 QPX_VERSION = "unpinned"
 
+#: The version of the INGEST PATH, and the only version in a bundle's content hash.
+#:
+#: Deliberately not `__version__`. A bundle id has to mean "these are the same measurements" (aging
+#: 019 section 1), so it must move when this ingester reads a file differently or writes a different
+#: row -- and must NOT move because something elsewhere in the package changed. 0.6.0 added the
+#: study layer, which `build` creates and `ingest` never writes; bumping the package version would
+#: have re-identified every bundle in every store for rows that are byte-identical.
+#:
+#: **Bump this in the same commit as any change to what an ingest reads, parses, derives or
+#: writes.** It lags `__version__` on purpose; they are not meant to agree. The catalog's equivalent
+#: is `catalog.CATALOG_VERSION`, and `catalog_id` carries `__version__` as well because a catalog is
+#: rebuilt cheaply and a bundle is not.
+INGESTER_VERSION = "0.5.0"
+
 BUNDLE_MANIFEST = "bundle.json"
 SOURCES_DIR = "sources"
 
@@ -185,13 +199,14 @@ class BundleWriter:
 
     @property
     def bundle_id(self) -> str:
-        """Content hash of the inputs, the schema and the ingester.
+        """Content hash of the inputs, the schema and the ingest path.
 
-        Same inputs and same code give the same bundle directory; any change to either gives a new
-        one. That is what makes a released bundle safe to cite.
+        Same inputs and same ingest path give the same bundle directory; any change to either gives
+        a new one. That is what makes a released bundle safe to cite -- and why the version here is
+        `INGESTER_VERSION` rather than the package's, which moves for reasons a bundle cannot see.
         """
         digest = hashlib.sha256()
-        digest.update(f"datarepo/{__version__}\nschema/{SCHEMA_VERSION}\n{self.dataset_id}\n".encode())
+        digest.update(f"datarepo/{INGESTER_VERSION}\nschema/{SCHEMA_VERSION}\n{self.dataset_id}\n".encode())
         for entry in sorted(self.sources, key=lambda e: (e["role"], e["path"])):
             digest.update(f"{entry['role']}\t{entry['sha256']}\n".encode())
         return digest.hexdigest()[:16]
@@ -239,7 +254,13 @@ class BundleWriter:
             "dataset_id": self.dataset_id,
             "schema_version": SCHEMA_VERSION,
             "qpx_version": QPX_VERSION,
-            "ingester": {"name": "datarepo", "version": __version__},
+            # Both versions, because they answer different questions: `version` is what an
+            # operator installed, `ingest_path` is what the bundle id was computed from.
+            "ingester": {
+                "name": "datarepo",
+                "version": __version__,
+                "ingest_path": INGESTER_VERSION,
+            },
             "written_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
             "tables": row_counts,
             "sources": self.sources,

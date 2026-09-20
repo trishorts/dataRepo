@@ -136,3 +136,42 @@ def test_a_declared_input_hashes_the_same_however_the_mapping_is_ordered(tmp_pat
     second = BundleWriter(store=tmp_path, dataset_id="PXD1")
     second.add_declaration("manifest_entry", {"b": 2, "a": 1})
     assert first.bundle_id == second.bundle_id
+
+
+def test_a_bundle_id_does_not_move_when_the_package_version_does(tmp_path, monkeypatch):
+    # 0.6.0 added the study layer, which `build` creates and `ingest` never writes. A bundle id has
+    # to mean "these are the same measurements", so a release that changes nothing an ingest reads
+    # or writes must leave every stored bundle addressable by the id it was cited under.
+    import datarepo
+    from datarepo.bundle import BundleWriter
+
+    source = tmp_path / "input.txt"
+    source.write_text("same bytes", encoding="utf-8")
+
+    def make() -> str:
+        writer = BundleWriter(store=tmp_path / "store", dataset_id="PXD999999")
+        writer.add_source(source, "test")
+        return writer.bundle_id
+
+    before = make()
+    monkeypatch.setattr(datarepo, "__version__", "99.0.0")
+    assert make() == before
+
+
+def test_a_bundle_id_does_move_when_the_ingest_path_does(tmp_path, monkeypatch):
+    # The converse, and the reason the constant exists at all: reading a file differently must
+    # produce a different bundle, or the same id names two different sets of rows.
+    from datarepo import bundle as bundle_module
+    from datarepo.bundle import BundleWriter
+
+    source = tmp_path / "input.txt"
+    source.write_text("same bytes", encoding="utf-8")
+
+    def make() -> str:
+        writer = BundleWriter(store=tmp_path / "store", dataset_id="PXD999999")
+        writer.add_source(source, "test")
+        return writer.bundle_id
+
+    before = make()
+    monkeypatch.setattr(bundle_module, "INGESTER_VERSION", "99.0.0")
+    assert make() != before

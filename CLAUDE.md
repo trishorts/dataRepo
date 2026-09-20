@@ -33,9 +33,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   stayed identical, and two sites ingesting byte-identical search output got different ids (their 019
   §1). `manifest.CONTENT_FIELDS` / `NON_CONTENT_FIELDS` now classify every field with its reason and a
   test fails on a `DatasetEntry` field in neither, so **adding a field means deciding which it is.**
-- **A bundle's content hash covers inputs, schema version and `__version__` — not the reader code.**
-  Change how a file is parsed without bumping `__version__` and you get the same bundle id from
-  different code. Bump the version in the same commit as any parsing or transform change.
+- **A bundle's content hash covers inputs, schema version and `bundle.INGESTER_VERSION` — not the
+  reader code, and NOT `__version__`.** Change how a file is parsed without bumping
+  `INGESTER_VERSION` and you get the same bundle id from different code, so bump it in the same
+  commit as any parsing or transform change. It is deliberately *not* the package version: 0.6.0 was
+  entirely a `build` change, and hashing `__version__` would have re-identified every stored bundle
+  for byte-identical rows. The catalog's equivalent is `catalog.CATALOG_VERSION`, which `catalog_id`
+  carries along with `__version__` and every study layer's version.
 - **Schema edits need TWO regenerations:** `python tools/build_docs.py` **and** `python tools/build_tables.py`
   (the ingester's Arrow schemas), or CI fails on drift. If the change affects what the ingester writes,
   also `python tools/build_example_bundle.py`. Lint with `--config .linkmllint.yaml`: enum values like

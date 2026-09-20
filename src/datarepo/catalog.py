@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from . import __version__
-from ._tables import SCHEMA_VERSION, TABLES
+from ._tables import SCHEMA_VERSION, STUDY_TABLES, STUDY_VERSIONS, TABLES
 from .bundle import BUNDLE_MANIFEST, QPX_VERSION
 from .errors import CatalogError
 from .integrity import FEATURE_TABLES, IDENTIFIERS, REFERENCES
@@ -37,7 +37,12 @@ from .manifest import Manifest
 
 #: Bumped when the shape of the catalog changes in a way a caller would notice. It is part of the
 #: content hash, so a change to the builder gives every catalog a new id even from the same bundles.
-CATALOG_VERSION = "1"
+#: Bumped when a build produces a different catalog from the same bundles. Separate from
+#: `__version__` on purpose: a change to what `build` writes must re-id catalogs, and must NOT re-id
+#: bundles holding byte-identical rows from an unchanged ingest path. "2" adds the study layer's
+#: tables. Same principle as `manifest.CONTENT_FIELDS` one level down -- an id moves when its own
+#: content moves, and not otherwise.
+CATALOG_VERSION = "2"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -304,7 +309,7 @@ def select_bundles(
 
 
 def catalog_id(bundles: Sequence[BundleRef]) -> str:
-    """Content hash of the bundles, the schema and the builder.
+    """Content hash of the bundles, the schema, the study layers and the builder.
 
     The same bundles built by the same code give the same id, so `build` can tell a rebuild from a
     no-op, and a release can record which catalog its citations were checked against.
@@ -313,6 +318,11 @@ def catalog_id(bundles: Sequence[BundleRef]) -> str:
     digest.update(
         f"datarepo/{__version__}\ncatalog/{CATALOG_VERSION}\nschema/{SCHEMA_VERSION}\n".encode()
     )
+    # A study layer's tables are part of what a catalog holds, so its version is part of the
+    # catalog's identity. Without this, adding a column to `age_effect` would leave two
+    # different catalogs sharing an id.
+    for layer, version in sorted(STUDY_VERSIONS.items()):
+        digest.update(f"study/{layer}/{version}\n".encode())
     for ref in sorted(bundles, key=lambda r: (r.dataset_id, r.bundle_id)):
         digest.update(f"{ref.dataset_id}\t{ref.bundle_id}\n".encode())
     return digest.hexdigest()[:16]
@@ -370,6 +380,42 @@ def _create_empty(con: Any, table: str) -> None:
     con.register("_empty_table", empty)
     con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM _empty_table')
     con.unregister("_empty_table")
+
+
+def _create_study_tables(con: Any) -> list[str]:
+    """Create every study layer's tables, empty, so the layer is queryable before it is filled.
+
+    A study layer ADDS tables keyed on core identifiers and never alters a core table (U5), so it is
+    created separately and a catalog is complete without one. They are empty and will stay empty
+    until a producer delivers rows: nothing in the ingest path writes them, because `age_effect` is
+    the output of a modelling stage that runs long after a search, and how those rows reach a bundle
+    is an open question rather than a guess (DATAREPO-20).
+
+    Creating them anyway is the point. aging's benchmark distinguishes NO_TABLE from EMPTY_TABLE,
+    and the 46 questions that need an age effect currently score the first. An empty table with the
+    right columns says "this repository can hold that, and holds none"; a missing table says
+    nothing at all, and a caller cannot tell it from a repository that never modelled age.
+
+    Returns:
+        The table names created, in layer order.
+    """
+    import pyarrow as pa  # noqa: PLC0415
+
+    created: list[str] = []
+    taken = set(TABLES) | set(DERIVED_TABLES) | set(ACCEPTED_VIEWS) | set(GRAIN_VIEWS)
+    for layer, tables in STUDY_TABLES.items():
+        for table, schema in tables.items():
+            if table in taken:
+                raise CatalogError(
+                    f"study layer '{layer}' declares a table named '{table}', which the core "
+                    f"catalog already uses. A study layer adds tables; it never shadows one."
+                )
+            taken.add(table)
+            con.register("_empty_study", pa.schema(list(schema)).empty_table())
+            con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM _empty_study')
+            con.unregister("_empty_study")
+            created.append(table)
+    return created
 
 
 def _load_tables(con: Any, bundles: Sequence[BundleRef]) -> dict[str, int]:
@@ -734,6 +780,12 @@ def _write_catalog_tables(
         rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
         kind = "view" if name in ACCEPTED_VIEWS or name in GRAIN_VIEWS else "derived"
         con.execute("INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, rows, kind])
+    for layer, tables in STUDY_TABLES.items():
+        for name in tables:
+            rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
+            con.execute(
+                "INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, rows, f"study:{layer}"]
+            )
 
     con.execute(
         "CREATE TABLE catalog_checks (name VARCHAR, kind VARCHAR, ok BOOLEAN, "
@@ -838,6 +890,7 @@ def build_catalog(
         with duckdb.connect(str(staging)) as con:
             row_counts = _load_tables(con, bundles)
             _build_derived(con)
+            _create_study_tables(con)
             checks = _check_row_counts(con, bundles) + _check_integrity(con)
             failed = [c for c in checks if not c["ok"]]
             if failed:

@@ -22,6 +22,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "schema" / "datarepo.yaml"
+STUDY_DIR = ROOT / "schema" / "study"
 TARGET = ROOT / "src" / "datarepo" / "_tables.py"
 
 # LinkML type -> the pyarrow constructor to emit. Enums and class references are foreign keys and
@@ -53,7 +54,28 @@ def arrow_type(slot: dict, classes: set[str], enums: set[str]) -> str:
     return base
 
 
-def render(schema: dict) -> str:
+def _table_block(table: str, cls: str, classes: dict, class_names: set, enums: set) -> list[str]:
+    attrs = classes[cls].get("attributes", {})
+    lines = [f'    "{table}": pa.schema([  # {cls}']
+    for name, attr in attrs.items():
+        attr = attr or {}
+        nullable = not attr.get("required", False) and not attr.get("identifier", False)
+        lines.append(
+            f'        pa.field("{name}", {arrow_type(attr, class_names, enums)}, '
+            f"nullable={nullable}),"
+        )
+    lines.append("    ]),")
+    return lines
+
+
+def render(schema: dict, layers: dict[str, dict]) -> str:
+    """Emit the core TABLES plus one STUDY_TABLES entry per study layer.
+
+    A study layer ADDS tables keyed on core identifiers and never alters a core table (U5), so its
+    tables are generated separately and the core stays usable by a consumer that is not aging. Its
+    classes may reference core ones -- `Dataset`, `Sample`, `FeatureType` -- so the core's classes
+    and enums are merged in for range resolution only, never for emission.
+    """
     classes = schema["classes"]
     enums = set(schema.get("enums", {}))
     class_names = set(classes)
@@ -71,17 +93,7 @@ def render(schema: dict) -> str:
         "TABLES: dict[str, pa.Schema] = {",
     ]
     for table, slot in bundle.items():
-        cls = slot["range"]
-        attrs = classes[cls].get("attributes", {})
-        lines.append(f'    "{table}": pa.schema([  # {cls}')
-        for name, attr in attrs.items():
-            attr = attr or {}
-            nullable = not attr.get("required", False) and not attr.get("identifier", False)
-            lines.append(
-                f'        pa.field("{name}", {arrow_type(attr, class_names, enums)}, '
-                f"nullable={nullable}),"
-            )
-        lines.append("    ]),")
+        lines += _table_block(table, slot["range"], classes, class_names, enums)
     lines += [
         "}",
         "",
@@ -90,6 +102,26 @@ def render(schema: dict) -> str:
     ]
     for table, slot in bundle.items():
         lines.append(f'    "{table}": "{slot["range"]}",')
+    lines += ["}", ""]
+
+    lines += [
+        "#: Study layers, keyed by layer name. A study layer adds tables keyed on core identifiers",
+        "#: and never alters a core table (U5), so a catalog built without one is still complete --",
+        "#: these are generated separately and are not part of `TABLES`.",
+        "STUDY_VERSIONS: dict[str, str] = {",
+    ]
+    for name, layer in sorted(layers.items()):
+        lines.append(f'    "{name}": "{layer["version"]}",')
+    lines += ["}", "", "STUDY_TABLES: dict[str, dict[str, pa.Schema]] = {"]
+    for name, layer in sorted(layers.items()):
+        merged = {**classes, **layer["classes"]}
+        merged_enums = enums | set(layer.get("enums", {}))
+        merged_names = set(merged)
+        lines.append(f'    "{name}": {{')
+        for table, slot in layer["classes"]["StudyBundle"]["attributes"].items():
+            block = _table_block(table, slot["range"], merged, merged_names, merged_enums)
+            lines += ["    " + line for line in block]
+        lines.append("    },")
     lines += ["}", ""]
     return "\n".join(lines)
 
@@ -100,7 +132,11 @@ def main() -> int:
     args = ap.parse_args()
 
     schema = yaml.safe_load(SCHEMA.read_text(encoding="utf-8"))
-    text = render(schema)
+    layers = {
+        path.stem: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in sorted(STUDY_DIR.glob("*.yaml"))
+    }
+    text = render(schema, layers)
 
     if args.check:
         current = TARGET.read_text(encoding="utf-8") if TARGET.exists() else ""
@@ -112,7 +148,12 @@ def main() -> int:
 
     TARGET.parent.mkdir(parents=True, exist_ok=True)
     TARGET.write_text(text, encoding="utf-8")
-    print(f"wrote {TARGET.relative_to(ROOT)} ({len(schema['classes']['Bundle']['attributes'])} tables)")
+    study = sum(len(l["classes"]["StudyBundle"]["attributes"]) for l in layers.values())
+    print(
+        f"wrote {TARGET.relative_to(ROOT)} "
+        f"({len(schema['classes']['Bundle']['attributes'])} core tables, "
+        f"{study} study tables in {len(layers)} layer(s))"
+    )
     return 0
 
 

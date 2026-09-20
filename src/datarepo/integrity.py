@@ -82,6 +82,41 @@ COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
 )
 
+#: A study layer's natural keys, by layer and table. Not yet enforced, because nothing writes these
+#: tables: `age_effect` is the output of a modelling stage that runs long after a search, and how
+#: those rows reach a bundle is DATAREPO-20 rather than a guess.
+#:
+#: They are declared now anyway, and a test asserts every study table has either an identifier or an
+#: entry here. `quant_values` shipped with no key at all and a duplicated source row wrote one
+#: measurement three times, which nothing could have caught; the moment to decide a key is while the
+#: table is empty. `aging:DEF-AGE-EFFECT v1` section 2 gives `age_effects` its key outright, and
+#: every component of it is forced by a benchmark question -- `estimator` because count- and
+#: intensity-based occupancy differ about threefold, `quant_basis` because H8+ asks whether MBR
+#: changes the answer, `stratum` because D13 asks whether a decline is seen in both sexes.
+STUDY_COMPOSITE_IDENTIFIERS: dict[str, dict[str, tuple[str, ...]]] = {
+    "aging": {
+        "sample_ages": ("sample_id",),
+        "age_effects": (
+            "dataset_id", "feature_id", "response", "estimator", "quant_basis", "model_form",
+            "stratum",
+        ),
+        # Same key as the fit it refuses, so a caller can look up the refusal for the exact fit
+        # they asked for. `feature_id` is nullable here and part of the key anyway: a dataset-level
+        # refusal such as `no_age_metadata` is one row with no feature, and there is only one of it.
+        "age_effect_refusals": (
+            "dataset_id", "feature_id", "response", "estimator", "quant_basis", "model_form",
+            "stratum",
+        ),
+        "age_effect_meta": (
+            "feature_id", "response", "estimator", "quant_basis", "stratum", "tissue",
+            "acquisition", "quant_method",
+        ),
+        "organelle_age_summaries": ("compartment", "organism", "organism_part", "response"),
+        "clock_features": ("clock_id", "feature_type", "feature_id"),
+        "age_mappings": ("organism", "age_from", "age_to"),
+    },
+}
+
 #: Tables where a row is a *thing* and its identifier names that thing, so two identical rows are
 #: one thing written twice and collapsing them loses nothing.
 #:
