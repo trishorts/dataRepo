@@ -160,6 +160,11 @@ def ingest_dataset(
         raise IngestError(f"{dataset_id}: search results folder {results_dir} does not exist")
 
     writer = BundleWriter(store=store or manifest.store, dataset_id=dataset_id)
+
+    # The manifest entry is an input like any other: it supplies the title and the D5 axes that the
+    # `datasets` row is built from, so it belongs in the content hash (aging 013 added a title and
+    # the id did not move, which is how this was found).
+    writer.add_declaration("manifest_entry", entry.raw)
     log = ReaderLog()
 
     # --- provenance first: it tells us how to read every number that follows -------------------

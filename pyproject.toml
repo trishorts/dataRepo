@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarepo"
-version = "0.3.0"
+version = "0.3.1"
 description = "Ingest and serve the search + quant results of reanalyzed public proteomics datasets."
 readme = "README.md"
 license = "MIT"

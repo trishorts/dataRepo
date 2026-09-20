@@ -115,3 +115,24 @@ def test_a_dangling_reference_stops_the_write(tmp_path):
     with pytest.raises(IngestError, match="do not hold together"):
         writer.write()
     assert not writer.path().exists()
+
+
+def test_a_declared_input_changes_the_bundle_id(tmp_path):
+    """The manifest entry shapes the datasets row, so it has to be in the hash.
+
+    aging added a `title:` to their manifest and the bundle id did not move, which is exactly the
+    change content addressing exists to make visible.
+    """
+    first = BundleWriter(store=tmp_path, dataset_id="PXD1")
+    first.add_declaration("manifest_entry", {"accession": "PXD1", "acquisition": "DDA"})
+    second = BundleWriter(store=tmp_path, dataset_id="PXD1")
+    second.add_declaration("manifest_entry", {"accession": "PXD1", "acquisition": "DIA"})
+    assert first.bundle_id != second.bundle_id
+
+
+def test_a_declared_input_hashes_the_same_however_the_mapping_is_ordered(tmp_path):
+    first = BundleWriter(store=tmp_path, dataset_id="PXD1")
+    first.add_declaration("manifest_entry", {"a": 1, "b": 2})
+    second = BundleWriter(store=tmp_path, dataset_id="PXD1")
+    second.add_declaration("manifest_entry", {"b": 2, "a": 1})
+    assert first.bundle_id == second.bundle_id

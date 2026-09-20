@@ -161,6 +161,28 @@ class BundleWriter:
         self.sources.append(entry)
         return entry
 
+    def add_declaration(self, role: str, payload: Any) -> dict[str, Any]:
+        """Record a non-file input that shapes the bundle, so it lands in the content hash.
+
+        Not every input is a file on disk. The producer's manifest entry supplies the dataset's
+        title and its organism, acquisition, quant_method, labelling and enrichment axes, and those
+        go straight into the `datasets` row -- so a bundle built from an edited manifest holds
+        different content. Hashing only the files would leave that change invisible, which is the
+        one thing content addressing exists to prevent.
+
+        The entry is hashed rather than the manifest file: the file describes every dataset, and an
+        unrelated entry's edit must not churn this bundle's id.
+        """
+        canonical = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False)
+        entry = {
+            "role": role,
+            "path": f"<{role}>",
+            "kind": "declaration",
+            "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        }
+        self.sources.append(entry)
+        return entry
+
     @property
     def bundle_id(self) -> str:
         """Content hash of the inputs, the schema and the ingester.
