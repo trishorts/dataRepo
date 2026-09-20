@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 18 |
+| Commits | 21 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 10 |
 | Open gaps | 11 |
@@ -63,16 +63,52 @@ datarepo query   F:/aging_data/repo/catalog.duckdb "SELECT * FROM dataset_overvi
 
 - **The headline numbers are the bundle's numbers.** `psms_1pct`, `peptidoforms_1pct` and
   `protein_groups_1pct` are views applying MetaMorpheus's own acceptance rule, so the catalog reports
-  26,594 / 5,541 / 1,652 for PXD036557 — exactly what the bundle reconciled. A test asserts the SQL
-  and the ingester's Python agree, so the rule cannot drift into two answers.
+  **26,582 / 5,541 / 1,652** for PXD036557 — exactly what the bundle reconciled, and now exactly what
+  aging's `results.txt` says. A test asserts the SQL and the ingester's Python agree, so the rule
+  cannot drift into two answers.
 - **Cross-dataset indexes are the point:** `protein_index`, `protein_datasets`, `peptide_index`,
   `dataset_overview`. `protein_index` carries `n_datasets` *and* `n_datasets_1pct`, because
   `proteins` is the search's protein list — decoys included — not its answer.
 - **50 checks ran and passed:** every table's rows against its `bundle.json`, identifiers unique
   within a dataset, and every reference resolved, driven by `integrity.py`'s own lists.
-- **A known mismatch stays visible.** `catalog_bundles` flags PXD036557 for its 12-PSM difference, so
-  the catalog never looks cleaner than the data it was built from.
+- **A known mismatch would stay visible.** `catalog_bundles` flags any bundle whose own counts
+  disagreed with its producer, so the catalog never looks cleaner than the data it was built from.
+  PXD036557 was flagged that way until the notch clause closed it.
 - Rebuilding from the same bundles is a no-op; a failed build leaves the previous catalog serving.
+
+## The last count mismatch is closed, and the SDRF reader is gone
+
+Two follow-ups landed in the same pass, both of them deletions of something we were carrying.
+
+**The 12 PSMs.** aging's thread 008 named the missing clause of `DEF-PSM-1PCT v1`: a match whose
+`Notch` cell holds several candidates separated by `|` never resolved, and the producer does not
+count it even though both q-values pass. pyMzLib was already handing us that column — exactly 12 of
+42,958 rows contain a `|` — we simply were not storing it. Now `Psm.notch` holds the text and
+`Psm.notch_ambiguous` the conclusion, `producer_counts` and the catalog's `psms_1pct` view both
+apply it, and **PXD036557 reconciles on all five checks**. The `count_mismatch` finding is gone.
+Peptidoforms are untouched: no accepted peptide row is ambiguous, so 5,541 still holds.
+
+```
+$ datarepo ingest … PXD036557 -v
+  ok  psms_target_1pct: 26582     ok  peptidoforms_target_1pct: 5541
+  ok  protein_groups_1pct: 1652   ok  runs: 18     ok  ms2_spectra: 266402
+```
+
+**The SDRF reader.** `src/datarepo/readers.py` no longer parses SDRF; `pymzlib.sdrf.read` does. On
+the real file the four SDRF-derived tables come out **byte-identical** to what the deleted code
+produced. Characteristics are now copied by *position* rather than from a name-keyed map, because an
+SDRF column name is a position — `comment[modification parameters]` appears twice in PXD036557's own
+SDRF, and a map keeps only the last.
+
+**What moved as a result.** datarepo **0.2.0**, schema **0.0.2**. PXD036557 is a new bundle,
+`84ca279df425c0a2`; the old `6fea2187b2d9f737` is still on disk, still citable, and is refused by a
+0.0.2 catalog with a message saying to re-ingest — which is right, because it cannot answer the notch
+question. Nothing was written into aging's instance: **DATAREPO-16 asks them which bundle v0.1 pins,
+and that is their call.**
+
+One thing worth remembering: a bundle's content hash covers its inputs, the schema version and
+`__version__` — *not* the reader code. Both of these changes would have produced the same bundle id
+from different code if the version had not been bumped in the same commit.
 
 ## pyMzLib: the bridge problem was ours, not theirs
 
@@ -88,7 +124,7 @@ Re-tested against 0.1.1, the three gaps we reported in thread 007 resolve differ
 
 | Gap | At 0.1.1 |
 |---|---|
-| DATAREPO-13a, SDRF joined with `;` | **fixed** — `sdrf.read()` gives positional `columns` + `rows`; our in-house SDRF read is now deletable |
+| DATAREPO-13a, SDRF joined with `;` | **fixed** — `sdrf.read()` gives positional `columns` + `rows`; our in-house SDRF read is now **deleted** |
 | DATAREPO-13b, FlashLFQ `MBR Score` | **still open** on MetaMorpheus 1.1.11 output |
 | DATAREPO-12, `pro_forma` null | **still open** — the column is there, every value is `None` |
 | matched-ion columns | **not a gap** — deliberately excluded, with the reason and a typed-view alternative in `excluded_fields` |
@@ -109,23 +145,17 @@ Re-tested against 0.1.1, the three gaps we reported in thread 007 resolve differ
 
 ## Pick up at
 
-1. **Reply to the open threads.** aging is waiting on us (`next=010`): thread 008 answered
-   DATAREPO-14 and 009 said `datarepo build` was the only blocker for their v0.1 — it exists now, so
-   tell them, and say the catalog is what their release checklist step 3 asks for. Separately, tell
-   pyMzLib the 0.1.1 re-test result: SDRF fixed, `MBR Score` and `pro_forma` still open.
-2. **Delete the in-house SDRF reader** (G14). pyMzLib 0.1.1 parses the real PXD036557 SDRF correctly
-   through `pymzlib.sdrf.read()`; keeping our own is exactly what the project forbids.
-3. **Store notch ambiguity, then close the 12-PSM difference** (G7). aging's canonical
-   `DEF-PSM-1PCT` excludes PSMs whose `Notch` cell contains `|`, and we do not record that at all.
-   Add it in `sources/identifications.py` first, then `producer_counts`, then the catalog's
-   `psms_1pct` view — in that order, so the bundle and the catalog never disagree.
-4. **Pin the QPX version** (G13). Bundles and catalogs record `qpx_version: "unpinned"`. Pin a
+1. **Wait on DATAREPO-16 before touching aging's instance.** Their store still holds the 0.0.1
+   bundle and a catalog built from it; the notch fix makes a new bundle, and whether v0.1 pins the
+   old one or the new one is their decision, not ours. Everything else below is independent of it.
+2. **Pin the QPX version** (G13). Bundles and catalogs record `qpx_version: "unpinned"`. Pin a
    release of github.com/bigbio/qpx, map our column names onto its views, set `QPX_VERSION` in
    `src/datarepo/bundle.py` (D4), and only then add QPX-compatible views to the catalog.
-5. **Re-map the benchmark** (`design/SCHEMA_COVERAGE.md`) against what the ingester actually fills —
-   the 70 "answerable at ingest" questions can now be *run* against the catalog rather than asserted.
-6. **`/grill-me` on FRAMEWORK steps 3-6** (G1) before building the client, MCP server or REST.
-7. **When the user brings NCEMS answers** (N1-N9), record them as decisions.
+3. **Re-map the benchmark** (`design/SCHEMA_COVERAGE.md`) by *running* the 70 "answerable at ingest"
+   questions against the catalog instead of asserting them. This is the first time that is possible,
+   and it is also aging's release checklist step 3.
+4. **`/grill-me` on FRAMEWORK steps 3-6** (G1) before building the client, MCP server or REST.
+5. **When the user brings NCEMS answers** (N1-N9), record them as decisions.
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI
 fails on drift. If the ingester's output changes, also `python tools/build_example_bundle.py`.

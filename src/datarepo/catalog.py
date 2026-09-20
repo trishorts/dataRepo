@@ -57,14 +57,16 @@ DERIVED_TABLES = ("dataset_overview", "protein_index", "protein_datasets", "pept
 
 #: Views that apply the producing search engine's own acceptance rule, so no caller has to restate
 #: it. The rule is MetaMorpheus's and it is not obvious: target, `q_value` at or below 1% **and**
-#: `q_value_notch` at or below 1% where there is one; for protein groups, anything not a decoy --
-#: contaminants count -- with a group q-value at or below 1%. It is the same rule
+#: `q_value_notch` at or below 1% where there is one, **and** -- for PSMs -- a notch that actually
+#: resolved (aging thread 008, worth 12 rows out of 26,594 on PXD036557); for protein groups,
+#: anything not a decoy -- contaminants count -- with a group q-value at or below 1%. It is the same rule
 #: `sources.identifications.producer_counts` and `sources.quant.protein_group_rows` apply when a
 #: bundle reconciles itself, and `tests/test_catalog.py` asserts the two agree so they cannot drift.
 ACCEPTED_VIEWS: dict[str, str] = {
     "psms_1pct": (
         "SELECT * FROM psms WHERE target_decoy = 'target' AND q_value <= {t} "
-        "AND (q_value_notch IS NULL OR q_value_notch <= {t})"
+        "AND (q_value_notch IS NULL OR q_value_notch <= {t}) "
+        "AND coalesce(notch_ambiguous, false) = false"
     ),
     "peptidoforms_1pct": (
         "SELECT * FROM peptidoforms WHERE target_decoy = 'target' AND best_q_value <= {t} "

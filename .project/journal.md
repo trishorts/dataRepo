@@ -166,3 +166,48 @@ rows whose `Notch` cell contains a `|`. We do not store notch ambiguity at all �
 refined predicate, and both still report 26,594 with a `count_mismatch` finding. The column goes in
 the ingester first, then `producer_counts`, then the catalog view, in that order, so the two never
 disagree.
+
+## 2026-09-19 - Fifth session, continued: two things we were carrying, both deleted
+
+**The 12 PSMs are gone, and the answer was already in the file.** aging 008 named the missing clause
+of `DEF-PSM-1PCT v1`: a match whose `Notch` cell holds several candidates separated by `|` never
+resolved, and the producer does not count it even though both q-values pass. The thing worth
+recording is that pyMzLib had been handing us that column all along — `notch`, right next to
+`q_value_notch`, with exactly 12 of 42,958 rows containing a `|`. We had written `ambiguity_level`
+and `q_value_notch` into the schema and assumed between them they covered it. They do not:
+`ambiguity_level` is MetaMorpheus's 1/2A/2D/3/4/5 and `q_value_notch` is a q-value. Checking the
+reader's actual columns before declaring something unrepresentable would have found it in a minute.
+
+`Psm.notch` now holds the cell verbatim and `Psm.notch_ambiguous` the conclusion. Storing both was
+the right call and not only because the thread's default said so: the first implementation passed the
+raw cell through `_first()`, which splits on `|` and takes the first candidate, so the flag came out
+correct while the evidence behind it read `0.00000` — a column that asserts an exclusion without
+showing why. `_verbatim()` fixed it, and the rows now read `0.00000|1.00290`: the search could not
+decide between notch 0 and a +1.003 Da offset.
+
+The clause applies to peptidoforms too and costs nothing there — no accepted peptide row is
+ambiguous — so `producer_counts` applies it unconditionally and both counts reconcile. **All five
+checks pass on PXD036557 for the first time.**
+
+**The SDRF reader is deleted.** `pymzlib.sdrf.read` produces the four SDRF-derived tables
+byte-identical to what our in-house TSV read produced on the real file. Reading pyMzLib's own
+caveats while swapping it found a latent bug in our code: an SDRF column name is a *position*, not a
+key, and `comment[modification parameters]` appears twice in PXD036557's own SDRF. We were building a
+name-keyed dict per row, so a repeated `characteristics[...]` column would have been silently
+overwritten. Characteristics are now copied by walking the pairs. Nothing in PXD036557 was lost,
+because the repeat happened to be a `comment[...]` column we skip — a near miss, not a save.
+
+**Versions moved and that mattered.** datarepo 0.1.0 → 0.2.0, schema 0.0.1 → 0.0.2. Both changes
+altered how a file is parsed without altering the file, and a bundle's content hash covers inputs,
+schema version and `__version__` but *not* the reader code — so without the bump, both would have
+produced the same bundle id from different code. That is now written into CLAUDE.md as a hazard.
+PXD036557 is a new bundle, `84ca279df425c0a2`; the old one stays on disk, stays citable, and a 0.0.2
+catalog refuses it with a message saying to re-ingest, which is right: it cannot answer the notch
+question.
+
+**Nothing was written into aging's instance.** Their store still holds the 0.0.1 bundle and the
+catalog built from it. Thread 010 asks them which bundle v0.1 pins (DATAREPO-16), and replacing what
+their release candidate points at while that question is open would be answering it for them.
+
+Also: `linkml` is now installed in the working environment, so `tools/build_docs.py --check` and the
+example-bundle validation run locally instead of only on CI. 122 tests pass.

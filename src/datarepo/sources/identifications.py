@@ -23,6 +23,14 @@ from ..usi import RunNameMap, mint
 _RANGE = re.compile(r"\[(\d+)\s+to\s+(\d+)\]")
 
 
+def _verbatim(value: Any) -> str | None:
+    """One producer cell exactly as written, or None when it is absent."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _first(value: Any) -> str:
     """MetaMorpheus separates alternatives with `|`; take the first and keep the level column."""
     text = "" if value is None else str(value)
@@ -136,6 +144,10 @@ def psm_rows(
                 "delta_score": _float((columns.get("delta_score") or [None] * n)[i]),
                 "q_value": _float((columns.get("q_value") or [None] * n)[i]),
                 "q_value_notch": _float((columns.get("q_value_notch") or [None] * n)[i]),
+                # Verbatim, not _first(): the whole point of this column is to carry the
+                # unresolved candidates that notch_ambiguous is derived from.
+                "notch": _verbatim((columns.get("notch") or [None] * n)[i]),
+                "notch_ambiguous": notch_ambiguous((columns.get("notch") or [None] * n)[i]),
                 "pep": _float((columns.get("pep") or [None] * n)[i]),
                 "pep_q_value": _float((columns.get("pep_q_value") or [None] * n)[i]),
                 "mass_error_ppm": _float((columns.get("mass_diff_ppm") or [None] * n)[i]),
@@ -395,17 +407,38 @@ def psm_counts_by_peptidoform(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
 #: the PSM total to within 12 of 26,582. The residual is aging's to define (DATAREPO-14).
 PRODUCER_THRESHOLD = 0.01
 
+#: A search that cannot settle on one notch reports its candidates separated by this.
+NOTCH_SEPARATOR = "|"
+
+
+def notch_ambiguous(raw: Any) -> bool | None:
+    """Did the notch fail to resolve to a single value?
+
+    Returns None when the producer reported no notch at all, which is not the same as a notch that
+    resolved: absence is NA here as everywhere else.
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return None if not text else NOTCH_SEPARATOR in text
+
 
 def producer_counts(columns: dict[str, list[Any]], threshold: float = PRODUCER_THRESHOLD) -> int:
     """Count target matches the way the producing search engine counts them.
 
     Applies MetaMorpheus's own acceptance rule -- target, `q_value <= threshold` **and**
-    `q_value_notch <= threshold` -- so the bundle can be compared with the producer's summary
-    without the caller having to know the rule.
+    `q_value_notch <= threshold`, **and** a notch that actually resolved -- so the bundle can be
+    compared with the producer's summary without the caller having to know the rule.
+
+    The notch clause is the one that is not guessable, and it is worth 12 PSMs out of 26,594 on
+    PXD036557. aging supplied it in thread 008 as the predicate behind `aging DEF-PSM-1PCT v1`: a
+    match whose notch never resolved is not counted even though both its q-values pass. It costs
+    nothing on peptidoforms, where no accepted row is ambiguous.
     """
     n = len(columns.get("q_value", ()))
     qs = columns.get("q_value") or []
     notches = columns.get("q_value_notch") or [None] * n
+    raw_notches = columns.get("notch") or [None] * n
     status = columns.get("decoy_contam_target") or [""] * n
     total = 0
     for i in range(n):
@@ -416,6 +449,8 @@ def producer_counts(columns: dict[str, list[Any]], threshold: float = PRODUCER_T
         if q is None or q > threshold:
             continue
         if notch is not None and notch > threshold:
+            continue
+        if notch_ambiguous(raw_notches[i]):
             continue
         total += 1
     return total

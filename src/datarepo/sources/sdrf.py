@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..readers import ReaderLog, iter_dicts, read_tsv
+from ..readers import ReaderLog, read_sdrf
 
 #: Values SDRF writers use to mean "absent". They become nulls, not strings.
 NOT_AVAILABLE = {"", "not available", "not applicable", "na", "n/a", "unknown", "none"}
@@ -99,14 +99,21 @@ def parse(
             organism this module has no term for.
         log: reader log to record the backend in.
     """
-    header, rows = read_tsv(path, log, note="pyMzLib's SDRF projection is not column-preserving")
+    header, rows = read_sdrf(path, log)
     samples: dict[str, dict[str, Any]] = {}
     characteristics: list[dict[str, Any]] = []
     assays: list[dict[str, Any]] = []
     run_facts: dict[str, dict[str, Any]] = {}
     sample_of_run: dict[str, str] = {}
 
-    for row in iter_dicts(header, rows):
+    for cells in rows:
+        # An SDRF column name is a POSITION, not a key: `comment[modification parameters]` can
+        # appear many times in one file, and a name-keyed map keeps only the last. Lookups below
+        # use the map, because no column they read repeats; copying characteristics verbatim walks
+        # the pairs, so a repeated one is not silently dropped.
+        padded = list(cells) + [""] * max(0, len(header) - len(cells))
+        pairs = list(zip(header, padded))
+        row = dict(pairs)
         source_name = (row.get("source name") or "").strip()
         if not source_name:
             continue
@@ -138,7 +145,7 @@ def parse(
                 "biological_replicate": int(replicate) if replicate and replicate.isdigit() else None,
                 "timepoint": _name(row.get("characteristics[time]", "")),
             }
-            for column, raw in row.items():
+            for column, raw in pairs:
                 m = _COLUMN.match(column.strip())
                 if not m or m.group("kind").lower() == "comment":
                     continue

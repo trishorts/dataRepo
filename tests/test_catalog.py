@@ -50,6 +50,7 @@ def write_bundle(
     accessions: tuple[str, ...] = ("P11111",),
     peptide_q: float = ACCEPTED,
     group_q: float = 0.0,
+    ambiguous_psm: bool = False,
     extra_source: str | None = None,
 ) -> BundleRef:
     """One small but complete bundle: a dataset, a run, an assay, and one protein's evidence."""
@@ -88,12 +89,19 @@ def write_bundle(
          "best_q_value": 0.0, "best_q_value_notch": 0.0,
          "protein_group_id": group_id, "protein_accessions": list(accessions)},
     ])
-    writer.add("psms", [{
+    psms = [{
         "psm_id": f"{dataset_id}:psm1", "run_id": run_id, "scan": 1,
         "usi": f"mzspec:{dataset_id}:r1:scan:1:PEPTIDEK/2", "peptidoform": "PEPTIDEK",
         "base_sequence": "PEPTIDEK", "precursor_charge": 2, "q_value": ACCEPTED,
         "q_value_notch": ACCEPTED, "target_decoy": "target", "protein_accessions": [accessions[0]],
-    }])
+        "notch": "0", "notch_ambiguous": False,
+    }]
+    if ambiguous_psm:
+        # Passes both q-value thresholds, and the producer still does not count it.
+        psms.append({**psms[0], "psm_id": f"{dataset_id}:psm2", "scan": 2,
+                     "usi": f"mzspec:{dataset_id}:r1:scan:2:PEPTIDEK/2",
+                     "notch": "0.00000|1.00290", "notch_ambiguous": True})
+    writer.add("psms", psms)
     writer.add("definitions", [{
         "definition_id": "PROVISIONAL:PROTEIN-INTENSITY", "version": "v0",
         "owner_project": "dataRepo", "text": "test",
@@ -110,7 +118,7 @@ def write_bundle(
 
     # The manifest's row counts are what a build reconciles against, so they have to be real.
     manifest = json.loads((path / "bundle.json").read_text(encoding="utf-8"))
-    assert manifest["tables"]["psms"] == 1
+    assert manifest["tables"]["psms"] == len(psms)
     return BundleRef.load(path)
 
 
@@ -371,3 +379,22 @@ def test_the_accepted_views_are_listed_in_the_catalogs_own_tables(catalog):
     listed = {r["table_name"]: r["kind"] for r in describe_catalog(catalog)["tables"]}
     assert all(listed[name] == "view" for name in ACCEPTED_VIEWS)
     assert listed["psms"] == "bundle"
+
+
+def test_a_psm_whose_notch_never_resolved_is_out_of_the_accepted_view(tmp_path, store):
+    """aging thread 008's predicate, which is worth 12 rows out of 26,594 on PXD036557."""
+    bundles = [write_bundle(store, "PXD000001", ambiguous_psm=True)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    assert rows(catalog, "SELECT count(*) n FROM psms")[0]["n"] == 2
+    assert rows(catalog, "SELECT count(*) n FROM psms_1pct")[0]["n"] == 1
+    assert rows(catalog, "SELECT n_psms_1pct, n_psms_all FROM dataset_overview")[0] == {
+        "n_psms_1pct": 1,
+        "n_psms_all": 2,
+    }
+
+
+def test_the_excluded_psm_keeps_the_text_the_exclusion_rests_on(tmp_path, store):
+    bundles = [write_bundle(store, "PXD000001", ambiguous_psm=True)]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    excluded = rows(catalog, "SELECT notch FROM psms WHERE notch_ambiguous")
+    assert [r["notch"] for r in excluded] == ["0.00000|1.00290"]

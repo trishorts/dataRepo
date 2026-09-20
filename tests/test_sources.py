@@ -12,7 +12,7 @@ from datarepo.sources import provenance as prov
 from datarepo.sources import quant, runs as runs_source, sdrf as sdrf_source, search_params
 from datarepo.usi import RunNameMap, mint, strip_pipeline_suffix
 
-from conftest import MM_SETTINGS, SEARCH_RESULTS, WORK_ROOT
+from conftest import MM_SETTINGS, SEARCH_RESULTS, WORK_ROOT, needs_pymzlib
 
 RUN = WORK_ROOT / "run_test/PXD999999"
 
@@ -232,3 +232,82 @@ def test_an_unmatched_run_gets_no_usi_and_is_recorded():
 
 def test_a_usi_names_the_deposited_file_and_carries_the_proforma():
     assert mint("PXD1", "run_a", 42, "PEPC[UNIMOD:4]K", 2) == "mzspec:PXD1:run_a:scan:42:PEPC[UNIMOD:4]K/2"
+
+
+# --- the notch, which is what makes a producer's PSM count reproducible -------------------------
+
+
+def test_an_unresolved_notch_is_recognised_by_its_separator():
+    from datarepo.sources.identifications import notch_ambiguous
+
+    assert notch_ambiguous("0.00000|1.00290") is True
+    assert notch_ambiguous("0") is False
+    assert notch_ambiguous(0) is False
+
+
+def test_a_missing_notch_is_absence_not_resolution():
+    # NA is never a value here either: a producer that reports no notch has not told us the notch
+    # resolved, and counting it as resolved would be inventing an answer.
+    from datarepo.sources.identifications import notch_ambiguous
+
+    assert notch_ambiguous(None) is None
+    assert notch_ambiguous("   ") is None
+
+
+def test_the_producer_count_drops_a_psm_whose_notch_never_resolved():
+    """aging thread 008: this clause is the whole of the 12-PSM difference on PXD036557."""
+    from datarepo.sources.identifications import producer_counts
+
+    columns = {
+        "q_value": [0.001, 0.001, 0.001],
+        "q_value_notch": [0.001, 0.001, 0.001],
+        "decoy_contam_target": ["T", "T", "T"],
+        "notch": ["0", "0.00000|1.00290", None],
+    }
+    assert producer_counts(columns) == 2
+
+
+@needs_pymzlib
+def test_every_psm_carries_the_notch_its_flag_was_derived_from(tables):
+    """The flag is a conclusion; the text is the evidence. A bundle must hold both."""
+    from datarepo.sources.identifications import notch_ambiguous
+
+    psms = tables["psms"]
+    assert psms, "the fixture bundle has no PSMs"
+    for row in psms:
+        assert row["notch_ambiguous"] == notch_ambiguous(row["notch"])
+
+
+# --- SDRF now goes through pyMzLib (DATAREPO-13, fixed in 0.1.1) --------------------------------
+
+
+@needs_pymzlib
+def test_the_sdrf_is_read_by_pymzlib_not_by_us(bundle):
+    """The in-house SDRF read is deleted, and the bundle's own log is what proves it."""
+    import json
+
+    manifest = json.loads((bundle.bundle_path / "bundle.json").read_text(encoding="utf-8"))
+    sdrf_entries = [r for r in manifest["readers"] if r["file"].endswith(".sdrf.tsv")]
+    assert sdrf_entries, "the fixture bundle read no SDRF"
+    assert all(r["backend"] == "pymzlib" for r in sdrf_entries)
+    assert all("note" not in r for r in sdrf_entries), "a pyMzLib read needs no excuse"
+
+
+@needs_pymzlib
+def test_a_repeated_characteristics_column_is_kept_rather_than_overwritten(tmp_path):
+    """An SDRF column name is a position, not a key -- pyMzLib's own caveat, and it is real.
+
+    `comment[modification parameters]` appears twice in PXD036557's own SDRF. A name-keyed map
+    keeps the last occurrence and silently drops the rest, so characteristics are copied by
+    walking the pairs instead.
+    """
+    path = tmp_path / "PXD000000.sdrf.tsv"
+    path.write_text(
+        "source name\tcharacteristics[organism]\tcharacteristics[disease]\t"
+        "characteristics[disease]\tassay name\tcomment[data file]\n"
+        "S1\tHomo sapiens\tprogeria\tcardiomyopathy\trun1\trun1.raw\n",
+        encoding="utf-8",
+    )
+    table = sdrf_source.parse(path, "PXD000000")
+    diseases = [c["value"] for c in table.characteristics if c["name"] == "characteristics[disease]"]
+    assert diseases == ["progeria", "cardiomyopathy"]
