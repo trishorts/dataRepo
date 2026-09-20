@@ -85,7 +85,30 @@ MBR = Def(
     "provenance record that names this definition.",
 )
 
-#: Placeholders. Replace with the owner's text when QuantProject publishes it (DATAREPO-11).
+#: The two contaminant shares. Both are named in the provenance block itself, which is why they
+#: could be copied without a round trip; the text is aging thread 014's description of them.
+CONTAM_PSM_SHARE = Def(
+    "aging:DEF-CONTAM-PSM",
+    "v1",
+    "aging",
+    "Contaminant share of the identifications in a dataset: contaminant PSMs over "
+    "(target + contaminant) PSMs, over the whole dataset. An identification-level share, so it "
+    "says how much of the evidence came from the contaminant database, not how much of the signal "
+    "did -- QuantProject:DEF-QC-9 is the intensity-level answer and the two differ by several fold.",
+)
+CONTAM_INTENSITY_SHARE = Def(
+    "QuantProject:DEF-QC-9",
+    "v2",
+    "QuantProject",
+    "Contaminant share of the measured intensity in ONE raw file: summed intensity of contaminant "
+    "features over summed intensity of all features. It is defined per file, and aggregating it to "
+    "a dataset hides real structure: on PXD036557 the per-file values run 2.6% to 18.9% and are "
+    "grouped by cell line, which is serum carryover differing sevenfold inside one experiment "
+    "(aging thread 014).",
+)
+
+#: The three that stay provisional, and should. QuantProject owns them and has not ruled; an ID
+#: implying they had would be worse than the placeholder (DATAREPO-11).
 PEPTIDE_INTENSITY = Def(
     "PROVISIONAL:PEPTIDE-INTENSITY",
     "v0",
@@ -108,38 +131,52 @@ PROTEIN_SPECTRAL_COUNT = Def(
     "PROVISIONAL, not an owner's definition. Spectral count per protein group per run as written "
     "in AllQuantifiedProteinGroups.tsv, stored verbatim (DATAREPO-11).",
 )
+#: aging's five, published in their thread 008 section 4 (their D20) and copied verbatim here. They
+#: were placeholders for nine minutes longer than they needed to be: the first bundle was written
+#: just before 008 arrived.
 PEPTIDE_COUNT_1PCT = Def(
-    "PROVISIONAL:PEPTIDE-COUNT-1PCT",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL. Target peptides at 1% FDR from MetaMorpheus's results.txt summary line. aging "
-    "has not yet registered a definition ID for it (DATAREPO-11).",
+    "aging:DEF-PEPTIDE-1PCT",
+    "v1",
+    "aging",
+    "Target peptides at 1% FDR: results.txt line 'All target peptides with q-value <= 0.01'. From "
+    "AllPeptides.psmtsv: Decoy/Contaminant/Target == 'T', QValue <= 0.01, QValue Notch <= 0.01. "
+    "MetaMorpheus computes it at peptide-level FDR, collapsing to one row per full sequence "
+    "(lowest PEP). Verified on PXD036557: 5,541. No ambiguous-notch rows survive the collapse, so "
+    "aging:DEF-PSM-NOTCH-AMBIGUOUS does not bite here.",
 )
 PROTEIN_GROUP_COUNT_1PCT = Def(
-    "PROVISIONAL:PROTEIN-GROUP-COUNT-1PCT",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL. Target protein groups at 1% FDR from MetaMorpheus's results.txt summary line "
-    "(DATAREPO-11).",
+    "aging:DEF-PROTEINGROUP-1PCT",
+    "v1",
+    "aging",
+    "Target protein groups at 1% FDR: results.txt line 'All target protein groups with q-value "
+    "<= 0.01 (1% FDR)'. The predicate is Protein QValue <= 0.01 && !IsDecoy, so contaminant groups "
+    "ARE counted -- unlike the PSM and peptide lines, which exclude them. Verified on PXD036557: "
+    "1,652 not-decoy against 1,623 strictly 'T'.",
 )
 MS2_COUNT = Def(
-    "PROVISIONAL:MS2-COUNT",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL. MS2 spectra counted by the pipeline's spectra QC stage, or by MetaMorpheus's "
-    "results.txt where the QC report is absent (DATAREPO-11).",
+    "aging:DEF-MS2",
+    "v1",
+    "aging",
+    "MS2 scans in the run's raw files, counted by aging's QC stage from "
+    "pymzlib.readers.read_spectra (scans with MS level 2), summed over files. Verified against "
+    "MetaMorpheus's own 'All MS2 Scans' line on PXD036557: both 266,402.",
 )
 RUN_MINUTES = Def(
-    "PROVISIONAL:RUN-MINUTES",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL. Acquisition length in minutes from the pipeline's qc_report.json (DATAREPO-11).",
+    "aging:DEF-RUN-MINUTES",
+    "v1",
+    "aging",
+    "Acquisition length of one raw file: the maximum retention time over all its scans, in "
+    "minutes, rounded to 2 dp. On PXD036557 all 18 files report 180.0, checked at full precision "
+    "on two of them (180.00184 and 179.99996 min), so an identical value across files is a real "
+    "method length rather than a rounding artefact or a default.",
 )
 PRECURSOR_COUNT = Def(
-    "PROVISIONAL:PRECURSOR-COUNT",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL. Precursors reported by MetaMorpheus's results.txt (DATAREPO-11).",
+    "aging:DEF-PRECURSORS",
+    "v1",
+    "aging",
+    "results.txt line 'All Precursors': the precursor envelopes MetaMorpheus deconvoluted from the "
+    "MS2 scans, which is more than one per scan (495,127 over 266,402 scans on PXD036557). It is "
+    "NOT a count of scans, and it is not a count of distinct species.",
 )
 
 ALL: tuple[Def, ...] = (
@@ -156,6 +193,8 @@ ALL: tuple[Def, ...] = (
     MS2_COUNT,
     RUN_MINUTES,
     PRECURSOR_COUNT,
+    CONTAM_PSM_SHARE,
+    CONTAM_INTENSITY_SHARE,
 )
 
 BY_ID = {d.definition_id: d for d in ALL}

@@ -55,13 +55,21 @@ CATALOG_TABLES = (
 #: Derived cross-dataset tables. These are the reason the catalog exists.
 DERIVED_TABLES = ("dataset_overview", "protein_index", "protein_datasets", "peptide_index")
 
-#: Views that apply the producing search engine's own acceptance rule, so no caller has to restate
-#: it. The rule is MetaMorpheus's and it is not obvious: target, `q_value` at or below 1% **and**
-#: `q_value_notch` at or below 1% where there is one, **and** -- for PSMs -- a notch that actually
-#: resolved (aging thread 008, worth 12 rows out of 26,594 on PXD036557); for protein groups,
-#: anything not a decoy -- contaminants count -- with a group q-value at or below 1%. It is the same rule
-#: `sources.identifications.producer_counts` and `sources.quant.protein_group_rows` apply when a
-#: bundle reconciles itself, and `tests/test_catalog.py` asserts the two agree so they cannot drift.
+#: Views that apply the producing search engine's acceptance rule, so no caller has to restate it.
+#: The rule is target, `q_value` at or below 1% **and** `q_value_notch` at or below 1% where there
+#: is one, **and** -- for PSMs -- a notch that actually resolved (aging thread 008, worth 12 rows
+#: out of 26,594 on PXD036557); for protein groups, anything not a decoy -- contaminants count --
+#: with a group q-value at or below 1%. It is the same rule `sources.identifications.producer_counts`
+#: and `sources.quant.accepted_group_count` apply when a bundle reconciles itself, and
+#: `tests/test_catalog.py` asserts the two agree so they cannot drift.
+#:
+#: **It is an acceptance rule, not a reproduction of MetaMorpheus's own count.** aging published it
+#: as a recipe for rebuilding `aging:DEF-PSM-1PCT` from `AllPSMs.psmtsv`; it is exact on PXD036557
+#: and six short of 183,029 on PXD032202 (aging thread 016), and aging is amending the definition
+#: text to say so. The canonical number stays the producer's `results.txt` summary line, which is
+#: what `metrics` holds and what the reconciliation compares against; these views are how the
+#: catalog selects *rows*, and on a dataset where the predicate is imperfect they will differ from
+#: the canonical count by a small margin and the `count_mismatch` finding will say by how much.
 ACCEPTED_VIEWS: dict[str, str] = {
     "psms_1pct": (
         "SELECT * FROM psms WHERE target_decoy = 'target' AND q_value <= {t} "

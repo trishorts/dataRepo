@@ -20,8 +20,10 @@ from .manifest import DatasetEntry, Manifest, load_manifest
 from .modlist import ModRegistry
 from .proforma import ProformaCache
 from .readers import ReaderLog, read_psmtsv, read_results_txt
+from .integrity import Collapse, collapse_exact_duplicates
 from .reconcile import build as build_checks
 from .reconcile import finding_rows as reconciliation_findings
+from .reconcile import metric_conflicts
 from .sources import identifications, provenance as prov, quant, runs as runs_source, sdrf as sdrf_source
 from .sources import search_params
 from .usi import RunNameMap
@@ -370,6 +372,9 @@ def ingest_dataset(
         writer.add_source(results_path, "results_txt", copy_as="results.txt")
         results = read_results_txt(results_path, log)
         metrics += _results_metrics(results, dataset_id, run_names)
+    # Emitted here rather than with the other provenance metrics because the per-run rows need the
+    # deposited run names, which only exist once the runs are built (aging 014 section 3).
+    metrics += prov.contamination_metric_rows(search_provenance, dataset_id, run_names=run_names)
 
     # --- the dataset row -------------------------------------------------------------------
     instruments = sorted({f["instrument_model"] for f in sdrf.run_facts.values() if f.get("instrument_model")})
@@ -403,6 +408,30 @@ def ingest_dataset(
         "latest_release_id": None,
     }
 
+    # --- exact duplicates the producer wrote -----------------------------------------------------
+    # MetaMorpheus can write one row twice, identical in every column (aging 015: one protein group
+    # three times in PXD027318). Collapsing those is lossless by construction and it happens before
+    # anything counts the rows, so every number below describes what the bundle will actually hold.
+    # It also removes the duplicate's *derived* rows -- three identical group rows melt into three
+    # identical quantities per run, and quant_values has no identifier to catch that.
+    collapsed = collapse_exact_duplicates(
+        {
+            "samples": samples,
+            "runs": run_rows,
+            "assays": assays,
+            "peptidoforms": peptidoforms,
+            "protein_groups": protein_groups,
+            "proteins": proteins,
+            "ptm_sites": ptm_sites,
+            "quant_values": quant_values,
+        }
+    )
+    if collapsed:
+        # The group count has to describe the rows, not the file: the file said one group three
+        # times and the bundle holds it once.
+        protein_group_count = quant.accepted_group_count(protein_groups)
+        findings += _duplicate_findings(collapsed, dataset_id)
+
     # --- reconciliation ------------------------------------------------------------------------
     checks = build_checks(
         psm_count_1pct=identifications.producer_counts(psm_columns),
@@ -414,6 +443,7 @@ def ingest_dataset(
         provenance_ms2=(search_provenance.get("id_rate") or {}).get("ms2"),
     )
     findings += reconciliation_findings(checks, dataset_id)
+    findings += metric_conflicts(metrics, dataset_id)
     findings += _modification_findings(proforma, dataset_id)
     findings += _usi_findings(run_names, dataset_id)
 
@@ -457,6 +487,7 @@ def ingest_dataset(
             "unresolved": proforma.unresolved,
         },
         "reconciliation": [c.as_dict() for c in checks],
+        "collapsed_duplicates": [c.as_dict() for c in collapsed],
     }
 
     # Re-ingesting unchanged inputs with unchanged code is a no-op, not an error: the pipeline
@@ -513,6 +544,48 @@ def _results_metrics(
                 }
             )
     return rows
+
+
+def _duplicate_findings(collapsed: list[Collapse], dataset_id: str) -> list[dict[str, Any]]:
+    """One Finding naming every row the producer wrote more than once.
+
+    The collapse is lossless, so this is not a warning about the bundle -- it is a fact about the
+    producer's output that would otherwise vanish the moment it was repaired. Someone reading the
+    bundle should be able to see that a row arrived twice without diffing it against the TSV.
+    """
+    if not collapsed:
+        return []
+    per_table: dict[str, list[Collapse]] = {}
+    for c in collapsed:
+        per_table.setdefault(c.table, []).append(c)
+    parts = []
+    for table in sorted(per_table):
+        group = per_table[table]
+        dropped = sum(c.dropped for c in group)
+        example = group[0]
+        parts.append(
+            f"{table}: {len(group)} identifier(s), {dropped} row(s) dropped, "
+            f"e.g. {example.identifier} written {example.written} times"
+        )
+    return [
+        {
+            "finding_id": f"{dataset_id}:collapsed_duplicate_rows",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "collapsed_duplicate_rows",
+            "severity": "info",
+            "status": "open",
+            "message": (
+                "The producer wrote some rows more than once, identical in every column, and the "
+                "copies were dropped so each identifier appears once. Nothing was lost: the kept "
+                "row is byte-for-byte what the duplicates said. Rows that share an identifier and "
+                "disagree anywhere are still refused rather than collapsed. "
+                + "; ".join(parts)
+                + ". The full list is in bundle.json under collapsed_duplicates."
+            ),
+            "source": "datarepo ingest integrity (aging thread 015, AGING-Q2)",
+        }
+    ]
 
 
 def _modification_findings(proforma: ProformaCache, dataset_id: str) -> list[dict[str, Any]]:

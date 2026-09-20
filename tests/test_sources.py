@@ -54,6 +54,64 @@ def test_flags_become_findings_that_explain_themselves():
     assert "9/300" in rows["low_id_rate"]["message"]  # the producer's own note is kept
 
 
+CONTAMINATION = {
+    "schema": "aging-provenance/3",
+    "contamination": {
+        "psm_share": 0.039,
+        "psm_share_definition": "aging DEF-CONTAM-PSM v1",
+        "contaminant_psms": 1090,
+        "target_plus_contaminant_psms": 27984,
+        "intensity_share_per_file": {"GM3_c-calib": 0.189, "GM6_c-calib": 0.026},
+        "intensity_share_definition": "QuantProject DEF-QC-9 v2",
+        "intensity_share_median": 0.055,
+        "intensity_share_min": 0.026,
+        "intensity_share_max": 0.189,
+    },
+}
+
+
+def test_the_contaminant_intensity_share_is_emitted_once_per_run():
+    names = RunNameMap(("GM3_c", "GM6_c"))
+
+    rows = prov.contamination_metric_rows(CONTAMINATION, "PXD1", run_names=names)
+
+    per_run = [r for r in rows if r["scope"] == "run"]
+    assert {r["scope_id"] for r in per_run} == {"PXD1:GM3_c", "PXD1:GM6_c"}
+    assert {r["name"] for r in per_run} == {"contamination_intensity_share"}
+    assert all(r["definition_id"] == "QuantProject:DEF-QC-9" for r in per_run)
+
+
+def test_the_dataset_level_intensity_summaries_say_they_are_summaries():
+    rows = prov.contamination_metric_rows(CONTAMINATION, "PXD1", run_names=RunNameMap(("GM3_c",)))
+
+    summaries = [r for r in rows if r["name"].startswith("contamination_intensity_share_")]
+    assert {r["name"] for r in summaries} == {
+        "contamination_intensity_share_median",
+        "contamination_intensity_share_min",
+        "contamination_intensity_share_max",
+    }
+    assert all("not a measurement of the dataset" in r["source"] for r in summaries)
+
+
+def test_the_psm_share_is_a_dataset_number_under_agings_definition():
+    rows = prov.contamination_metric_rows(CONTAMINATION, "PXD1", run_names=RunNameMap(()))
+
+    share = next(r for r in rows if r["name"] == "contamination_psm_share")
+    assert share["scope"] == "dataset"
+    assert share["definition_id"] == "aging:DEF-CONTAM-PSM"
+    assert share["value"] == 0.039
+
+
+def test_a_contaminated_file_that_does_not_resolve_gets_no_row_rather_than_a_dangling_one():
+    rows = prov.contamination_metric_rows(CONTAMINATION, "PXD1", run_names=RunNameMap(("GM3_c",)))
+
+    assert [r["scope_id"] for r in rows if r["scope"] == "run"] == ["PXD1:GM3_c"]
+
+
+def test_a_provenance_with_no_contamination_block_emits_nothing():
+    assert prov.contamination_metric_rows({"schema": "aging-provenance/3"}, "PXD1") == []
+
+
 def test_a_provenance_record_keeps_the_heavy_blocks_verbatim():
     doc = json.loads((RUN / "04_search/provenance.json").read_text(encoding="utf-8"))
     row = prov.record_row(doc, "PXD999999", stage_dir_name="04_search",
@@ -170,6 +228,19 @@ def test_the_producer_counts_contaminant_groups_but_not_decoys():
     assert statuses["PXD999999:DECOY_P12345"] == "decoy"
     assert statuses["PXD999999:CONTAM_P00001"] == "contaminant"
     assert count == 3  # two targets at q <= 0.01 plus the contaminant; the decoy never counts
+
+
+def test_the_group_count_can_be_retaken_from_the_rows_and_gives_the_same_answer():
+    """After an exact-duplicate collapse the count has to describe the rows, not the file."""
+    names = RunNameMap(("QE-002106_GM1_a", "QE-002107_GM1_b"))
+    groups, _quants, count = quant.protein_group_rows(
+        SEARCH_RESULTS / "AllQuantifiedProteinGroups.tsv", "PXD999999", run_names=names
+    )
+    assert quant.accepted_group_count(groups) == count
+
+    accepted = next(g for g in groups if g["target_decoy"] != "decoy" and g["q_value"] <= 0.01)
+    groups.remove(accepted)
+    assert quant.accepted_group_count(groups) == count - 1
 
 
 def test_intensity_and_spectral_count_are_told_apart_by_their_definition():

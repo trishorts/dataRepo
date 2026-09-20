@@ -8,11 +8,19 @@ broken link.
 These checks are not advisory. A dangling reference is an ingester bug, not a property of the data,
 so it stops the write rather than becoming a Finding: a Finding is for something true about the
 dataset, and this would be something false about the bundle.
+
+One escape exists, and only one. A producer can write the *same* row twice -- MetaMorpheus wrote
+one protein group three times in PXD027318, byte-identical in every column (aging thread 015). Two
+identical rows for one identifier carry no information the one row does not, so
+`collapse_exact_duplicates` drops the copies and records what it dropped. Rows that share an
+identifier and differ anywhere are still refused, because then the producer is saying two different
+things about one thing and someone has to decide which is true. Strict check, lossless escape.
 """
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping, MutableSequence, Sequence
 
 #: (table, column, target table, target column). Multivalued columns are named with a `[]` suffix.
 REFERENCES: tuple[tuple[str, str, str, str], ...] = (
@@ -64,6 +72,133 @@ IDENTIFIERS = (
     ("findings", "finding_id"),
 )
 
+#: Tables with no single identifier column whose rows must still be unique on a natural key.
+#: `quant_values` is the one that matters: it has no ID at all, so nothing stopped a duplicated
+#: source row from writing the same measurement twice, and a caller summing intensities would have
+#: double-counted it with no way to tell. Verified unique on PXD036557 and PXD032202 before it was
+#: made a rule. `metrics` is deliberately absent -- the same metric legitimately arrives from two
+#: sources (provenance and results.txt), which `reconcile.metric_conflicts` compares instead.
+COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
+)
+
+#: Tables where a row is a *thing* and its identifier names that thing, so two identical rows are
+#: one thing written twice and collapsing them loses nothing.
+#:
+#: `psms` and `findings` are deliberately absent. A row there is an *event*, and the number of rows
+#: is itself a reported number: two identical PSM rows may be two observations that the columns we
+#: store cannot tell apart, so collapsing them would quietly change a headline count. A duplicate
+#: `psm_id` is an identifier-construction bug in this ingester, and it should stop the write and be
+#: fixed here rather than be absorbed.
+COLLAPSIBLE: frozenset[str] = frozenset(
+    {
+        "datasets",
+        "samples",
+        "runs",
+        "assays",
+        "peptidoforms",
+        "protein_groups",
+        "proteins",
+        "ptm_sites",
+        "definitions",
+        "quant_values",
+    }
+)
+
+
+@dataclass(frozen=True)
+class Collapse:
+    """One group of rows that were identical in every column and became one row."""
+
+    table: str
+    key: tuple[str, ...]
+    identifier: str
+    written: int
+    """How many identical rows the producer wrote, including the one that was kept."""
+
+    @property
+    def dropped(self) -> int:
+        return self.written - 1
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "table": self.table,
+            "key": list(self.key),
+            "identifier": self.identifier,
+            "written": self.written,
+            "dropped": self.dropped,
+        }
+
+
+def _keys() -> dict[str, tuple[str, ...]]:
+    keys = {table: (column,) for table, column in IDENTIFIERS}
+    keys.update(dict(COMPOSITE_IDENTIFIERS))
+    return keys
+
+
+def _hashable(value: Any) -> Any:
+    """A comparable form of a cell, so list-valued columns compare by value rather than identity."""
+    if isinstance(value, (list, tuple)):
+        return tuple(_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(sorted((k, _hashable(v)) for k, v in value.items()))
+    return value
+
+
+def _fingerprint(row: Mapping[str, Any], columns: Sequence[str]) -> tuple[Any, ...]:
+    return tuple(_hashable(row.get(c)) for c in columns)
+
+
+def collapse_exact_duplicates(
+    tables: Mapping[str, MutableSequence[dict[str, Any]]],
+) -> list[Collapse]:
+    """Drop rows that repeat an earlier row of the same table in every column.
+
+    The lists are edited in place, keeping the first of each identical set and the original row
+    order. A set of rows that shares an identifier but differs anywhere is left untouched, so
+    `check` still refuses it: the producer is then asserting two different things about one thing,
+    and that is not ours to resolve (aging thread 015, AGING-Q2).
+
+    Args:
+        tables: `{table name: rows}`. Tables not in `COLLAPSIBLE` are ignored whether or not they
+            are present, because a repeated row there may be a repeated observation.
+
+    Returns:
+        One `Collapse` per identifier that was written more than once, in table then identifier
+        order. Empty is the normal case; a non-empty result belongs in the bundle's findings, not
+        in a log, because it is something true about the producer's output.
+    """
+    collapses: list[Collapse] = []
+    for table, key in sorted(_keys().items()):
+        if table not in COLLAPSIBLE:
+            continue
+        rows = tables.get(table)
+        if not rows:
+            continue
+        columns = sorted({c for row in rows for c in row})
+        groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+        for row in rows:
+            groups.setdefault(_fingerprint(row, key), []).append(row)
+        dropped: set[int] = set()
+        for identifier, group in groups.items():
+            if len(group) == 1:
+                continue
+            if len({_fingerprint(r, columns) for r in group}) != 1:
+                continue  # a real disagreement; check() refuses the bundle
+            dropped.update(id(r) for r in group[1:])
+            collapses.append(
+                Collapse(
+                    table=table,
+                    key=key,
+                    identifier=":".join(str(part) for part in identifier),
+                    written=len(group),
+                )
+            )
+        if dropped:
+            kept = [row for row in rows if id(row) not in dropped]
+            rows[:] = kept
+    return sorted(collapses, key=lambda c: (c.table, c.identifier))
+
 
 def _values(rows: Iterable[dict[str, Any]], column: str) -> set[Any]:
     if column.endswith("[]"):
@@ -85,21 +220,26 @@ def check(tables: dict[str, Sequence[dict[str, Any]]]) -> list[str]:
     """
     problems: list[str] = []
 
-    for table, column in IDENTIFIERS:
+    for table, key in sorted(_keys().items()):
         rows = tables.get(table) or []
         seen: set[Any] = set()
         duplicates: set[Any] = set()
         for row in rows:
-            value = row.get(column)
-            if value is None:
+            value = _fingerprint(row, key)
+            if any(v is None for v in value):
                 continue
             if value in seen:
                 duplicates.add(value)
             seen.add(value)
         if duplicates:
-            sample = ", ".join(str(d) for d in sorted(duplicates, key=str)[:3])
+            names = ".".join(key) if len(key) == 1 else "(" + ", ".join(key) + ")"
+            sample = ", ".join(
+                ":".join(str(part) for part in d) for d in sorted(duplicates, key=str)[:3]
+            )
             problems.append(
-                f"{table}.{column}: {len(duplicates)} duplicate identifier(s), e.g. {sample}"
+                f"{table}.{names}: {len(duplicates)} duplicate identifier(s), e.g. {sample}. "
+                f"Rows sharing an identifier and identical in every column are collapsed before "
+                f"this check, so these differ somewhere and the producer has to say which is right."
             )
 
     for table, column, target, target_column in REFERENCES:

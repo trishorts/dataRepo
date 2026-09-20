@@ -105,6 +105,52 @@ def build(
     ]
 
 
+def metric_conflicts(metrics: Sequence[dict[str, Any]], dataset_id: str) -> list[dict[str, Any]]:
+    """A Finding wherever one metric arrives from two sources and they disagree.
+
+    The same number legitimately reaches a bundle twice: `psms_1pct` comes from the pipeline's
+    provenance and again from MetaMorpheus's `results.txt`, under the same definition. Two sources
+    for one number is corroboration and worth keeping -- but only while they agree, and nothing was
+    comparing them. An agent asking for the PSM count gets both rows, and if they ever differed it
+    would have no way to know which to believe.
+
+    Args:
+        metrics: the Metric rows about to be written.
+        dataset_id: ProteomeXchange accession.
+    """
+    seen: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in metrics:
+        key = (row.get("scope"), row.get("scope_id"), row.get("name"), row.get("definition_id"))
+        seen.setdefault(key, []).append(row)
+
+    rows = []
+    for key, group in seen.items():
+        values = {row.get("value") for row in group}
+        if len(group) < 2 or len(values) < 2:
+            continue
+        scope, scope_id, name, definition = key
+        reported = ", ".join(
+            f"{row.get('value'):g} ({row.get('source')})" for row in sorted(group, key=lambda r: str(r.get("source")))
+        )
+        rows.append(
+            {
+                "finding_id": f"{dataset_id}:metric_conflict:{scope}:{scope_id}:{name}",
+                "dataset_id": dataset_id,
+                "run_id": scope_id if scope == "run" else None,
+                "code": "metric_conflict",
+                "severity": "warning",
+                "status": "open",
+                "message": (
+                    f"'{name}' at {scope} scope reaches this bundle from more than one source under "
+                    f"{definition}, and the sources disagree: {reported}. Every value is kept; the "
+                    f"definition's owner has to say which source is canonical."
+                ),
+                "source": "datarepo ingest reconciliation",
+            }
+        )
+    return rows
+
+
 def finding_rows(checks: Sequence[Check], dataset_id: str) -> list[dict[str, Any]]:
     """A Finding for each comparison that did not agree."""
     rows = []

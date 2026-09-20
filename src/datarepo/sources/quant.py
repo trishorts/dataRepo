@@ -169,6 +169,23 @@ def peptide_quant_rows(
     return out
 
 
+def accepted_group_count(groups: list[dict[str, Any]]) -> int:
+    """The producer's protein-group count at 1% FDR, over ProteinGroup rows.
+
+    The producer counts a "target protein group" as anything not a decoy, contaminants included;
+    matching that is what makes the reconciliation meaningful. It lives here, once, so the count
+    can be retaken after the rows change -- an exact-duplicate collapse removes a row the file
+    contained, and the reconciled count has to describe the rows the bundle holds.
+    """
+    return sum(
+        1
+        for g in groups
+        if g.get("target_decoy") != "decoy"
+        and g.get("q_value") is not None
+        and g["q_value"] <= 0.01
+    )
+
+
 def protein_group_rows(
     path: Path, dataset_id: str, *, run_names: RunNameMap, log: ReaderLog | None = None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -185,7 +202,6 @@ def protein_group_rows(
 
     groups: list[dict[str, Any]] = []
     quants: list[dict[str, Any]] = []
-    producer_count = 0
     for row in iter_dicts(header, rows):
         accessions = _split(row.get("Protein Accession", ""))
         if not accessions:
@@ -196,10 +212,6 @@ def protein_group_rows(
         coverage = row.get("Sequence Coverage Fraction", "")
         status = _target_decoy(row.get("Protein Decoy/Contaminant/Target", ""))
         q_value = _number(row.get("Protein QValue", ""))
-        # The producer counts a "target protein group" as anything not a decoy, contaminants
-        # included; matching that is what makes the reconciliation meaningful.
-        if status != "decoy" and q_value is not None and q_value <= 0.01:
-            producer_count += 1
         groups.append(
             {
                 "protein_group_id": group_id,
@@ -236,4 +248,4 @@ def protein_group_rows(
                         "definition_id": definition,
                     }
                 )
-    return groups, quants, producer_count
+    return groups, quants, accepted_group_count(groups)

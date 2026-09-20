@@ -151,6 +151,92 @@ def metric_rows(doc: dict[str, Any], dataset_id: str, version: int) -> list[dict
     return rows
 
 
+def contamination_metric_rows(
+    doc: dict[str, Any], dataset_id: str, *, run_names: Any = None
+) -> list[dict[str, Any]]:
+    """Metric rows from the search stage's `contamination` block.
+
+    The block was already becoming a Finding, which says *that* a dataset is contaminated but puts
+    the numbers in a sentence. These rows put them where a query can reach them.
+
+    **The intensity share is emitted per run, one row per file, and is never averaged into a
+    dataset number here.** It is defined per file (QuantProject DEF-QC-9), and the dataset figure
+    is what hid the structure aging found: 7.0% overall against 2.6-18.9% per file, grouped by cell
+    line. The producer's own median/min/max are carried as dataset-scope rows under names that say
+    they are summaries of the per-run values, so nothing forces a caller to recompute them and
+    nothing lets a caller mistake one for the measurement.
+
+    Args:
+        doc: the search stage's provenance document.
+        dataset_id: ProteomeXchange accession.
+        run_names: `RunNameMap`, to resolve the calibrated names the block is keyed by back to the
+            deposited run. A file that will not resolve gets no row rather than a row under a
+            `run_id` that matches no run.
+    """
+    block = doc.get("contamination") or {}
+    rows: list[dict[str, Any]] = []
+
+    def add(scope: str, scope_id: str, name: str, value: Any, definition: str, source: str) -> None:
+        if value is not None:
+            rows.append(
+                {
+                    "scope": scope,
+                    "scope_id": scope_id,
+                    "name": name,
+                    "value": value,
+                    "definition_id": definition,
+                    "source": source,
+                }
+            )
+
+    add(
+        "dataset",
+        dataset_id,
+        "contamination_psm_share",
+        block.get("psm_share"),
+        defs.CONTAM_PSM_SHARE.definition_id,
+        f"provenance.json contamination.psm_share ({block.get('psm_share_definition') or block.get('definition') or 'unnamed'})",
+    )
+    for name, key in (
+        ("contaminant_psms", "contaminant_psms"),
+        ("target_plus_contaminant_psms", "target_plus_contaminant_psms"),
+    ):
+        add(
+            "dataset",
+            dataset_id,
+            name,
+            block.get(key),
+            defs.CONTAM_PSM_SHARE.definition_id,
+            f"provenance.json contamination.{key}",
+        )
+
+    intensity_definition = defs.CONTAM_INTENSITY_SHARE.definition_id
+    per_file = block.get("intensity_share_per_file") or {}
+    for reported, value in sorted(per_file.items()):
+        base = run_names.resolve(reported) if run_names is not None else reported
+        if not base:
+            continue
+        add(
+            "run",
+            f"{dataset_id}:{base}",
+            "contamination_intensity_share",
+            value,
+            intensity_definition,
+            "provenance.json contamination.intensity_share_per_file",
+        )
+    for summary in ("median", "min", "max"):
+        add(
+            "dataset",
+            dataset_id,
+            f"contamination_intensity_share_{summary}",
+            block.get(f"intensity_share_{summary}"),
+            intensity_definition,
+            f"provenance.json contamination.intensity_share_{summary} "
+            f"(a summary of the per-run values, not a measurement of the dataset)",
+        )
+    return rows
+
+
 def finding_rows(doc: dict[str, Any], dataset_id: str, source: str) -> list[dict[str, Any]]:
     """Finding rows from the stage's `flags[]`.
 
