@@ -5,9 +5,10 @@ MetaMorpheus `.psmtsv` rows trimmed from PXD036557, and hand-made FlashLFQ table
 are the ones that matter (a zero intensity, a `NotDetected` cell, a q-value of exactly zero, a
 decoy group, a contaminant group).
 
-Tests that need pyMzLib are skipped, not failed, when its mzLib bridge is not built for the
-platform: parsing producer formats is pyMzLib's job, and a machine without it can still check
-everything dataRepo itself decides.
+Tests that need pyMzLib are skipped, not failed, when it is not installed. That is a courtesy to a
+checkout, not a CI condition: `pip install mzlib` is all it takes, its wheels ship for win-x64,
+linux-x64, osx-x64 and osx-arm64 and carry the mzLib bridge, and CI installs it so these tests run
+there. `PYMZLIB_BRIDGE` is only for a source checkout of pyMzLib, which ships no bridge.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def pymzlib_available() -> bool:
 
 needs_pymzlib = pytest.mark.skipif(
     not pymzlib_available(),
-    reason="pyMzLib with a built mzLib bridge is required to parse .psmtsv",
+    reason="pyMzLib is required to parse .psmtsv; `pip install mzlib`",
 )
 
 

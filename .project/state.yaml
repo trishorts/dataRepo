@@ -110,6 +110,16 @@ gaps:
   - "G27 Bundle id identity. CLOSED 2026-09-20 in datarepo 0.5.0, answering aging 019 section 1. Their hypothesis was right: add_declaration hashed entry.raw, so reason, notes and flags were in the bundle id, and rewording a reason moved the id while every row stayed identical - which is why their PXD027318 ingest produced d77407d41e82858b and ours 809772ab5cdbd2e0 from the same search output. The id now covers manifest.CONTENT_FIELDS only (accession, run, stages, search_results, title, files, organism, acquisition, quant_method, labelling, labelling_plex, enrichment, metamorpheus); NON_CONTENT_FIELDS names the rest with a reason each, and a test fails on any DatasetEntry field in neither list. The answer for operators: a bundle id is an identity for the measurements plus the ingest configuration, and nothing editorial. TWO SMALL THINGS FOUND WHILE CLASSIFYING, both told to aging: the manifest's provenance_schema is a declared expectation nothing checks (we read the schema from provenance.json itself), and sdrf is declared but never read (we glob the run folder). The manifest promises two things it does not deliver."
   - "G28 search_modifications does not mean what its description claims. OPEN, asked as thread 021 section 6. The description says 'Every modification the search considered for a dataset (P1; J8 mass-silent checks)', but the table is built from the search task's parameters, so it holds what was DECLARED, not what was PLACED. All three datasets declare 33 UNIMOD accessions; their peptidoforms carry 16, 46 and 57, of which 4, 17 and 29 are absent from the table. A GPTMD run draws modifications from UniProt annotations on the database entries and those are not in the task's mod list - S-(2,3-dicarboxypropyl)cysteine on C is in PXD032202's peptidoforms and is not a row in its search_modifications at all. Nothing is lost (the evidence is in the peptidoforms) but a J8 mass-silent check reading this table to ask what the search COULD have found gets a wrong answer on the two GPTMD-heavy datasets. Default: fix the description rather than the table, and add a derived view for what was actually placed. 0 rows of consequence today."
   - "G29 One version was doing two jobs. CLOSED 2026-09-20 in datarepo 0.6.0, and it was forced rather than chosen: 0.6.0 is entirely a `build` change, but __version__ was in the BUNDLE hash, so releasing it would have re-identified every bundle in every store for rows that are byte-identical - the same over-hashing failure G27 had just fixed one level down, one release later. bundle.INGESTER_VERSION is now the only version in a bundle's content hash and is bumped in the same commit as any change to what an ingest reads, parses, derives or writes; it sits at 0.5.0 and lags __version__ on purpose. catalog_id keeps __version__, gains every study layer's version, and CATALOG_VERSION went 1 -> 2, so adding the whole study layer moved every catalog id and not one bundle id - verified on the three real datasets, which re-ingest to 0c11db8240f2634f / 9b73a64dc7d790f5 / 0bae469980d59d24 unchanged. Two tests pin both directions. bundle.json records both versions because they answer different questions: what an operator installed, and what the id was computed from. THE PATTERN WORTH KEEPING: three times in two days the same boundary failed - under-hashed manifest entry, over-hashed manifest prose, over-hashed package version - and each time the test is the same one sentence, does this change what the rows say."
+  - >-
+    G30 The study delivery path is built on an UNANSWERED question and is reversible on purpose
+    (DATAREPO-20(a), thread 022 section 2a, re-stated in 023). datarepo 0.7.0's `datarepo study`
+    writes a study bundle and `build --study` loads it, both opt-in, and no search bundle id moved.
+    What is NOT settled: the file-level contract (a table per .tsv/.csv/.parquet with schema column
+    names) is ours, not aging's. If they hand over a different shape, `study.read_table_file`
+    changes and the bundle and catalog contracts do not. Two joins are deliberately unenforced until
+    they answer - `feature_id` against anything (DATAREPO-20(c)) and `definition_id` against
+    `definitions` - because a foreign key written now would freeze a guess with the authority of a
+    constraint.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
@@ -129,6 +139,13 @@ skip_log:
       carries rows into the repository would have fixed a hand-off contract before asking them how
       they want to hand rows over, on an object that does not exist yet. The default (a separate
       study bundle loaded by `build`) is recorded and is buildable under D7 if they go quiet.
+    resolved: 2026-09-21
+    resolution: >-
+      Taken off the skip list and BUILT on the recorded default, after a day with no reply (D7).
+      datarepo 0.7.0 ships `datarepo study` and `build --study`. The reversibility argument that
+      made it a skip is what made it safe to build: a study bundle is a separate object, so if aging
+      wants another hand-over only the reader changes, and no search bundle id moved. What is still
+      unsettled is tracked as G30, and the build is re-stated to aging in thread 023.
 
 repos: []
 

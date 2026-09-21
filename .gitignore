@@ -41,3 +41,6 @@ __pycache__/
 
 # Cross-project thread read-state: per-machine, not project truth
 .project/threads.state
+
+# A user running examples/study_delivery/study.yaml without --store lands here.
+.tmp-example-store/

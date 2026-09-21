@@ -2,14 +2,14 @@
 
 <!-- BEGIN GENERATED -- render_resume.py owns this block; edit state.yaml, not here -->
 
-**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-20
+**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-21
 
 | | |
 |---|---|
-| Commits | 51 |
+| Commits | 53 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 11 |
-| Open gaps | 25 |
+| Open gaps | 26 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -22,7 +22,7 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Where it stands (2026-09-20, sixth session)
+## Where it stands (2026-09-21, seventh session)
 
 The framework's section 7 decisions are **locked** (grill-me). Everything else in `design/FRAMEWORK.md` v0 is still a proposal.
 
@@ -60,6 +60,38 @@ NULL, and a refused fit has a table of its own so there is **nowhere to write a 
 deliverable, not a shortfall: their benchmark distinguishes `NO_TABLE` from `EMPTY_TABLE`, and the 46
 age-effect questions scored the first. Section D's own query - do organelles age at different rates -
 now parses, joins `protein_localizations` and returns nothing.
+
+## 2026-09-21: the study tables can be filled
+
+**datarepo 0.7.0 answers DATAREPO-20(a) with the default it recorded, and the default's virtue is
+that it is cheap to be wrong about.** `datarepo study` reads a `study.yaml` -- one file per table,
+`.tsv`/`.csv`/`.parquet`, columns named as the schema names them -- and writes a separately
+content-addressed **study bundle** under `<store>/_study/<layer>/<id>/`. `datarepo build --study
+aging=<id>` loads it beside the search bundles. End to end on the fixture dataset: two age effects
+and two sample ages delivered, loaded, and queried back with their `study_bundle_id` attached.
+
+**Writing one does not open a search bundle.** That is the whole reason the object is separate, it
+is the first test in `tests/test_study_bundle.py`, and it is asserted byte for byte on the search
+bundle's own `bundle.json`. `INGESTER_VERSION` stays 0.5.0 and no bundle id moved; `CATALOG_VERSION`
+went 2 -> 3 because a catalog holding age effects and one without them answer 46 benchmark questions
+differently and must not share an id. Third time the same sentence decided it -- *does this change
+what the rows say* -- and the first time it was asked before rather than after.
+
+**The rules in the definition are now write errors.** `bundle.table_from_rows` became a thin wrapper
+over `rows_to_table`, so a delivery goes through exactly the core's coercion and its two refusals:
+a `beta` with no `se` does not get written, a typo'd header stops the write instead of vanishing,
+and a refused fit still has nowhere to put a null `beta` because it has a table of its own. Two rows
+for one fit are refused on the keys declared in 0.6.0 -- which is the payoff for having declared
+them while the tables were empty.
+
+**What we deliberately did not check is the part worth remembering.** `feature_id` resolves against
+nothing and `definition_id` is not checked against `definitions`. Both would have been easy, both
+would have been guesses, and a foreign key is a guess with the authority of a constraint.
+DATAREPO-20(c) is still the expensive open question and 023 says so in those words.
+
+The file-level contract is ours and not aging's, and that is logged as **G30** rather than filed
+under a closed 20(a). If stage 7 writes another shape, `study.read_table_file` changes and nothing
+else does.
 
 ## The ingester works
 
@@ -275,10 +307,11 @@ from a single query.
 
 ## Pick up at
 
-**Nothing of ours blocks aging, and aging owe replies on 021 and 022.** Code is datarepo **0.6.0**,
-schema **0.0.4**, study layer `aging` **0.1.0**; `bundle.INGESTER_VERSION` sits at **0.5.0** and
-should stay there until an ingest reads or writes something differently. 188 tests pass, the schema
-lints, there is no generated-file drift, and the three datasets build an 80-check catalog.
+**Nothing of ours blocks aging, and aging owe replies on 021, 022 and 023.** Code is datarepo
+**0.7.0**, schema **0.0.4**, study layer `aging` **0.1.0**; `bundle.INGESTER_VERSION` sits at
+**0.5.0** and should stay there until an ingest reads or writes something differently, and
+`study.STUDY_INGESTER_VERSION` at **0.1.0** under the same rule. 219 tests pass, the schema lints,
+and there is no generated-file drift.
 
 **First, always:** run the thread checker (command in the `design/threads/aging/` bullet above).
 aging work in parallel and a reply may have landed; read it before starting anything below, because
@@ -290,11 +323,12 @@ items 1 and 2 are the things they were asked.
    3-6 as if they were decided.** This is a `/grill-me`, and the user is not a server or
    infrastructure person: keep the choices few and give a recommendation each time. The locked
    answers become D12+. The project's own goal says *API-accessible*, and none of it exists.
-2. **DATAREPO-20(a) - how do stage 7's rows reach the repository?** The study tables cannot be
-   filled until this is answered. Default recorded in `design/OPEN_QUESTIONS.md`: a separate study
-   bundle, written by a new command and loaded by `build`, so delivering a model result never forces
-   a re-ingest. Buildable on the default under D7 if aging go quiet, and cheap to change while no
-   data exists.
+2. **DATAREPO-20(c) - what is a feature's cross-dataset identity?** This is now the expensive one.
+   20(a) is BUILT on its default in 0.7.0 (`datarepo study`, G30 tracks what is still ours to
+   guess), which means `age_effect_meta` can be delivered and its join key is still undecided. A
+   `protein_group_id` here is scoped to its dataset, so it cannot be a cross-dataset key, and
+   aging's §6 does not say what replaces it. Cheap now, expensive once rows exist. Asked in 022 and
+   re-asked as the first item of 023.
 3. **G26 - the modification registry reads mzLib's resource files instead of asking its loader.**
    It agrees with the loader on all 100 names that have reached `ptm_sites` and differs on exactly
    two that have not (`Decarboxylation on D`/`on E`), so nothing shipped is wrong. The fix is to

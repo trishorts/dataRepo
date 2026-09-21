@@ -82,14 +82,13 @@ COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
 )
 
-#: A study layer's natural keys, by layer and table. Not yet enforced, because nothing writes these
-#: tables: `age_effect` is the output of a modelling stage that runs long after a search, and how
-#: those rows reach a bundle is DATAREPO-20 rather than a guess.
+#: A study layer's natural keys, by layer and table. Enforced twice since 0.7.0: `study` refuses a
+#: delivery whose rows repeat a key, and `build` re-checks it on what the catalog actually loaded.
 #:
-#: They are declared now anyway, and a test asserts every study table has either an identifier or an
-#: entry here. `quant_values` shipped with no key at all and a duplicated source row wrote one
-#: measurement three times, which nothing could have caught; the moment to decide a key is while the
-#: table is empty. `aging:DEF-AGE-EFFECT v1` section 2 gives `age_effects` its key outright, and
+#: They were declared in 0.6.0, before anything could write these tables, and that is why the check
+#: existed the moment `study` did. `quant_values` shipped with no key at all and a duplicated source
+#: row wrote one measurement three times, which nothing could have caught; the moment to decide a
+#: key is while the table is empty. `aging:DEF-AGE-EFFECT v1` section 2 gives `age_effects` its key outright, and
 #: every component of it is forced by a benchmark question -- `estimator` because count- and
 #: intensity-based occupancy differ about threefold, `quant_basis` because H8+ asks whether MBR
 #: changes the answer, `stratum` because D13 asks whether a decline is seen in both sexes.
@@ -115,6 +114,28 @@ STUDY_COMPOSITE_IDENTIFIERS: dict[str, dict[str, tuple[str, ...]]] = {
         "clock_features": ("clock_id", "feature_type", "feature_id"),
         "age_mappings": ("organism", "age_from", "age_to"),
     },
+}
+
+#: A study layer's references into the core, checked when a catalog loads a study bundle.
+#:
+#: These are the joins that make a study layer a layer rather than a second repository: an age
+#: effect that names a dataset the catalog does not hold cannot be traced to the evidence behind it,
+#: and a caller asking section D's question would silently get a smaller answer than the data
+#: supports. `build` refuses rather than dropping the rows, and names the datasets.
+#:
+#: **Two columns are deliberately absent, and their absence is the point.** `feature_id` is not
+#: resolved against anything, because DATAREPO-20(c) asks what a feature's cross-dataset identity
+#: even is and a foreign key written now would freeze a guess with the authority of a constraint.
+#: `definition_id` is not resolved against `definitions`, because whether a study layer's own
+#: definitions land in a search bundle is unsettled, and refusing every delivery over it would
+#: enforce a contract nobody agreed to.
+STUDY_REFERENCES: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "aging": (
+        ("sample_ages", "sample_id", "samples", "sample_id"),
+        ("age_effects", "dataset_id", "datasets", "dataset_id"),
+        ("age_effect_refusals", "dataset_id", "datasets", "dataset_id"),
+        ("clock_features", "clock_id", "clock_models", "clock_id"),
+    ),
 }
 
 #: Tables where a row is a *thing* and its identifier names that thing, so two identical rows are

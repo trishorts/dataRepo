@@ -109,25 +109,42 @@ def _coerce(value: Any, field_type: pa.DataType) -> Any:
     return str(value)
 
 
-def table_from_rows(name: str, rows: Sequence[dict[str, Any]]) -> pa.Table:
-    """Build an Arrow table for `name` from row dicts, in the schema's column order.
+def rows_to_table(label: str, schema: pa.Schema, rows: Sequence[dict[str, Any]]) -> pa.Table:
+    """Build an Arrow table from row dicts against any schema, in the schema's column order.
+
+    Split out from `table_from_rows` so a study layer's tables are written through exactly the same
+    coercion and the same two refusals as the core's. A study layer that validated its own rows
+    more loosely would be the interesting failure: `aging:DEF-AGE-EFFECT v1` puts its rules in the
+    shape -- a `beta` without an `se` is not an age effect -- and the shape only enforces them if
+    the writer refuses the null.
+
+    Args:
+        label: what to call the table in an error, e.g. `age_effects` or `aging.age_effects`.
+        schema: the Arrow schema to write against.
+        rows: row dicts keyed on column names.
 
     Raises:
         IngestError: a row carries a key the table has no column for, or a required column is null.
     """
-    schema = TABLES[name]
     columns: dict[str, list[Any]] = {f.name: [] for f in schema}
     known = set(columns)
     for index, row in enumerate(rows):
         extra = set(row) - known
         if extra:
-            raise IngestError(f"table {name}: row {index} has unknown columns {sorted(extra)}")
+            raise IngestError(f"table {label}: row {index} has unknown columns {sorted(extra)}")
         for f in schema:
             value = _coerce(row.get(f.name), f.type)
             if value is None and not f.nullable:
-                raise IngestError(f"table {name}: row {index} has no value for required '{f.name}'")
+                raise IngestError(
+                    f"table {label}: row {index} has no value for required '{f.name}'"
+                )
             columns[f.name].append(value)
     return pa.table({f.name: pa.array(columns[f.name], type=f.type) for f in schema}, schema=schema)
+
+
+def table_from_rows(name: str, rows: Sequence[dict[str, Any]]) -> pa.Table:
+    """Build an Arrow table for the core schema table `name` from row dicts."""
+    return rows_to_table(name, TABLES[name], rows)
 
 
 @dataclass

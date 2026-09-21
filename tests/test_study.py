@@ -4,10 +4,10 @@ The rule (U5) is that a study layer ADDS tables keyed on core identifiers and ne
 table, so these tests are mostly about the boundary holding: the core must stay complete and usable
 without the layer, and the layer must not shadow anything.
 
-Nothing writes these tables yet. `age_effect` is the output of a modelling stage that runs long
-after a search, and how those rows reach a bundle is DATAREPO-20. What is under test is the SHAPE --
-which is the deliverable, because aging's benchmark distinguishes NO_TABLE from EMPTY_TABLE and the
-46 questions that need an age effect currently score the first.
+What is under test here is the SHAPE, and the shape must hold whether or not anything has filled it:
+aging's benchmark distinguishes NO_TABLE from EMPTY_TABLE, and an empty table with the right columns
+is the answer "this repository can hold that, and holds none". The path that fills them --
+`datarepo study` and `build --study` -- is tested in `test_study_bundle.py`.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 from datarepo._tables import STUDY_TABLES, STUDY_VERSIONS, TABLES
 from datarepo.catalog import (
     ACCEPTED_VIEWS,
+    STUDY_PROVENANCE_COLUMNS,
     DERIVED_TABLES,
     GRAIN_VIEWS,
     build_catalog,
@@ -227,4 +228,14 @@ def test_every_study_table_is_selectable(tmp_path, store, table):
     catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
     columns, data = run_query(catalog, f'SELECT * FROM "{table}" LIMIT 1')
     assert data == []
-    assert set(columns) == set(STUDY_TABLES[AGING][table].names)
+    assert set(columns) == set(STUDY_TABLES[AGING][table].names) | set(STUDY_PROVENANCE_COLUMNS)
+
+
+def test_a_study_table_has_the_same_columns_empty_as_filled(tmp_path, store):
+    # The shape must not depend on whether a delivery happened to be loaded. A caller writing SQL
+    # against an empty repository and running it against a filled one is the whole point of
+    # creating these tables empty in the first place.
+    bundles = [write_bundle(store, "PXD000001")]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    columns, _ = run_query(catalog, 'SELECT * FROM "age_effects" LIMIT 1')
+    assert columns[:2] == list(STUDY_PROVENANCE_COLUMNS)

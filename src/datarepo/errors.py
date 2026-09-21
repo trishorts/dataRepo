@@ -25,7 +25,7 @@ class UnsupportedProvenance(DataRepoError):
 
 
 class ReaderUnavailable(DataRepoError):
-    """pyMzLib is not importable, or its mzLib bridge is not built for this platform.
+    """pyMzLib is not importable, or the mzLib bridge its wheel carries did not resolve.
 
     Parsing producer formats belongs to pyMzLib (FRAMEWORK section 3), so there is no in-house
     fallback for the formats it covers.

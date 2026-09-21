@@ -32,27 +32,43 @@ from . import __version__
 from ._tables import SCHEMA_VERSION, STUDY_TABLES, STUDY_VERSIONS, TABLES
 from .bundle import BUNDLE_MANIFEST, QPX_VERSION
 from .errors import CatalogError
-from .integrity import FEATURE_TABLES, IDENTIFIERS, REFERENCES
+from .integrity import (
+    FEATURE_TABLES,
+    IDENTIFIERS,
+    REFERENCES,
+    STUDY_COMPOSITE_IDENTIFIERS,
+    STUDY_REFERENCES,
+)
 from .manifest import Manifest
+from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 
 #: Bumped when the shape of the catalog changes in a way a caller would notice. It is part of the
 #: content hash, so a change to the builder gives every catalog a new id even from the same bundles.
 #: Bumped when a build produces a different catalog from the same bundles. Separate from
 #: `__version__` on purpose: a change to what `build` writes must re-id catalogs, and must NOT re-id
-#: bundles holding byte-identical rows from an unchanged ingest path. "2" adds the study layer's
-#: tables. Same principle as `manifest.CONTENT_FIELDS` one level down -- an id moves when its own
-#: content moves, and not otherwise.
-CATALOG_VERSION = "2"
+#: bundles holding byte-identical rows from an unchanged ingest path. "2" added the study layer's
+#: tables; "3" fills them -- a study bundle's rows, their two provenance columns and
+#: `catalog_study_bundles`. Same principle as `manifest.CONTENT_FIELDS` one level down -- an id
+#: moves when its own content moves, and not otherwise.
+CATALOG_VERSION = "3"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
 PROVENANCE_COLUMNS = ("dataset_id", "bundle_id")
+
+#: Provenance columns prepended to every STUDY table. Deliberately not `PROVENANCE_COLUMNS`:
+#: `dataset_id` there is a fact about the bundle, and a study bundle spans datasets -- an
+#: `age_effect_meta` row is pooled across several by construction, so stating one would be false.
+#: Study tables that *are* per dataset keep their own `dataset_id` column, which is a fact about the
+#: row instead.
+STUDY_PROVENANCE_COLUMNS = ("study_layer", "study_bundle_id")
 
 #: Tables the catalog builds itself. They are not in the schema: they describe the catalog, not the
 #: science, and a caller can tell them apart by this prefix.
 CATALOG_TABLES = (
     "catalog_meta",
     "catalog_bundles",
+    "catalog_study_bundles",
     "catalog_tables",
     "catalog_checks",
 )
@@ -308,7 +324,155 @@ def select_bundles(
     return chosen
 
 
-def catalog_id(bundles: Sequence[BundleRef]) -> str:
+@dataclass(frozen=True)
+class StudyBundleRef:
+    """One written study bundle, as the catalog sees it.
+
+    Separate from `BundleRef` because the two are not interchangeable: a search bundle is one
+    dataset's evidence and a study bundle is one layer's model results over however many datasets.
+    They share a store and nothing else.
+    """
+
+    path: Path
+    manifest: dict[str, Any]
+
+    @classmethod
+    def load(cls, path: Path) -> "StudyBundleRef":
+        manifest_path = path / STUDY_BUNDLE_MANIFEST
+        if not manifest_path.is_file():
+            raise CatalogError(f"{path} holds no {STUDY_BUNDLE_MANIFEST}, so it is not a study bundle")
+        return cls(path=path, manifest=_read_json(manifest_path))
+
+    @property
+    def layer(self) -> str:
+        return str(self.manifest["layer"])
+
+    @property
+    def bundle_id(self) -> str:
+        return str(self.manifest["bundle_id"])
+
+    @property
+    def layer_version(self) -> str:
+        return str(self.manifest.get("layer_version", "?"))
+
+    @property
+    def schema_version(self) -> str:
+        return str(self.manifest.get("schema_version", "?"))
+
+    @property
+    def written_utc(self) -> str:
+        return str(self.manifest.get("written_utc", ""))
+
+    @property
+    def row_counts(self) -> dict[str, int]:
+        return {str(k): int(v) for k, v in (self.manifest.get("tables") or {}).items()}
+
+    def table_path(self, table: str) -> Path | None:
+        path = self.path / f"{table}.parquet"
+        return path if path.is_file() else None
+
+
+def discover_study_bundles(store: Path, layer: str) -> list[StudyBundleRef]:
+    """Every study bundle written for one layer, oldest first. Same ordering rule as a dataset's."""
+    root = Path(store) / STUDY_DIR / layer
+    if not root.is_dir():
+        return []
+    found = [
+        StudyBundleRef.load(child)
+        for child in sorted(root.iterdir())
+        if child.is_dir() and (child / STUDY_BUNDLE_MANIFEST).is_file()
+    ]
+    return sorted(
+        found,
+        key=lambda ref: (
+            ref.written_utc,
+            (ref.path / STUDY_BUNDLE_MANIFEST).stat().st_mtime,
+            ref.bundle_id,
+        ),
+    )
+
+
+def available_study_layers(store: Path) -> dict[str, list[StudyBundleRef]]:
+    """Every layer the store holds a delivery for, so `build` can say what is on offer."""
+    root = Path(store) / STUDY_DIR
+    if not root.is_dir():
+        return {}
+    found = {}
+    for child in sorted(root.iterdir()):
+        if not child.is_dir():
+            continue
+        bundles = discover_study_bundles(store, child.name)
+        if bundles:
+            found[child.name] = bundles
+    return found
+
+
+def select_study_bundles(
+    store: Path,
+    *,
+    pins: dict[str, str] | None = None,
+    latest: Sequence[str] = (),
+    release: str | None = None,
+) -> list[StudyBundleRef]:
+    """Choose at most one study bundle per layer, and load none unless asked.
+
+    **Study bundles are opt-in.** A build that names no layer gets the empty study tables it has had
+    since 0.6.0, which is the honest default: a catalog that silently picked up whichever model
+    results happened to be in the store would answer a benchmark question differently from one
+    built an hour earlier, with nothing in either to say why.
+
+    Args:
+        store: the instance's bundle store; study bundles live under its `_study/` directory.
+        pins: `{layer: bundle id or unique prefix}`.
+        latest: layers to take the newest delivery of.
+        release: the release this catalog is for. `latest` is then refused, for the same reason
+            D11 refuses it for datasets -- a release that can pick up a later re-fit is not a
+            release.
+
+    Raises:
+        CatalogError: a layer has no delivery, a pin matches none or several, a layer is both
+            pinned and asked for latest, or `latest` is combined with `release`.
+    """
+    pins = dict(pins or {})
+    latest = list(latest)
+    both = sorted(set(pins) & set(latest))
+    if both:
+        raise CatalogError(
+            f"study layer {', '.join(both)} is both pinned with --study and asked for with "
+            f"--study-latest. Say which delivery this catalog is of, once."
+        )
+    if release and latest:
+        raise CatalogError(
+            f"--release {release} and --study-latest are mutually exclusive. A release names the "
+            f"exact deliveries it was checked against; --study-latest would let it pick up a later "
+            f"re-fit silently. Pin each layer with --study <layer>=<id>."
+        )
+    chosen: list[StudyBundleRef] = []
+    for layer in sorted(set(pins) | set(latest)):
+        candidates = discover_study_bundles(store, layer)
+        if not candidates:
+            raise CatalogError(
+                f"study layer '{layer}' has no delivery under {Path(store) / STUDY_DIR / layer}. "
+                f"Run `datarepo study` for it first."
+            )
+        pin = pins.get(layer)
+        if pin is None:
+            chosen.append(candidates[-1])
+            continue
+        matches = [c for c in candidates if c.bundle_id.startswith(pin)]
+        if len(matches) != 1:
+            known = ", ".join(c.bundle_id for c in candidates)
+            raise CatalogError(
+                f"study layer '{layer}': --study {pin} matches {len(matches)} of the deliveries on "
+                f"disk ({known})"
+            )
+        chosen.append(matches[0])
+    return chosen
+
+
+def catalog_id(
+    bundles: Sequence[BundleRef], study_bundles: Sequence[StudyBundleRef] = ()
+) -> str:
     """Content hash of the bundles, the schema, the study layers and the builder.
 
     The same bundles built by the same code give the same id, so `build` can tell a rebuild from a
@@ -325,6 +489,11 @@ def catalog_id(bundles: Sequence[BundleRef]) -> str:
         digest.update(f"study/{layer}/{version}\n".encode())
     for ref in sorted(bundles, key=lambda r: (r.dataset_id, r.bundle_id)):
         digest.update(f"{ref.dataset_id}\t{ref.bundle_id}\n".encode())
+    # And so are its ROWS. A catalog built with a delivery of age effects and one built without it
+    # answer 46 of aging's benchmark questions differently, so sharing an id would make the two
+    # indistinguishable to anyone citing one of them.
+    for ref in sorted(study_bundles, key=lambda r: (r.layer, r.bundle_id)):
+        digest.update(f"study-bundle/{ref.layer}\t{ref.bundle_id}\n".encode())
     return digest.hexdigest()[:16]
 
 
@@ -336,6 +505,7 @@ class CatalogResult:
     catalog_id: str
     datasets: list[str]
     bundles: list[BundleRef]
+    study_bundles: list[StudyBundleRef] = field(default_factory=list)
     row_counts: dict[str, int] = field(default_factory=dict)
     checks: list[dict[str, Any]] = field(default_factory=list)
     indexes: int = 0
@@ -382,28 +552,43 @@ def _create_empty(con: Any, table: str) -> None:
     con.unregister("_empty_table")
 
 
-def _create_study_tables(con: Any) -> list[str]:
-    """Create every study layer's tables, empty, so the layer is queryable before it is filled.
-
-    A study layer ADDS tables keyed on core identifiers and never alters a core table (U5), so it is
-    created separately and a catalog is complete without one. They are empty and will stay empty
-    until a producer delivers rows: nothing in the ingest path writes them, because `age_effect` is
-    the output of a modelling stage that runs long after a search, and how those rows reach a bundle
-    is an open question rather than a guess (DATAREPO-20).
-
-    Creating them anyway is the point. aging's benchmark distinguishes NO_TABLE from EMPTY_TABLE,
-    and the 46 questions that need an age effect currently score the first. An empty table with the
-    right columns says "this repository can hold that, and holds none"; a missing table says
-    nothing at all, and a caller cannot tell it from a repository that never modelled age.
-
-    Returns:
-        The table names created, in layer order.
-    """
+def _study_schema(schema: Any) -> Any:
+    """One study table's catalog schema: the layer's columns behind the two provenance ones."""
     import pyarrow as pa  # noqa: PLC0415
 
-    created: list[str] = []
+    return pa.schema(
+        [
+            pa.field("study_layer", pa.string()),
+            pa.field("study_bundle_id", pa.string()),
+            *schema,
+        ]
+    )
+
+
+def _create_study_tables(
+    con: Any, study_bundles: Sequence["StudyBundleRef"] = ()
+) -> dict[str, int]:
+    """Create every study layer's tables, filled from a delivery where there is one.
+
+    A study layer ADDS tables keyed on core identifiers and never alters a core table (U5), so it is
+    created separately and a catalog is complete without one.
+
+    **A table with no delivery is created empty, and that has always been the point.** aging's
+    benchmark distinguishes NO_TABLE from EMPTY_TABLE, and the 46 questions that need an age effect
+    scored the first until 0.6.0 created these. An empty table with the right columns says "this
+    repository can hold that, and holds none"; a missing table says nothing at all, and a caller
+    cannot tell it from a repository that never modelled age. Study bundles are opt-in
+    (`select_study_bundles`), so the empty case stays the default rather than the accident.
+
+    Returns:
+        `{table: row count}` for every study table, including the empty ones -- which is the
+        difference that matters to a caller and so the difference `catalog_tables` records.
+    """
+    by_layer = {ref.layer: ref for ref in study_bundles}
+    row_counts: dict[str, int] = {}
     taken = set(TABLES) | set(DERIVED_TABLES) | set(ACCEPTED_VIEWS) | set(GRAIN_VIEWS)
     for layer, tables in STUDY_TABLES.items():
+        ref = by_layer.get(layer)
         for table, schema in tables.items():
             if table in taken:
                 raise CatalogError(
@@ -411,11 +596,21 @@ def _create_study_tables(con: Any) -> list[str]:
                     f"catalog already uses. A study layer adds tables; it never shadows one."
                 )
             taken.add(table)
-            con.register("_empty_study", pa.schema(list(schema)).empty_table())
-            con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM _empty_study')
-            con.unregister("_empty_study")
-            created.append(table)
-    return created
+            path = ref.table_path(table) if ref is not None else None
+            if path is None:
+                con.register("_empty_study", _study_schema(schema).empty_table())
+                con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM _empty_study')
+                con.unregister("_empty_study")
+                row_counts[table] = 0
+                continue
+            con.execute(
+                f'CREATE TABLE "{table}" AS '
+                f"SELECT {_quote(layer)} AS study_layer, "
+                f"{_quote(ref.bundle_id)} AS study_bundle_id, * "
+                f"FROM read_parquet({_quote(path.as_posix())})"
+            )
+            row_counts[table] = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+    return row_counts
 
 
 def _load_tables(con: Any, bundles: Sequence[BundleRef]) -> dict[str, int]:
@@ -703,6 +898,65 @@ def _check_integrity(con: Any) -> list[dict[str, Any]]:
     return checks
 
 
+def _check_study(con: Any, study_bundles: Sequence["StudyBundleRef"]) -> list[dict[str, Any]]:
+    """A loaded study layer's own rules: its keys are unique and its joins into the core resolve.
+
+    Only runs for layers a delivery was loaded for. An empty study table has nothing to check and
+    the checks would pass vacuously, which would put a reassuring line in `catalog_checks` about
+    something nobody delivered.
+
+    The reference checks are NOT scoped by `dataset_id` the way the core's are. A study layer's
+    rows are not namespaced per dataset by us -- the producer chose their identifiers -- and
+    `age_effect_meta` is pooled across datasets by construction, so a per-dataset join would be
+    wrong for the table the layer exists to produce.
+
+    `build` refuses on a failure rather than dropping the rows. An age effect naming a dataset this
+    catalog does not hold is not a row to quietly skip: section D's question would come back with a
+    smaller answer than the delivery supports, and nothing in the catalog would say so.
+    """
+    checks: list[dict[str, Any]] = []
+    for ref in sorted(study_bundles, key=lambda r: r.layer):
+        layer = ref.layer
+        for table, key in sorted(STUDY_COMPOSITE_IDENTIFIERS.get(layer, {}).items()):
+            if table not in STUDY_TABLES[layer]:
+                continue
+            columns = ", ".join(f'"{c}"' for c in key)
+            not_null = " AND ".join(f'"{c}" IS NOT NULL' for c in key)
+            duplicates, example = _count(
+                con,
+                f"SELECT count(*), min(k) FROM (SELECT {columns}, min("
+                f'CAST("{key[0]}" AS VARCHAR)) AS k FROM "{table}" WHERE {not_null} '
+                f"GROUP BY {columns} HAVING count(*) > 1)",
+            )
+            checks.append({
+                "name": f"{layer}.{table} ({', '.join(key)})",
+                "kind": "study-unique",
+                "ok": duplicates == 0,
+                "observed": duplicates,
+                "expected": 0,
+                "detail": None if duplicates == 0 else f"e.g. {example}",
+            })
+
+        for table, column, target, target_column in STUDY_REFERENCES.get(layer, ()):
+            if table not in STUDY_TABLES[layer]:
+                continue
+            dangling, example = _count(
+                con,
+                f'SELECT count(*), min(val) FROM (SELECT DISTINCT "{column}" AS val '
+                f'FROM "{table}" WHERE "{column}" IS NOT NULL) s WHERE NOT EXISTS ('
+                f'SELECT 1 FROM "{target}" t WHERE t."{target_column}" = s.val)',
+            )
+            checks.append({
+                "name": f"{layer}.{table}.{column} -> {target}.{target_column}",
+                "kind": "study-reference",
+                "ok": dangling == 0,
+                "observed": dangling,
+                "expected": 0,
+                "detail": None if dangling == 0 else f"e.g. {example}",
+            })
+    return checks
+
+
 def _write_catalog_tables(
     con: Any,
     bundles: Sequence[BundleRef],
@@ -712,6 +966,8 @@ def _write_catalog_tables(
     cid: str,
     instance: str | None,
     notes: dict[str, Any] | None,
+    study_bundles: Sequence["StudyBundleRef"] = (),
+    study_counts: dict[str, int] | None = None,
 ) -> None:
     """The catalog's account of itself: what went in, what came out, and what was checked."""
     con.execute(
@@ -769,6 +1025,33 @@ def _write_catalog_tables(
             ],
         )
 
+    # A separate table from `catalog_bundles`, because the two are separate objects: a search
+    # bundle is one dataset's evidence, a study bundle is one layer's model results over however
+    # many datasets. Squeezing a delivery into a `dataset_id` column would have meant inventing a
+    # dataset for `age_effect_meta`, which is pooled across them by construction.
+    con.execute(
+        """
+        CREATE TABLE catalog_study_bundles (
+            layer VARCHAR, bundle_id VARCHAR, layer_version VARCHAR, path VARCHAR,
+            written_utc VARCHAR, schema_version VARCHAR, instance VARCHAR, delivery VARCHAR
+        )
+        """
+    )
+    for ref in study_bundles:
+        con.execute(
+            "INSERT INTO catalog_study_bundles VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ref.layer,
+                ref.bundle_id,
+                ref.layer_version,
+                ref.path.as_posix(),
+                ref.written_utc,
+                ref.schema_version,
+                ref.manifest.get("instance"),
+                ref.manifest.get("delivery"),
+            ],
+        )
+
     con.execute(
         "CREATE TABLE catalog_tables (table_name VARCHAR, rows BIGINT, kind VARCHAR)"
     )
@@ -780,11 +1063,12 @@ def _write_catalog_tables(
         rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
         kind = "view" if name in ACCEPTED_VIEWS or name in GRAIN_VIEWS else "derived"
         con.execute("INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, rows, kind])
+    study_counts = study_counts or {}
     for layer, tables in STUDY_TABLES.items():
         for name in tables:
-            rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
             con.execute(
-                "INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, rows, f"study:{layer}"]
+                "INSERT INTO catalog_tables VALUES (?, ?, ?)",
+                [name, study_counts.get(name, 0), f"study:{layer}"],
             )
 
     con.execute(
@@ -826,6 +1110,7 @@ def build_catalog(
     overwrite: bool = False,
     instance: str | None = None,
     notes: dict[str, Any] | None = None,
+    study_bundles: Sequence[StudyBundleRef] = (),
 ) -> CatalogResult:
     """Load bundles into one DuckDB catalog at `out`.
 
@@ -836,6 +1121,9 @@ def build_catalog(
         overwrite: rebuild even when a catalog with this id is already there.
         instance: the producing instance's name, recorded in `catalog_meta`.
         notes: anything else worth recording, e.g. the release this catalog was built for.
+        study_bundles: at most one delivery per study layer, as `select_study_bundles` returns.
+            Empty is the normal case and leaves the study tables empty, which is an answer rather
+            than an omission.
 
     Returns:
         A `CatalogResult`. `skipped` is True when the catalog was already current.
@@ -871,14 +1159,37 @@ def build_catalog(
                 f"it, or build with the ingester that wrote it."
             )
 
+    study_bundles = list(study_bundles)
+    seen_layers: dict[str, StudyBundleRef] = {}
+    for ref in study_bundles:
+        if ref.layer not in STUDY_TABLES:
+            raise CatalogError(
+                f"study bundle {ref.bundle_id} delivers layer '{ref.layer}', which this build does "
+                f"not carry. Layers available: {', '.join(sorted(STUDY_TABLES)) or '(none)'}."
+            )
+        if ref.layer in seen_layers:
+            raise CatalogError(
+                f"study layer '{ref.layer}' appears twice ({seen_layers[ref.layer].bundle_id} and "
+                f"{ref.bundle_id}). A catalog holds one delivery per layer."
+            )
+        seen_layers[ref.layer] = ref
+        if ref.layer_version != STUDY_VERSIONS[ref.layer]:
+            raise CatalogError(
+                f"study bundle {ref.bundle_id} was written against {ref.layer} "
+                f"{ref.layer_version}, and this build carries {STUDY_VERSIONS[ref.layer]}. A "
+                f"column added between the two would land silently null, so re-run "
+                f"`datarepo study`, or build with the version that wrote it."
+            )
+
     out = Path(out)
-    cid = catalog_id(bundles)
+    cid = catalog_id(bundles, study_bundles)
     if not overwrite and read_catalog_id(out) == cid:
         return CatalogResult(
             path=out,
             catalog_id=cid,
             datasets=sorted(seen),
             bundles=bundles,
+            study_bundles=study_bundles,
             skipped=True,
         )
 
@@ -890,8 +1201,12 @@ def build_catalog(
         with duckdb.connect(str(staging)) as con:
             row_counts = _load_tables(con, bundles)
             _build_derived(con)
-            _create_study_tables(con)
-            checks = _check_row_counts(con, bundles) + _check_integrity(con)
+            study_counts = _create_study_tables(con, study_bundles)
+            checks = (
+                _check_row_counts(con, bundles)
+                + _check_integrity(con)
+                + _check_study(con, study_bundles)
+            )
             failed = [c for c in checks if not c["ok"]]
             if failed:
                 detail = "\n  - ".join(
@@ -905,7 +1220,15 @@ def build_catalog(
                 )
             indexes = _build_indexes(con)
             _write_catalog_tables(
-                con, bundles, row_counts, checks, cid=cid, instance=instance, notes=notes
+                con,
+                bundles,
+                row_counts,
+                checks,
+                cid=cid,
+                instance=instance,
+                notes=notes,
+                study_bundles=study_bundles,
+                study_counts=study_counts,
             )
     except BaseException:
         staging.unlink(missing_ok=True)
@@ -918,10 +1241,21 @@ def build_catalog(
         catalog_id=cid,
         datasets=sorted(seen),
         bundles=bundles,
-        row_counts=row_counts,
+        study_bundles=study_bundles,
+        row_counts={**row_counts, **{k: v for k, v in study_counts.items() if v}},
         checks=checks,
         indexes=indexes,
     )
+
+
+def _rows_if_present(con: Any, rows: Any, table: str, order: str) -> list[dict[str, Any]]:
+    """A catalog table's rows, or none when an older catalog does not have that table."""
+    import duckdb  # noqa: PLC0415
+
+    try:
+        return rows(f'SELECT * FROM "{table}" ORDER BY "{order}"')
+    except duckdb.Error:
+        return []
 
 
 def describe_catalog(path: Path) -> dict[str, Any]:
@@ -949,6 +1283,9 @@ def describe_catalog(path: Path) -> dict[str, Any]:
             "path": str(path),
             "meta": meta[0] if meta else {},
             "bundles": rows("SELECT * FROM catalog_bundles ORDER BY dataset_id"),
+            # A catalog from before 0.7.0 has no study bundles table and is still a catalog, so an
+            # absent one reads as "no delivery" rather than as a broken file.
+            "study_bundles": _rows_if_present(con, rows, "catalog_study_bundles", "layer"),
             "tables": rows("SELECT * FROM catalog_tables ORDER BY kind, table_name"),
             "checks": rows("SELECT * FROM catalog_checks ORDER BY ok, kind, name"),
         }

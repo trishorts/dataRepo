@@ -1,8 +1,8 @@
 """Building the catalog: union, provenance, acceptance, checks and content addressing.
 
-These build their own miniature bundles rather than ingesting the fixture dataset, so they run
-everywhere -- including CI, where pyMzLib's mzLib bridge is not built. What is under test here is
-what dataRepo itself decides once the bundles exist, and none of that needs a parser.
+These build their own miniature bundles rather than ingesting the fixture dataset, so they run with
+or without pyMzLib installed. What is under test here is what dataRepo itself decides once the
+bundles exist, and none of that needs a parser.
 """
 
 from __future__ import annotations
