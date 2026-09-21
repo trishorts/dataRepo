@@ -62,7 +62,7 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
 - **To check whether a thread landed, run aging's checker** — don't guess and don't edit aging's
   tracking table yourself:
-  `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`
+  `python "$env:USERPROFILE/.claude/skills/project/assets/threads.py" inbox`
   It prints who owes whom per peer and flags DUP-NUMBER / DIVERGED / ONE-SIDED / UNCOMMITTED /
   UNPUSHED. Both sides number from a shared sequence, so check `next=` before choosing a number:
   aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.

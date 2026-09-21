@@ -38,3 +38,6 @@ __pycache__/
 # Bundle stores. dataRepo is code, not data (D8): bundles belong in the producing instance.
 /store/
 *.parquet
+
+# Cross-project thread read-state: per-machine, not project truth
+.project/threads.state

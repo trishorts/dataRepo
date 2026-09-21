@@ -262,7 +262,7 @@ from a single query.
   G26's distribution question, the `search_modifications` meaning, how PXD060431's abundance-only
   restriction is enforced, and DATAREPO-18. **We owe nothing.** Re-check before writing anything -
   aging were working in parallel today and their 020 landed mid-session:
-  `powershell -NoProfile -File E:\CodeReview\aging\design\threads\check_threads.ps1`
+  `python "$env:USERPROFILE/.claude/skills/project/assets/threads.py" inbox`
   Confirm `next=` rather than assuming it; messages have crossed three times now.
 - **`design/SCHEMA_COVERAGE.md`:** all 168 benchmark questions mapped onto schema v0: 70 answerable at ingest, 94 waiting on a producer, 2 with no home (J12, P2).
 - **`design/SCHEMA_V0.md`:** what schema v0 contains and what's still open. The schema is in `schema/datarepo.yaml` (generic core, 27 tables) and `schema/study/aging.yaml` (the aging study layer, 8 tables, all empty). A study layer adds tables keyed on core identifiers and never alters a core table, so the core stays usable by a project that is not aging.
