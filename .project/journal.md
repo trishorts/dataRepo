@@ -789,3 +789,61 @@ first unattended dataset. A manifest `files: 0` -- the runner counted raw files 
 deleted them -- surfaced as `MISMATCH runs: bundle 18 vs producer 0`. Because `files` is in the
 content hash it would have fixed a wrong bundle id permanently. Their words: "that check earned
 its keep."
+
+## 2026-09-22 - Ninth: the bug that two rounds of agent review missed, and nearly blamed on somebody else
+
+aging's 035 said the contaminant organism fix was incomplete. The close-out had recorded that they
+were **wrong** -- the species was in `organism_name` and they had queried `organism`. Verified, and
+true as far as it went. A draft of thread 036 went out on that basis, with a §3 saying seven
+contaminant accessions carry no species **because MetaMorpheus wrote none for them**.
+
+The user then asked for a GitHub issue against MetaMorpheus about those seven.
+
+**Writing that issue meant asserting something about another project's output**, so their file got
+read for the first time in the whole exchange. `A2I7N2` = `Bos taurus`, plainly, in the column we
+were about to report as empty.
+
+### The actual defect
+
+MetaMorpheus **collapses a column to one entry when every protein on the row shares it**, while
+`Accession` keeps all of them:
+
+    Accession     = P60709|P63261         (2 entries)
+    Organism Name = Homo sapiens          (1 entry -- collapsed, not missing)
+
+`protein_rows` zipped the two positionally, so every accession after the first indexed past the end
+and got `''`. 2,062 rows in a 60,000-row sample; on aging's catalog **2,678 uniprot proteins, 4,523
+decoys and 9 contaminants** lost their species -- introduced in 0.11.0, *the release whose entire
+purpose was handling species correctly*. `Gene Name` collapses the same way, and
+`add_group_proteins` had the same assumption.
+
+The `ptm_sites` path did NOT have it: there is an explicit comment there about pairing residue
+starts with accessions and what happens if you do not. Somebody thought about that one. Nobody
+thought about this one, on the same day, in the same file.
+
+### What found it, since nothing else did
+
+Not a test. **Not either round of agent review** -- two benchmark agents and two red teams, none of
+them saw it, because all four were reasoning about the catalog and the defect was upstream of the
+catalog in a file none of them could read.
+
+What found it was the discomfort of making a public claim about somebody else's work. The rule is
+now in the bite-list and it generalises past GitHub issues:
+
+> **A claim about someone else's output is verified at the source, not from your own parse of it.**
+
+That is the same failure as 034 (a column shipped without its name) and as aging's own 008 (a
+clause handed over without its scope), rotated once more: **a parse trusted without its source.**
+Three shapes of the same thing inside a week, two of them ours.
+
+### And a process slip worth recording because it was the second of its kind
+
+`git add -A` on the release commit swept in the **draft** of thread 036 -- the one containing the
+false claim about MetaMorpheus -- and pushed it. It was never *posted*: it existed only in our
+repo, never in aging's, so no peer read it. But it sat in the thread directory looking posted and
+the checker counted it. Rewritten, and the commit message says so rather than replacing it
+quietly.
+
+Twice in two days a convenience reached further than intended: inferring provenance from a query's
+own output, and `git add -A` on a tree with an unfinished message in it. Same shape -- a tool that
+takes what is there rather than what was meant.

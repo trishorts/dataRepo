@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 83 |
+| Commits | 86 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 20 |
 | Open gaps | 35 |
@@ -24,11 +24,23 @@ with age.
 
 ## Where it stands (2026-09-22, eighth session)
 
-**FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.12.0**, schema **0.0.7**,
-`INGESTER_VERSION` **0.8.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**. aging
-have re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`, 95 checks passed) and are
-running an unattended batch toward 160 qualifying human datasets. **0.12.0 changes neither schema
-nor ingester, so nothing is owed to them.**
+**FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.13.0**, schema **0.0.7**,
+`INGESTER_VERSION` **0.9.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**. aging
+re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`) and run an unattended batch
+toward 160 qualifying human datasets. **0.13.0 moves `INGESTER_VERSION`, so a re-ingest on
+`efd1a83` is owed** — it fixes a collapsed-column parse that cost ~7,200 proteins their species.
+
+### The defect that four review agents missed
+
+MetaMorpheus collapses a `|`-joined column to one entry when every protein on the row shares it;
+`protein_rows` zipped it positionally, so every accession after the first got an empty string. It
+was introduced in 0.11.0 — *the release whose purpose was handling species correctly* — and
+survived two benchmark agents and two red teams, because all four reasoned about the catalog while
+the defect lived upstream in a producer file none of them could read.
+
+What found it was refusing to assert something about another project's output without reading their
+file. A GitHub issue against MetaMorpheus was one step from being filed for it. **A claim about
+someone else's output is verified at the source, not from your own parse of it.**
 
 **Locked:** D1-D11 as before, **D12-D18** (the MCP server's shape), **D19** (no fourth tool -- a
 guard belongs on the path that cannot be avoided) and **D20** (provenance is a fact about the

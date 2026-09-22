@@ -7,44 +7,36 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
 - **Pick up at:** ingest, build, the study layer and **FRAMEWORK step 3, the MCP server**, are all
-  done. Code is datarepo **0.12.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.8.0**,
-  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. aging have
-  **re-ingested all four datasets on 0.11.0** (catalog `71e48aa46a7c9900`, 95 checks passed) and
-  are running an unattended batch, so the catalog on F: grows without warning. 0.12.0 changes
-  neither schema nor ingester, so **nothing is owed to them and no re-ingest is needed.**
-  **First thing: run the thread checker** (command below) -- aging answered three of our messages
-  in one day and their 035 arrived mid-session.
+  done. Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
+  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. **aging owe a
+  re-ingest on `efd1a83`** (thread 036): 0.13.0 fixes a collapsed-column parse that cost ~7,200
+  proteins their species, so `INGESTER_VERSION` moved and every bundle re-ids. Their catalog today
+  is `71e48aa46a7c9900`, built on 0.11.0, and their unattended batch keeps adding to it.
+  **First thing: run the thread checker** (command below).
   Next, in order:
-  (1) **Reply to aging 035 section 3: the contaminant organism fix is NOT incomplete.** They
-  queried `Protein.organism`, found NULL on every contaminant, and reported the fix as failed with
-  a hypothesis about a name-to-taxon resolver. There is no resolver (D1, G36). The species is in
-  **`Protein.organism_name`**, added in schema 0.0.7: verified on their own catalog, 433 of 442
-  contaminants carry one, P02769 = `Bos taurus`, P00761 = `Sus scrofa`, and their unexplained
-  41,510 NULL non-contaminant rows are decoys. They are not blocked, but they believe a shipped
-  fix failed, and that is ours to correct. The real lesson is theirs to hear too: **shipping a
-  column is not delivering it** -- we announced the fix and never named the column.
-  (2) **G35: do NOT claim D15's bar.** It has been measured twice and each round the benchmark
-  improves while the red team finds the previous round's fix (D20 is the worst instance). 0.12.0's
-  fixes are unverified. Re-run with FRESH agents -- two `Agent` calls plus `scratchpad/ask.py`,
-  which drives the real server over real stdio -- and ask them whether the envelope fields help or
-  are ballast. **The measurement that counts is aging's** (D6): ask for the answers that came out
-  confidently wrong, never a percentage.
-  (3) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
+  (1) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
+  red team breaks the previous round's fix (D20 is the worst instance). 0.12.0's fixes are
+  unverified, and 0.13.0 proves the reviews have a blind spot: **both rounds missed the
+  collapsed-column bug, because all four agents were reasoning about the catalog and the defect was
+  upstream of it, in a producer file none of them could read.** A re-run should include at least
+  one agent pointed at `F:/aging_data/<run>/<PXD>/04_search/` rather than at the catalog.
+  (2) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
   (their 031): identity is the UniProt accession joined through MEMBERSHIP in `protein_accessions`,
   never the id string; for `ptm_site` it is (accession, residue, position, chemistry) off
   `ptm_sites_by_chemistry`, not the UNIMOD column. Land it with the membership-join view and the
   new **`n_source_groups`** column, whose description must carry the 1.02-1.05x inflation and the
-  perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT.
-  (4) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
+  perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT. A re-ingest is already owed,
+  so this lands in the same pass instead of forcing a second.
+  (3) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
   producer -- do not write one against a shape neither side has queried.
-  (5) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
+  (4) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
   `llms.txt` and Croissant, published by aging (D8). REST and Compose stay deferred. **N1/G9 --
   does NCEMS host web services at all -- goes to the next meeting regardless; it is the long pole
   for D1.**
-  (6) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
+  (5) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
   pyMzLib rather than parsing its resource files. G36 (species to taxon) gets urgent when aging's
   queue reaches mouse or rat -- they are on 2 of 160 qualifying human datasets, so not soon.
-  (7) QPX pin (G13). **D1-D20 locked.**
+  (6) QPX pin (G13). **D1-D20 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -158,6 +150,22 @@ This folder is a `/project`-managed research project. **You are de facto working
   and its own docstring warned about that while its only caller ignored the warning. It now
   returns `None` for unknown. The same split is why `describe` reports a 100%-NULL column
   separately from an absent one.
+- **A claim about someone else's output is verified at the source, not from your own parse of it.**
+  Thread 036's draft asserted that MetaMorpheus wrote no species for seven contaminants, and the
+  user asked for a GitHub issue about it. Writing that issue meant reading their file for the first
+  time -- and their file had the species. A public issue was one step from being filed, under the
+  user's name, blaming an upstream project for a defect introduced here the day before. The bug was
+  ours: MetaMorpheus **collapses a `|`-joined column to one entry when every protein on the row
+  shares it**, and `protein_rows` zipped it positionally, costing ~7,200 proteins their species.
+  **Neither round of agent review found it**, because all four agents were reasoning about the
+  catalog and the defect lived upstream in a file they could not read.
+- **Never `git add -A` in this repo.** It swept the unfinished DRAFT of thread 036 -- the one
+  carrying the false MetaMorpheus claim -- into a release commit and pushed it. Threads are never
+  edited after posting, and that one had not been posted (it was never in aging's repo, so no peer
+  read it), but it sat in `design/threads/` looking posted and the checker counted it. Stage the
+  paths you mean. This is the second convenience in two days that reached further than intended,
+  the first being provenance inferred from a query's own output -- the same shape, a tool taking
+  what is there rather than what was meant.
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**

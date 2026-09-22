@@ -325,20 +325,20 @@ gaps:
     **The measurement that counts is aging's** (D6/G5) -- 032 section 3 and 034 asked them for the
     answers that came out confidently wrong, never a percentage, and they have not run it yet.
   - >-
-    G36 Nobody owns the species-name to NCBITaxon map, and aging's 035 section 3 shows why that
-    matters to a consumer. Schema 0.0.7 splits the two facts: `Protein.organism` is the taxon of
-    the database an entry came FROM (NULL for contaminant-panel and decoy entries, because neither
-    is evidence about the sample's organism) and `Protein.organism_name` carries the producer's own
-    species string verbatim. VERIFIED on aging's re-ingested catalog 71e48aa46a7c9900: 433 of 442
-    contaminants carry a name, P02769 = 'Bos taurus', P00761 = 'Sus scrofa'. **The fix is complete.**
-    aging read `organism`, found NULL, and reported the fix as incomplete with a hypothesis about a
-    name-to-taxon resolver -- there is no resolver, by design (D1). Their unexplained 41,510 NULL
-    non-contaminant rows are decoys. TWO things outstanding: (a) reply to their 035 section 3
-    pointing at `organism_name` -- they are not blocked but they believe a shipped fix failed;
-    (b) the taxon map itself, still unowned. Candidate REQ-PYMZ, since UniProt FASTA headers carry
-    `OX=` and mzLib's loader may be able to hand us the taxon rather than the name -- the same
-    argument as G26. Urgent when aging's queue reaches mouse or rat; they are on dataset 2 of 160
-    qualifying human ones, so it is some way off. LESSON: shipping a column is not delivering it.
+    G36 Nobody owns the species-name to NCBITaxon map. Schema 0.0.7 splits the two facts:
+    `Protein.organism` is the NCBITaxon CURIE of the database an entry came FROM (NULL for
+    contaminant-panel and decoy entries, neither being evidence about the sample's organism) and
+    `Protein.organism_name` carries the producer's own species string verbatim. aging's 035 section
+    3 reported the fix as incomplete; they were RIGHT, for a reason neither side had: a collapsed
+    producer column was being zipped positionally, so 2,678 uniprot proteins, 4,523 decoys and 9
+    contaminants lost `organism_name` entirely. FIXED in 0.13.0 (`_per_accession`, INGESTER_VERSION
+    0.9.0) and answered in thread 036; **aging owe a re-ingest on efd1a83** and the values fill in
+    when they run it. STILL OPEN and the reason this gap survives: the taxon map itself. Mapping
+    `Bos taurus` -> `NCBITaxon:9913` is a reference resource this project does not own (D1), and a
+    lookup that knows one species and defaults the rest is exactly what labelled trypsin human in
+    the first place. Candidate REQ-PYMZ, same argument as G26: UniProt FASTA headers carry `OX=`,
+    so mzLib's loader may be able to hand us the taxon rather than the name. Urgent when aging's
+    queue reaches mouse or rat; they are on dataset 2 of 160 qualifying human ones.
   - >-
     DATAREPO-27 CLOSED 2026-09-22 by aging 035 section 2. `aging:DEF-PEPTIDE-1PCT` is 'target, both
     q-values <= threshold' with NO notch condition, confirming the default we implemented in
