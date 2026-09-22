@@ -6,9 +6,9 @@
 
 | | |
 |---|---|
-| Commits | 78 |
+| Commits | 81 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 19 |
+| Locked decisions | 20 |
 | Open gaps | 34 |
 | Gate items skipped | 2 |
 
@@ -24,57 +24,70 @@ with age.
 
 ## Where it stands (2026-09-22, eighth session)
 
-**FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.11.0**, schema **0.0.7**,
-`INGESTER_VERSION` **0.8.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**.
-aging must re-ingest on 0.11.0: the ingester bump re-ids every bundle.
+**FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.12.0**, schema **0.0.7**,
+`INGESTER_VERSION` **0.8.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**. aging
+have re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`, 95 checks passed) and are
+running an unattended batch toward 160 qualifying human datasets. **0.12.0 changes neither schema
+nor ingester, so nothing is owed to them.**
 
-**Locked:** D1 hosting - D11 release pinning as before, plus **D12-D18** (the MCP server's shape,
-grilled 2026-09-21) and **D19**, decided by measurement on 2026-09-22: **no fourth tool**, because
-a guard belongs on the path that cannot be avoided. See `.project/journal.md` for the reasoning.
+**Locked:** D1-D11 as before, **D12-D18** (the MCP server's shape), **D19** (no fourth tool -- a
+guard belongs on the path that cannot be avoided) and **D20** (provenance is a fact about the
+server and is inferred from nothing).
 
-### The MCP server is built, and its done-bar is not met
+### The server is built; its done-bar is measured, improving, and not claimed
 
 `datarepo mcp --catalog <path>` serves one catalog over stdio with three tools -- `describe`,
-`search`, `sql` -- each result carrying its `catalog_id` and the bundles it drew on (D13), inside
-D14's measured sandbox. Registered in both `E:/CodeReview/dataRepo` and `E:/CodeReview/aging`.
-Reference: `docs/mcp.md`.
+`search`, `sql` -- inside D14's measured sandbox, registered in both `E:/CodeReview/dataRepo` and
+`E:/CodeReview/aging`. Reference: `docs/mcp.md`.
 
-**D15's bar was measured on 2026-09-22 and FAILED.** Two agents were given the 0.10.0 server with
-its source withheld -- one answering aging's top 10 plus seven simpler questions, one trying to
-break it. Result: **5 answered, 5 correct 'no data', 7 near-misses, 0 outright wrong.** The agent
-never emitted a falsehood, but seven questions had a live path to one and it avoided them only by
-reading `describe` carefully first.
+D15's bar was measured **twice** on 2026-09-22, by agents given the tools and denied the source:
 
-Six of the seven were **one placement error**: every 'this table is empty, do not answer from it'
-guard lived in `describe` and `search`, the two tools an agent may skip, and `datarepo_sql` -- the
-tool that answers everything else -- had none of them. 0.11.0 moved the guards into `sql`'s
-envelope (`tables_touched`, `empty_tables`), validated provenance against `catalog_bundles` instead
-of trusting a column's name, added per-column non-null counts, and documented the derived layer.
-**All seven are fixed with a test each, and that is the weakest kind of evidence there is** -- each
-test was written against the failure that prompted it. A second pair of fresh agents is running.
-The measurement that counts is aging's (D6): they were asked for wrong answers, not a percentage.
+| round | server | result |
+|---|---|---|
+| one | 0.10.0 | 5 answered, 5 correct 'no data', **7 near-misses**, 0 wrong |
+| two | 0.11.0 | **0 wrong**, 9 answered, 9 correct 'no data' over 20 harder questions |
 
-**What held under attack:** the sandbox, completely. ATTACH, `read_csv_auto`, `glob`,
-multi-statement, CREATE, COPY TO and INSTALL all refused; the watchdog fired and the connection
-survived; both caps flagged. No row of non-catalog data reached a result. The risk was entirely in
-the derived layer -- the part with no documentation.
+The guards work: the benchmark agent named `empty_tables` "the single most valuable thing in the
+whole envelope" and the direct reason 9 of 20 were right. **But each round's red team broke the
+previous round's fix**, and round two broke three of five claims -- two of them *through* fields
+0.11.0 had added to prevent exactly that. 0.12.0's fixes are unverified. **Do not claim the bar on
+a run we grade ourselves**; the one that counts is aging's (G35).
 
-### Two ingest defects, found by agents pointed at the server
+### The defect worth remembering, and the deletion that fixed it
 
-**The peptidoform count.** `producer_counts` applied aging's PSM notch-resolution clause to
-peptidoforms, where MetaMorpheus does not. Its docstring said the clause 'costs nothing on
-peptidoforms' -- measured on the one dataset where it is 0, never re-run, and worth exactly 3 on
-each of the other two. PXD032202 therefore carried a `count_mismatch` finding **against a producer
-number it matched perfectly**, and the SQL view and the Python counter disagreed for three
-releases, which D10 says is impossible. The test asserting agreement checked PSMs only.
+`tables_touched` and a narrowed `provenance` were added so an answer could not be fabricated. A CTE
+named after a real table -- `WITH protein_groups_1pct AS (SELECT 99999)` -- read **zero catalog
+bytes** and came back stamped with that view's 8,055-row count and a real bundle id. The true
+answer was 1,652. **Both verification fields vouched for the fabrication.**
 
-**Contaminant species.** All 339 contaminant proteins read `NCBITaxon:9606` -- porcine trypsin,
-bovine albumin identified at q = 0 in all three datasets, horse cytochrome c, E. coli lacZ. The
-producer had been supplying the right species per accession all along. `Protein.organism` is now
-the taxon of the database an entry came from (NULL for contaminants and decoys) and
-`Protein.organism_name` carries the producer's string verbatim; no name-to-taxon mapping happens
-here (G36). The cause is the lesson: **`organism` was `required: true`, and a required column with
-no true value gets a false one.**
+The cause was a category error, not a coding one. *Which frozen data does this server hold?* is a
+fact about the server that no question can change. *Which slice did this answer touch?* is a guess
+read off the query's own output. The second was computed and labelled as the first.
+
+0.12.0 **deletes** the narrowing. `catalog_id` is a hash of the exact (dataset, bundle) set, so
+naming it already states which frozen copy of every dataset was available -- the whole citation in
+one field, immune to the class. Provenance is now identical on every answer, inferred from nothing,
+and says whether the catalog is a **release** (archived, cite this) or a **working build** (rebuilt
+in place). The resolution came from the user's model of the domain, not from more engineering.
+
+### Two ingest defects, found by agents pointed at the server, fixed and confirmed on real data
+
+**The peptidoform count.** `producer_counts` applied aging's PSM notch clause to peptidoforms,
+where MetaMorpheus does not -- a clause validated on the one dataset where it costs 0 and worth
+exactly 3 on each of the others. PXD032202 carried a `count_mismatch` against a producer number it
+matched perfectly. Confirmed gone on their re-ingest; PXD027318's now states the real 49,399 vs
+49,394. DATAREPO-27 closed by aging 035: their own S22 had already bounded the clause to PSMs.
+
+**Contaminant species.** All 339 contaminants read `NCBITaxon:9606` -- porcine trypsin, bovine
+albumin at q = 0, E. coli lacZ. `Protein.organism` is now the taxon of the database an entry came
+FROM (NULL for contaminants and decoys) and **`Protein.organism_name`** carries the producer's
+species verbatim. The cause is the lesson: **`organism` was `required: true`, and a required column
+with no true value gets a false one.**
+
+**Open, and it is a communication defect rather than a code one:** aging's 035 reports this fix as
+incomplete. It is not -- they queried `organism` and the species is in `organism_name`, which the
+thread announcing the fix never named. Verified on their catalog: 433 of 442 contaminants carry a
+name. Replying is the next action (G36).
 
 ## 2026-09-20: the site key, and the study layer
 

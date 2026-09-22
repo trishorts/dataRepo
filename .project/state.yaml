@@ -188,6 +188,25 @@ decisions:
       in 0.11.0 changes what a result SAYS about itself rather than what it contains, and the
       tests assert shape. A fourth tool is still possible under D12 if aging's own run shows a
       specific wrong answer an envelope cannot fix; nothing so far has.
+  - id: D20
+    date: 2026-09-22
+    text: >-
+      PROVENANCE IS A FACT ABOUT THE SERVER AND IS INFERRED FROM NOTHING. Every MCP result carries
+      the same block: `catalog_id`, the versions, whether the catalog is a release or a working
+      build, and every bundle the catalog holds. It does NOT narrow to what an answer touched.
+      0.11.0 narrowed by reading the result's own `bundle_id`/`dataset_id` columns, and a query can
+      put anything in a column with those names -- `SELECT max(dataset_id) AS dataset_id, count(*)
+      FROM ptm_sites` returned a catalog-wide count stamped with one dataset's bundle, in the words
+      a correct narrowing uses. Rejecting ids the catalog does not hold closed the REPRODUCTION and
+      not the CLASS. The narrowing was never needed: `catalog_id` is a hash of the exact (dataset,
+      bundle) set, so naming it already states which frozen copy of every dataset was available --
+      the whole citation in one field, immune to the class. The user's framing settled it: releases
+      are versioned, so 'I got this from version X' IS the answer. Corollary, and the general form:
+      `tables_touched` reads the QUERY, not the ENGINE, so it is a hint and never evidence -- a CTE
+      named after a real table certified a fabricated number with that table's row count attached.
+      **A verification mechanism that can be steered by the thing it verifies is worse than none.**
+      Do not reintroduce per-answer narrowing without deriving it from execution rather than from
+      the result.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -296,36 +315,39 @@ gaps:
     every future `build` change a deliberate decision, exactly as `INGESTER_VERSION` does. Asked as
     U10 with (a) as the default. Do not change it without a thread.
   - >-
-    G35 D15's bar was MEASURED on 2026-09-22 and FAILED, then fixed in 0.11.0 and is NOT yet
-    re-verified. Two agents were given the 0.10.0 server with its source code withheld -- one
-    answering aging's top 10 plus seven simpler questions, one trying to break it. Result: 5
-    answered, 5 correctly refused as 'no data', **7 near-misses**, 0 outright wrong. The agent
-    never emitted a falsehood but avoided seven only by reading `describe` carefully first. All
-    seven are fixed and each has a test named for the wrong answer it prevents -- which is the
-    weakest kind of evidence there is, because every one of those tests was written against the
-    failure that prompted it. A second pair of agents is running against 0.11.0. **The measurement
-    that counts is aging's** (D6/G5): 032 section 3 asked them for the answers that came out
-    confidently wrong rather than for a percentage, and 034 repeated it. Until their run, the bar
-    is not claimed.
+    G35 D15's bar, measured TWICE on 2026-09-22 and still not claimed. Round one against 0.10.0:
+    5 answered, 5 correct 'no data', 7 NEAR-MISSES, 0 wrong -- FAILED. Round two against 0.11.0
+    with fresh agents and harder questions: **0 wrong, 9 answered, 9 correct 'no data'** over 20,
+    and the guards were named as the direct reason 9 were right. But the same round's red team
+    broke three of five claims, two THROUGH the fields 0.11.0 added to prevent them (see D20), all
+    fixed in 0.12.0 and NOT re-verified. The pattern to expect: each round the benchmark improves
+    and the red team finds the previous round's fix. Do not claim the bar on a self-graded run.
+    **The measurement that counts is aging's** (D6/G5) -- 032 section 3 and 034 asked them for the
+    answers that came out confidently wrong, never a percentage, and they have not run it yet.
   - >-
-    G36 Nobody owns the species-name to NCBITaxon map. MetaMorpheus names a contaminant entry's
-    species per accession -- `Bos taurus`, `Sus scrofa`, `Equus caballus`, `Escherichia coli
-    (strain K12)` -- and schema 0.0.7 stores it verbatim in `Protein.organism_name` while
-    `Protein.organism` holds the taxon only for entries from the searched proteome and NULL for
-    contaminants and decoys. Deliberately no mapping happens in dataRepo: a name-to-CURIE table is
-    a reference resource this project does not own (D1), and inventing a partial one is how the
-    original defect happened in reverse. Candidate `REQ-PYMZ` -- UniProt FASTA headers carry `OX=`,
-    so pyMzLib's loader may be able to hand us the taxon rather than the name, which would be the
-    same shape as G26's argument for asking the loader instead of parsing resources. It gets
-    urgent when aging's queue reaches mouse or rat (their 031 section 3): a human contaminant
-    panel in a rodent dataset would previously have been labelled with the rodent's taxon, which
-    INVERTS the species signal rather than flattening it.
+    G36 Nobody owns the species-name to NCBITaxon map, and aging's 035 section 3 shows why that
+    matters to a consumer. Schema 0.0.7 splits the two facts: `Protein.organism` is the taxon of
+    the database an entry came FROM (NULL for contaminant-panel and decoy entries, because neither
+    is evidence about the sample's organism) and `Protein.organism_name` carries the producer's own
+    species string verbatim. VERIFIED on aging's re-ingested catalog 71e48aa46a7c9900: 433 of 442
+    contaminants carry a name, P02769 = 'Bos taurus', P00761 = 'Sus scrofa'. **The fix is complete.**
+    aging read `organism`, found NULL, and reported the fix as incomplete with a hypothesis about a
+    name-to-taxon resolver -- there is no resolver, by design (D1). Their unexplained 41,510 NULL
+    non-contaminant rows are decoys. TWO things outstanding: (a) reply to their 035 section 3
+    pointing at `organism_name` -- they are not blocked but they believe a shipped fix failed;
+    (b) the taxon map itself, still unowned. Candidate REQ-PYMZ, since UniProt FASTA headers carry
+    `OX=` and mzLib's loader may be able to hand us the taxon rather than the name -- the same
+    argument as G26. Urgent when aging's queue reaches mouse or rat; they are on dataset 2 of 160
+    qualifying human ones, so it is some way off. LESSON: shipping a column is not delivering it.
   - >-
-    DATAREPO-27 Does `aging:DEF-PEPTIDE-1PCT` carry a notch condition? Asked in thread 033 and
-    implemented on our default (it does not) in 0.11.0. `producer_counts` had applied the PSM
-    notch-resolution clause from aging 008 to peptidoforms as well; PXD032202's producer count of
-    21,771 equals the un-clause number exactly, so the clause does not belong there. If the
-    definition means something else, aging says so before re-ingesting.
+    DATAREPO-27 CLOSED 2026-09-22 by aging 035 section 2. `aging:DEF-PEPTIDE-1PCT` is 'target, both
+    q-values <= threshold' with NO notch condition, confirming the default we implemented in
+    0.11.0 -- and aging supplied a better reason than our arithmetic: their own S22, closed
+    2026-09-19, already said the peptide-level collapse removes ambiguous rows BEFORE the count is
+    taken, so the clause was never a property of the peptide definition at all. Their framing of
+    their half: they handed us a clause without handing us its scope. Re-ingest on 0.11.0 confirmed
+    both halves on real data: PXD032202's spurious count_mismatch is gone, PXD027318's now states
+    49,399 vs 49,394 rather than a number that was neither side's.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

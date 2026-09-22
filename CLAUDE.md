@@ -7,40 +7,44 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
 - **Pick up at:** ingest, build, the study layer and **FRAMEWORK step 3, the MCP server**, are all
-  done. Code is datarepo **0.11.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.8.0**,
-  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**; aging's v0.1 stays as
-  released and is not being re-cut. **aging owes us three things** (threads 033/034): whether the
-  peptide rule really carries no notch condition (DATAREPO-27 -- we implemented our default),
-  whether they paused their unattended 60-dataset batch, and the benchmark run. **They must
-  re-ingest on 0.11.0** -- `INGESTER_VERSION` 0.8.0 re-ids every bundle. **First thing: run the
-  thread checker** (command below); aging move fast and answered three of our messages in one day.
+  done. Code is datarepo **0.12.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.8.0**,
+  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. aging have
+  **re-ingested all four datasets on 0.11.0** (catalog `71e48aa46a7c9900`, 95 checks passed) and
+  are running an unattended batch, so the catalog on F: grows without warning. 0.12.0 changes
+  neither schema nor ingester, so **nothing is owed to them and no re-ingest is needed.**
+  **First thing: run the thread checker** (command below) -- aging answered three of our messages
+  in one day and their 035 arrived mid-session.
   Next, in order:
-  (1) **Verify D15, which is MEASURED and FAILED and then fixed but NOT re-verified (G35).** On
-  2026-09-22 two agents were given the 0.10.0 server with its source withheld: 5 answered, 5
-  correct 'no data', **7 near-misses**, 0 outright wrong. All seven are fixed in 0.11.0 with a test
-  each -- and a fix tested against the failure that prompted it is the weakest evidence there is.
-  Re-run with FRESH agents (the setup is two Agent calls plus
-  `scratchpad/ask.py`, which drives the real server over real stdio). Ask them explicitly whether
-  the added envelope fields help or are ballast. **The measurement that counts is aging's** (D6):
-  ask for the answers that came out confidently wrong, never a percentage.
-  (2) **G32**, `age_effect_meta.feature_id`, now fully specified and the cheapest it will ever be:
-  aging's 031 delivered `DEF-AGE-EFFECT-META v1.1` with the membership-join rule (identity is the
-  UniProt accession, joined through membership in `protein_accessions`, never the id string; for
-  `ptm_site` it is (accession, residue, position, chemistry) off `ptm_sites_by_chemistry`, not the
-  UNIMOD column) **and a new column `n_source_groups`** whose description must carry the
-  1.02-1.05x inflation and the perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT.
-  A re-ingest is already owed, so this lands in the same bump instead of forcing a second.
-  (3) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
+  (1) **Reply to aging 035 section 3: the contaminant organism fix is NOT incomplete.** They
+  queried `Protein.organism`, found NULL on every contaminant, and reported the fix as failed with
+  a hypothesis about a name-to-taxon resolver. There is no resolver (D1, G36). The species is in
+  **`Protein.organism_name`**, added in schema 0.0.7: verified on their own catalog, 433 of 442
+  contaminants carry one, P02769 = `Bos taurus`, P00761 = `Sus scrofa`, and their unexplained
+  41,510 NULL non-contaminant rows are decoys. They are not blocked, but they believe a shipped
+  fix failed, and that is ours to correct. The real lesson is theirs to hear too: **shipping a
+  column is not delivering it** -- we announced the fix and never named the column.
+  (2) **G35: do NOT claim D15's bar.** It has been measured twice and each round the benchmark
+  improves while the red team finds the previous round's fix (D20 is the worst instance). 0.12.0's
+  fixes are unverified. Re-run with FRESH agents -- two `Agent` calls plus `scratchpad/ask.py`,
+  which drives the real server over real stdio -- and ask them whether the envelope fields help or
+  are ballast. **The measurement that counts is aging's** (D6): ask for the answers that came out
+  confidently wrong, never a percentage.
+  (3) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
+  (their 031): identity is the UniProt accession joined through MEMBERSHIP in `protein_accessions`,
+  never the id string; for `ptm_site` it is (accession, residue, position, chemistry) off
+  `ptm_sites_by_chemistry`, not the UNIMOD column. Land it with the membership-join view and the
+  new **`n_source_groups`** column, whose description must carry the 1.02-1.05x inflation and the
+  perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT.
+  (4) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
   producer -- do not write one against a shape neither side has queried.
-  (4) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` generating dataset pages with
-  Bioschemas JSON-LD, `llms.txt` and Croissant, published by aging (D8). REST and Compose stay
-  deferred. **N1/G9 -- does NCEMS host web services at all -- goes to the next meeting regardless;
-  it is the long pole for D1.**
-  (5) **G33** the C-terminal safety net, **G26** the modification registry and **G36** the
-  species-name-to-taxon map, all three the same `REQ-PYMZ` shape: ask mzLib's loader through
-  pyMzLib rather than parsing its resource files. aging tried three parses and two were
-  confidently wrong. G36 gets urgent when their queue reaches mouse or rat.
-  (6) QPX pin (G13). **D1-D19 locked.**
+  (5) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
+  `llms.txt` and Croissant, published by aging (D8). REST and Compose stay deferred. **N1/G9 --
+  does NCEMS host web services at all -- goes to the next meeting regardless; it is the long pole
+  for D1.**
+  (6) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
+  pyMzLib rather than parsing its resource files. G36 (species to taxon) gets urgent when aging's
+  queue reaches mouse or rat -- they are on 2 of 160 qualifying human datasets, so not soon.
+  (7) QPX pin (G13). **D1-D20 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -133,6 +137,27 @@ This folder is a `/project`-managed research project. **You are de facto working
   real stdio). Two of them found seven near-misses, two ingest defects nobody was looking at, and
   settled D12's fourth-tool question -- in about an hour. **Designing harder does not close the gap
   between "we built for X" and "X holds".**
+- **A verification mechanism that can be steered by the thing it verifies is worse than none.**
+  0.11.0 added `tables_touched` and a narrowed `provenance` so an answer could not be fabricated.
+  A CTE named after a real table -- `WITH protein_groups_1pct AS (SELECT 99999)` -- read zero
+  catalog bytes and came back stamped with that view's 8,055-row count and a real bundle id. Both
+  new fields vouched for the fabrication. It converts a question the reader would have asked into
+  an answer they accept. **Anything that certifies an answer must come from the engine, not from
+  the query or its output** (D20).
+- **Fixing the reproduction is not fixing the class, and you will not notice the difference.** The
+  forgeable provenance was 'fixed' by rejecting bundle ids the catalog does not hold; a REAL id in
+  a computed column narrows just as well. Both rounds of this happened on a day whose own journal
+  entry already warned that a fix tested against the failure that prompted it is the weakest
+  evidence there is. Write the test for the CLASS or say plainly that you did not.
+- **Shipping a column is not delivering it.** Schema 0.0.7 added `Protein.organism_name` and the
+  thread announcing the fix never named it, so aging queried `Protein.organism`, found NULL, and
+  reported a working fix as broken (their 035 section 3). A consumer checks the obvious column. If
+  a fix moves a fact to a new column, the thread must say the column's name.
+- **`empty` and `unknown` are different answers and must not share a representation.**
+  `referenced_tables` returned `[]` both for 'this query reads no tables' and for 'I cannot tell',
+  and its own docstring warned about that while its only caller ignored the warning. It now
+  returns `None` for unknown. The same split is why `describe` reports a 100%-NULL column
+  separately from an absent one.
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**

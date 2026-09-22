@@ -707,3 +707,85 @@ fixed, and explicitly asked whether the added envelope fields helped or are ball
 learn to skip. The measurement that actually counts is aging's, and 032 asked them for wrong
 answers rather than a score.
 
+
+## 2026-09-22 - Same day, later: the fix that certified the forgery, and a deletion
+
+0.10.0 shipped the MCP server. 0.11.0 fixed what two agents found in it. Then a **second** pair of
+agents ran against 0.11.0 -- and the part worth recording is what they found in the fixes.
+
+The benchmark improved, and honestly: **0 wrong, 9 answered, 9 correct 'no data'** over 20
+questions, against 5/5 over 17 the round before. The `empty_tables` guard was called "the single
+most valuable thing in the whole envelope" and named as the direct reason 9 of 20 were answered
+correctly. The column-level NULL counts prevented two specific wrong answers.
+
+**And the red team broke three of five claims, two of them through the fields added to prevent
+exactly that.**
+
+### The shape of the failure, which is the thing to remember
+
+`tables_touched` and the narrowed `provenance` were added in 0.11.0 so an answer could not be
+fabricated. A CTE named after a real table -- `WITH protein_groups_1pct AS (SELECT 99999)` -- read
+**zero catalog bytes** and came back stamped `tables_touched: [{protein_groups_1pct, rows: 8055}]`
+with a real bundle id. The true answer was 1,652. Both verification fields vouched for the
+fabrication, and the provenance text pointed the reader at `tables_touched` as the backstop.
+
+Naming a working table after the thing it relates to needs no adversary. **A verification mechanism
+that can be steered by the thing it verifies is worse than none**, because it converts a question
+the reader would have asked into an answer they accept.
+
+Worse, the 0.11.0 provenance patch had *already* been this mistake once. The first red-team round
+showed a fake bundle id echoed as the provenance of 8,055 real rows; the patch rejected ids the
+catalog does not hold. That closed the reproduction. A **real** id in a computed column --
+`SELECT max(dataset_id) AS dataset_id, count(*) FROM ptm_sites` -- narrows just as effectively, and
+nobody has to be trying. **I fixed the reproduction and called it the class, having written a
+warning about exactly that into this file the same morning.**
+
+### What resolved it was a question, not a patch
+
+The user asked: releases are versioned, so an old dataset sits in several versions -- does "I got
+this data from this version" help? It does more than help. **`catalog_id` is a hash of the exact
+(dataset, bundle) set**, so naming it already states precisely which frozen copy of every dataset
+was available. The narrowing was never adding provenance; it was adding a convenience, and
+labelling a convenience as provenance is what made it forgeable.
+
+Two questions had been answered as one:
+
+* **Which frozen data does this server hold?** A fact about the server, fixed when it opened the
+  file. No question can change it.
+* **Which slice did this answer touch?** A guess, read off the query's own output.
+
+0.12.0 deletes the second. Provenance is identical on every answer and inferred from nothing. The
+fix is a **deletion**, which is the right shape for a defect caused by a mechanism that should not
+have existed -- and it came from the user's model of the domain, not from more engineering.
+
+### aging re-ingested mid-session, and their 035 is half right
+
+They did **not** pause the batch, and their reasoning is better than our question was: the expensive
+lanes are fetch and search, the defects were wrong metadata over correct rows, an ingest is minutes.
+Four datasets on 0.11.0, 95 checks passed, catalog `71e48aa46a7c9900`. Both count fixes confirmed on
+real data -- PXD032202's spurious `count_mismatch` is gone, PXD027318's now states the real 49,399
+vs 49,394 instead of a number that was neither side's.
+
+**DATAREPO-27 closed, and they gave the better argument.** Our default was right on PXD032202's
+arithmetic; their reason is structural and was already in their own ledger: S22 established that the
+peptide-level collapse removes ambiguous rows *before* the count is taken, so the notch clause was
+never a property of `DEF-PEPTIDE-1PCT` at all. Their framing of their half: **they handed us a
+clause without handing us its scope**, and their ledger already held the sentence that bounded it.
+
+**Their section 3 says the contaminant organism fix is incomplete. It is not, and the reason
+matters.** They queried `organism`, found NULL on every contaminant, and hypothesised a
+name-to-taxon resolver that knows only `Homo sapiens`. There is no resolver -- deliberately (D1,
+G36). The species is in **`organism_name`**, the column schema 0.0.7 added for it: 433 of 442
+contaminants carry one, P02769 reads `Bos taurus`, P00761 reads `Sus scrofa`. Their unexplained
+41,510 NULL non-contaminant rows are **decoys**, NULL by design because a reversed sequence is no
+organism's protein.
+
+So there IS a defect and it is **ours and it is a communication one**: we added a column, described
+it in the schema, and said nothing about it in the thread that announced the fix. A consumer who
+checks the obvious column concludes the fix failed. **Shipping a column is not delivering it.**
+
+Their section 4 is the best news in the message: our reconciliation caught *their* bug on their
+first unattended dataset. A manifest `files: 0` -- the runner counted raw files after cleanup had
+deleted them -- surfaced as `MISMATCH runs: bundle 18 vs producer 0`. Because `files` is in the
+content hash it would have fixed a wrong bundle id permanently. Their words: "that check earned
+its keep."
