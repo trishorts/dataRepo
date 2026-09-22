@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 112 |
+| Commits | 114 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 23 |
 | Open gaps | 46 |
@@ -636,7 +636,16 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
 
 ### The next action
 
-1. **Close G48 — `Protein.gene` is a stored value we cannot reproduce from our own reader.** This
+1. **Read `logs` 004 and 005 — both UNREAD, we owe 006.** They arrived while this close-out was
+   running, which is the second time today that channel has moved faster than the file recording
+   it. 004: *"Our hypothesis was wrong and yours is better. Taking your §10 offer"* — that is the
+   offer to measure how many of our 20,022 accessions carry an Ensembl/GeneID/HGNC/RefSeq
+   cross-reference in the UniProt XML they were actually searched against, plus an addition of
+   theirs (**REQ-DATAREPO-4**). 005: *"three needs we have not stated"* (**REQ-DATAREPO-5/6**).
+   Read both before starting item 2 — the XML cross-reference measurement is a day's work at most
+   and it closes their last open modelling question.
+
+2. **Close G48 — `Protein.gene` is a stored value we cannot reproduce from our own reader.** This
    is first because `logs` has claimed accession→gene resolution and we have told them, in writing,
    to treat the column as unvalidated until we explain it. Tracing `P63135` through
    `_per_accession` by hand gives `None` for PXD032040 (its first claiming row in `AllPSMs.psmtsv`
@@ -649,7 +658,7 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
    first-non-null-wins rather than first-row-wins, but a fix built on an unreproduced mechanism is
    the weakest evidence there is.
 
-2. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** High, because
+3. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** High, because
    it is the only item where someone else is currently working from wrong data.
    `F:/aging_data/repo/catalog.duckdb` is 4 datasets on builder 0.11.0 built at 07:20; the store
    holds **9 bundles ingested 09:12–09:21** on 0.13.0 with different ids. Everything they serve,
@@ -659,14 +668,14 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
    missing in PXD023381, 11,804 of 11,804 in PXD024803) while `organism` is correctly NULL, so it
    is an ingest-side fix they would want *before* re-ingesting again.
 
-3. **Chase DATAREPO-31 with `sdrf`: the 153 accessions.** The highest-value item in the backlog and
+4. **Chase DATAREPO-31 with `sdrf`: the 153 accessions.** The highest-value item in the backlog and
    it costs them one query. Their curated corpus has **153 accessions of 1,203 carrying a real
    donor age**; aging's batch is selecting ~160 datasets on search-side criteria **with no
    reference to that list**; and **0 of the 9 searched so far carry any age**. Two sets of almost
    the same size, currently disjoint, in a repository whose founding question is how organelle
    proteomes change with age. When the list arrives it goes to aging as a queue filter.
 
-4. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
+5. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
    ready: `inherited`/`propagated` as nullable booleans with no distance column; `organelle_label`
    renamed `organelle_category` and nullable; subcategory stored **with** its
    `mitochondrion:inner_membrane` prefix; three version fields (`version` = organelle map,
@@ -678,37 +687,37 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
    never said. Our schema also stops citing `REQ-GO-2..10`; go's standing instruction is *trust
    D1–D22*.
 
-5. **G42 — `samples` cannot tell `not available` from never-asked.** Owed to `sdrf` in our 004 §3
+6. **G42 — `samples` cannot tell `not available` from never-asked.** Owed to `sdrf` in our 004 §3
    and ours to fix. PXD036557's SDRF *has* `organism part` and `disease` columns, both
    `not available` in all 18 rows, and `samples.organism_part` is NULL for those 18 exactly as it
    is for the 144 samples whose deposits were never asked. Carry the deposit's verbatim cell into
    `sample_characteristics`, which already has the `(sample_id, name, value)` grain, so absence and
    a reserved word stop sharing NULL. This is the empty-vs-unknown rule shipped a third time.
 
-6. **G40 — add organism to `AgeEffect` and `AgeEffectMeta`.** Ours regardless of aging's answer to
+7. **G40 — add organism to `AgeEffect` and `AgeEffectMeta`.** Ours regardless of aging's answer to
    038. `age_effects` has 31 columns and `age_effect_meta` 24, and **neither has organism**, while
    `age_effect_meta` stratifies on tissue, acquisition and quant method. Nothing stops a human and
    a mouse effect pooling into one meta-estimate. Note this only lets us *refuse* to pool —
    pooling across species on purpose needs REQ-LOGS-4's key, and `feature_type` is already an open
    vocabulary, so `feature_type='orthogroup'` would make it expressible with no new tables.
 
-7. **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the red
+8. **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the red
    team breaks the previous round's fix. 0.12.0 and 0.13.0 are unverified, and the reviews have a
    blind spot — all four agents reasoned about the catalog while the collapsed-column defect lived
    upstream in a producer file none could read. **A re-run must point at least one agent at
    `F:/aging_data/<run>/<PXD>/04_search/`.**
 
-8. **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`, whose
+9. **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`, whose
    description must carry the 1.02–1.05x inflation and the perfect-correlation clause **in the
    column's own text**.
 
-9. **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a producer
+10. **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a producer
    — never one written against a shape neither side has queried.
 
-10. **`datarepo site` (D16)**, then G33/G26/G36 and the QPX pin (G13). **N1/G9 — does NCEMS host web
+11. **`datarepo site` (D16)**, then G33/G26/G36 and the QPX pin (G13). **N1/G9 — does NCEMS host web
    services at all — goes to the next meeting regardless; it is the long pole for D1.**
 
-11. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD.
+12. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD.
     Left alone deliberately; advancing is a gated step, not a close-out edit.
 
 
