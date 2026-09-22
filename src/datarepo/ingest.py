@@ -396,6 +396,9 @@ def ingest_dataset(
         "enrichment": list(entry.enrichment),
         "instrument_vendor": _vendor(instruments),
         "instruments": instruments,
+        # An allow-list, so an empty declaration means unrestricted and a response type invented
+        # later is excluded until somebody says otherwise (aging 024 section 7).
+        "permitted_responses": list(entry.permitted_responses),
         "axis_source": "provenance",
         "submission_type": None,
         "search_engine": "MetaMorpheus",

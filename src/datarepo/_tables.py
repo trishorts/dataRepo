@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.4"
+SCHEMA_VERSION = "0.0.5"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -39,6 +39,7 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("enrichment", pa.list_(pa.string()), nullable=False),
         pa.field("instrument_vendor", pa.string(), nullable=True),
         pa.field("instruments", pa.list_(pa.string()), nullable=True),
+        pa.field("permitted_responses", pa.list_(pa.string()), nullable=True),
         pa.field("axis_source", pa.string(), nullable=False),
         pa.field("submission_type", pa.string(), nullable=True),
         pa.field("search_engine", pa.string(), nullable=False),
@@ -167,7 +168,8 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("dataset_id", pa.string(), nullable=False),
         pa.field("protein_accession", pa.string(), nullable=False),
         pa.field("position", pa.int64(), nullable=False),
-        pa.field("residue", pa.string(), nullable=False),
+        pa.field("residue", pa.string(), nullable=True),
+        pa.field("site_type", pa.string(), nullable=False),
         pa.field("modification", pa.string(), nullable=True),
         pa.field("modification_name", pa.string(), nullable=False),
         pa.field("target_decoy", pa.string(), nullable=True),
@@ -179,10 +181,11 @@ TABLES: dict[str, pa.Schema] = {
     "ptm_stoichiometry": pa.schema([  # PtmStoichiometry
         pa.field("ptm_site_id", pa.string(), nullable=False),
         pa.field("assay_id", pa.string(), nullable=False),
-        pa.field("modified_fraction", pa.float64(), nullable=True),
-        pa.field("n_modified_peptidoforms", pa.int64(), nullable=False),
-        pa.field("n_unmodified_peptidoforms", pa.int64(), nullable=False),
-        pa.field("uncertainty", pa.float64(), nullable=True),
+        pa.field("modified_fraction_count", pa.float64(), nullable=True),
+        pa.field("modified_fraction_intensity", pa.float64(), nullable=True),
+        pa.field("intensity_is_floor", pa.bool_(), nullable=True),
+        pa.field("n_modified_psms", pa.int64(), nullable=True),
+        pa.field("n_covering_psms", pa.int64(), nullable=True),
         pa.field("definition_id", pa.string(), nullable=False),
     ]),
     "glycopeptides": pa.schema([  # Glycopeptide

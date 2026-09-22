@@ -110,7 +110,12 @@ def test_ptm_sites_come_only_from_accepted_evidence(tables):
         # The name is the key component and is always there; the accession is a derived view and
         # may be absent, which is the whole point of the rekey (aging 019 section 3).
         assert site["modification_name"]
-        assert site["ptm_site_id"].endswith(f":{site['modification_name']}")
+        # The name ends the key, except that a non-residue site type is appended after it so a
+        # protein N-terminal acetylation and an N6-acetyllysine on residue 1 cannot collide
+        # (aging 024 section 4). A `residue` site gets no suffix, which is what keeps every id
+        # written before schema 0.0.5 exactly where it was.
+        suffix = "" if site["site_type"] == "residue" else f"@{site['site_type']}"
+        assert site["ptm_site_id"].endswith(f":{site['modification_name']}{suffix}")
         assert site["modification"] is None or site["modification"].startswith("UNIMOD:")
 
 
@@ -120,7 +125,12 @@ def test_a_modification_with_no_unimod_accession_still_gets_its_sites(tables):
     unmapped = [s for s in tables["ptm_sites"] if s["modification"] is None]
     assert unmapped, "the fixture carries a modification with no UNIMOD cross-reference"
     names = {s["modification_name"] for s in unmapped}
-    assert names == {"N6,N6-dimethyllysine on K"}
+    # The two N-acetyl names are terminal sites that did not exist as rows at all before 0.8.0.
+    assert names == {
+        "N6,N6-dimethyllysine on K",
+        "N-acetylalanine on A",
+        "N-acetylglutamate on E",
+    }
     # The name carries a comma, which is fine -- ':' is the only character the key cannot hold.
     assert all(":" not in n for n in names)
     # The key is still a key: one row per (protein, position, modification).
@@ -163,3 +173,43 @@ def test_an_excluded_dataset_leaves_nothing_behind(manifest, tmp_path):
     with pytest.raises(DatasetExcluded):
         manifest.dataset("PXD000000")
     assert not store.exists()
+
+
+def test_a_modification_at_a_terminus_is_a_site_now(tables):
+    # It was not. A single `continue` skipped every placement at a peptide N-terminus, and across
+    # aging's three datasets that was 1,367 sites at q<=0.01 over 18,566 PSMs -- rows that existed
+    # in full in `peptidoforms` and had no representation whatsoever in `ptm_sites` (aging 024
+    # section 4). The fixture carries three of them.
+    terminal = [s for s in tables["ptm_sites"] if s["site_type"] != "residue"]
+    assert terminal, "the fixture carries N-terminally modified PSMs"
+    for site in terminal:
+        # Keyed on the residue it SITS ON, never on a sentinel position or the string 'N-term'.
+        assert site["residue"] and site["residue"] != "N-term"
+        assert site["position"] >= 1
+        assert site["ptm_site_id"].endswith(f"@{site['site_type']}")
+
+
+def test_an_initiator_methionine_does_not_hide_a_protein_n_terminus(tables):
+    # The case that makes this more than `start == 1`. Co-translational N-terminal acetylation
+    # follows Met excision, so the modified residue is residue 2 and the previous residue is the
+    # excised M. Getting this wrong would label the most abundant terminal chemistry in the
+    # proteome `peptide_n_term`.
+    by_id = {s["ptm_site_id"]: s for s in tables["ptm_sites"]}
+    met_cleaved = by_id["PXD999999:Q9UL25:A2:N-acetylalanine on A@protein_n_term"]
+    assert met_cleaved["site_type"] == "protein_n_term"
+    assert met_cleaved["position"] == 2 and met_cleaved["residue"] == "A"
+
+    # And the counter-case, so the rule is not just "everything terminal is a protein terminus":
+    # this peptide starts at residue 52, so its N-terminus is a cleavage artefact position.
+    internal = by_id["PXD999999:O75396:C52:Ammonia loss on C@peptide_n_term"]
+    assert internal["site_type"] == "peptide_n_term"
+    assert internal["position"] == 52
+
+
+def test_no_ordinary_site_id_moved(tables):
+    # aging ruled the site type into the key on the condition that no existing id moves. A
+    # `residue` site therefore carries no suffix at all, and that is the only thing protecting
+    # every id in the released v0.1 catalog.
+    residue_sites = [s for s in tables["ptm_sites"] if s["site_type"] == "residue"]
+    assert residue_sites
+    assert all("@" not in s["ptm_site_id"] for s in residue_sites)

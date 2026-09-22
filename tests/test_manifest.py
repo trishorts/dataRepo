@@ -128,6 +128,7 @@ datasets:
     reason: {reason}
     notes: {notes}
     flags: [{flag}]
+    permitted_responses: [{permitted}]
 """
 
 
@@ -135,7 +136,7 @@ def _declaration(tmp_path, name, **fields):
     path = tmp_path / name
     path.write_text(
         ENTRY.format(**{"title": "A title", "reason": "because", "notes": "a note",
-                        "flag": "low_id_rate", **fields}),
+                        "flag": "low_id_rate", "permitted": "abundance", **fields}),
         encoding="utf-8",
     )
     return load_manifest(path).dataset("PXD999999").content_declaration()
@@ -156,3 +157,16 @@ def test_retitling_a_dataset_does_move_the_bundle_id(tmp_path):
     before = _declaration(tmp_path, "before.yaml")
     after = _declaration(tmp_path, "after.yaml", title="Another title")
     assert before != after
+
+
+def test_changing_what_a_dataset_may_be_used_for_DOES_move_the_bundle_id(tmp_path):
+    # The mirror image of the `reason` case, and the reason CONTENT_FIELDS has to be decided per
+    # field rather than by a rule of thumb (aging 024 section 7). Two bundles over the same rows,
+    # one of which may be used for site localization and one of which may not, are not the same
+    # object: the rows MEAN different things. A deny-list would also fail open here, so the
+    # declaration is positive and an unlisted response is excluded.
+    before = _declaration(tmp_path, "narrow.yaml", permitted="abundance")
+    after = _declaration(tmp_path, "wide.yaml", permitted="abundance, occupancy")
+    assert before != after
+    assert before["permitted_responses"] == ("abundance",)
+    assert after["permitted_responses"] == ("abundance", "occupancy")

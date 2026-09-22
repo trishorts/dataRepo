@@ -37,6 +37,12 @@ CONTENT_FIELDS: tuple[str, ...] = (
     "labelling_plex",  # Dataset.labelling_plex (D5 axis)
     "enrichment",      # Dataset.enrichment (D5 axis)
     "metamorpheus",    # chooses the modification registry, and is the engine_version fallback
+    # Dataset.permitted_responses, and it is CONTENT rather than prose (aging 024 section 7).
+    # Two bundles over the same rows, one of which may be used for site localization and one
+    # of which may not, are NOT the same object: the rows mean different things. That is the
+    # opposite of the `reason` case and the same test applied honestly -- does this change
+    # what the rows MEAN. Changing a restriction must re-identify the bundle.
+    "permitted_responses",
 )
 
 #: Fields that do NOT go into the content hash, each with the reason. A bundle id has to mean "these
@@ -78,6 +84,7 @@ class DatasetEntry:
     labelling_plex: int | None = None
     enrichment: tuple[str, ...] = ("none",)
     metamorpheus: str | None = None
+    permitted_responses: tuple[str, ...] = ()
     provenance_schema: str | None = None
     flags: tuple[str, ...] = ()
     sdrf: str | None = None
@@ -222,6 +229,7 @@ def load_manifest(path: str | Path) -> Manifest:
             labelling_plex=row.get("labelling_plex"),
             enrichment=_as_tuple(row.get("enrichment"), ("none",)),
             metamorpheus=row.get("metamorpheus"),
+            permitted_responses=_as_tuple(row.get("permitted_responses"), ()),
             provenance_schema=row.get("provenance_schema"),
             flags=_as_tuple(row.get("flags"), ()),
             sdrf=row.get("sdrf"),

@@ -69,7 +69,8 @@ def store(tmp_path):
     return tmp_path / "store"
 
 
-def write_delivery(tmp_path, tables: dict[str, list[dict]], *, store, **manifest_fields):
+def write_delivery(tmp_path, tables: dict[str, list[dict]], *, store, definitions=None,
+                   **manifest_fields):
     """Write a producer's delivery -- a TSV per table plus a `study.yaml` -- and load the manifest."""
     delivery = tmp_path / "stage7"
     delivery.mkdir(parents=True, exist_ok=True)
@@ -88,6 +89,7 @@ def write_delivery(tmp_path, tables: dict[str, list[dict]], *, store, **manifest
         f"store: {store.as_posix()}",
         "instance: ncems-aging",
         *(f"{k}: {v}" for k, v in manifest_fields.items()),
+        *(["definitions:"] + [f"  - {d}" for d in definitions] if definitions else []),
         "tables:",
         *(f"  {name}: {rel}" for name, rel in sorted(declared.items())),
     ]
@@ -450,3 +452,45 @@ def test_the_shipped_example_delivery_writes_a_bundle(tmp_path, store):
 
     refusal = pq.read_table(result.bundle_path / "age_effect_refusals.parquet").to_pylist()[0]
     assert refusal["fit_refused"] == "too_few_distinct_ages"
+
+
+# --- the definition register (aging 024 section 2a) -----------------------------------------------
+
+
+DEFS = ["aging:DEF-AGE-EFFECT", "aging:DEF-AGE-EFFECT-META"]
+
+
+def test_a_definition_the_delivery_does_not_declare_refuses_the_write(tmp_path, store):
+    # aging asked for this check and corrected its target: their definitions are not produced by a
+    # search, so the core `definitions` table is the wrong register. A number whose definition id
+    # does not resolve is exactly what a register exists to prevent, and they would rather the
+    # write failed than the row landed.
+    stray = dict(EFFECT, definition_id="aging:DEF-SOMETHING-ELSE")
+    manifest = write_delivery(tmp_path, {"age_effects": [stray]}, store=store, definitions=DEFS)
+    with pytest.raises(IngestError, match="does not declare"):
+        write_study_bundle(manifest)
+
+
+def test_a_declared_definition_passes(tmp_path, store):
+    manifest = write_delivery(tmp_path, {"age_effects": [EFFECT]}, store=store, definitions=DEFS)
+    assert write_study_bundle(manifest).row_counts == {"age_effects": 1}
+
+
+def test_declaring_no_register_skips_the_check(tmp_path, store):
+    # Deliberate rather than lax: a producer who has not adopted the register is not silently held
+    # to a stricter contract than the one they agreed to. Declaring even one definition opts in.
+    stray = dict(EFFECT, definition_id="aging:DEF-SOMETHING-ELSE")
+    manifest = write_delivery(tmp_path, {"age_effects": [stray]}, store=store)
+    assert write_study_bundle(manifest).row_counts == {"age_effects": 1}
+
+
+def test_the_register_is_part_of_the_delivery_identity(tmp_path, store):
+    # It decides whether a row may be written at all, so two deliveries declaring different
+    # registers are not interchangeable even over identical numbers.
+    narrow = write_study_bundle(
+        write_delivery(tmp_path, {"age_effects": [EFFECT]}, store=store, definitions=DEFS[:1])
+    )
+    wide = write_study_bundle(
+        write_delivery(tmp_path / "b", {"age_effects": [EFFECT]}, store=store, definitions=DEFS)
+    )
+    assert narrow.bundle_id != wide.bundle_id

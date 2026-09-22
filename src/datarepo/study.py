@@ -26,9 +26,12 @@ here would freeze a guess into the data:
 * `feature_id` at meta grain is not resolved against anything. DATAREPO-20(c) asks what a feature's
   cross-dataset identity even is, and a foreign key written before that answer would be a guess with
   the authority of a constraint.
-* `definition_id` is not resolved against the core `definitions` table. Whether a study layer's own
-  definitions land in a search bundle is not settled, and refusing every delivery over it would be
-  a contract nobody agreed to.
+* `definition_id` WAS unresolved against anything, and aging asked for the check with a correction
+  to its target (their 024 section 2a). Their definitions are not produced by a search and have no
+  business in a search bundle, so the core `definitions` table is the wrong register. A delivery
+  therefore declares **its own** definitions, and a `definition_id` that is not among them refuses
+  the write: a number whose definition id is unresolvable is the exact failure the register exists
+  to prevent, and they would rather the write failed than the row landed.
 """
 
 from __future__ import annotations
@@ -60,7 +63,7 @@ SUPPORTED_STUDY_MANIFEST_VERSIONS = {1}
 #: "these are the same model results". Bump it in the same commit as any change to what this module
 #: reads, parses, coerces or writes. It is separate from the ingester's because the two paths move
 #: independently -- a change to how a `.psmtsv` is parsed says nothing about a delivered age effect.
-STUDY_INGESTER_VERSION = "0.1.0"
+STUDY_INGESTER_VERSION = "0.2.0"
 
 STUDY_BUNDLE_MANIFEST = "study.json"
 
@@ -87,6 +90,10 @@ LIST_SEPARATOR = ";"
 STUDY_CONTENT_FIELDS: tuple[str, ...] = (
     "layer",   # which study layer's schema the rows are written against, and the bundle's namespace
     "tables",  # which table each delivered file fills, and (by hash) what is in it
+    # The definition register every definition_id in the delivery must resolve against. Content,
+    # not prose: it decides whether a row may be written at all, and two deliveries declaring
+    # different registers are not interchangeable even over identical numbers.
+    "definitions",
     # How the manifest itself is read. In the hash rather than out of it because a version exists
     # only when the interpretation changed: a v2 that read `tables` differently would turn the same
     # files into different rows, and a bump is by definition never a no-op.
@@ -115,6 +122,7 @@ class StudyManifest:
     layer: str
     store: Path
     tables: dict[str, Path]
+    definitions: tuple[str, ...] = ()
     instance: str | None = None
     delivery: str | None = None
     layer_version: str | None = None
@@ -126,6 +134,7 @@ class StudyManifest:
         return {
             "layer": self.layer,
             "tables": {name: path.name for name, path in sorted(self.tables.items())},
+            "definitions": sorted(self.definitions),
             "study_manifest_version": self.study_manifest_version,
         }
 
@@ -203,12 +212,18 @@ def load_study_manifest(path: str | Path) -> StudyManifest:
             raise ManifestError(f"{path}: {name} points at {table_path}, which is not a file")
         tables[name] = table_path
 
+    raw_definitions = doc.get("definitions") or []
+    if isinstance(raw_definitions, str):
+        raw_definitions = [raw_definitions]
+    definitions = tuple(str(d) for d in raw_definitions)
+
     return StudyManifest(
         path=path,
         study_manifest_version=int(version),
         layer=layer,
         store=_resolve(doc["store"], path),
         tables=tables,
+        definitions=definitions,
         instance=doc.get("instance"),
         delivery=doc.get("delivery"),
         layer_version=None if declared is None else str(declared),
@@ -284,6 +299,29 @@ def _duplicate_keys(layer: str, table: str, rows: Sequence[dict[str, Any]]) -> l
             duplicates.add(value)
         seen.add(value)
     return [":".join(v) for v in sorted(duplicates)]
+
+
+def _unknown_definitions(
+    declared: Sequence[str], schema: pa.Schema, rows: Sequence[dict[str, Any]]
+) -> set[str]:
+    """Definition ids a table's rows carry that the delivery did not declare.
+
+    Checked against the delivery's OWN register rather than the core `definitions` table, which is
+    aging's correction to our offer (their 024 section 2a): their definitions are not produced by a
+    search and have no business in a search bundle.
+
+    A delivery that declares nothing is not checked. That is deliberate rather than lax -- a
+    producer who has not adopted the register yet is not silently handed a stricter contract than
+    the one they agreed to, and a delivery that declares even one definition opts fully in.
+    """
+    if not declared or "definition_id" not in schema.names:
+        return set()
+    known = set(declared)
+    return {
+        str(value)
+        for row in rows
+        if (value := row.get("definition_id")) not in (None, "") and str(value) not in known
+    }
 
 
 @dataclass
@@ -386,6 +424,16 @@ def write_study_bundle(
                 f"table {label}: {len(duplicates)} duplicate key(s) on ({key}), e.g. {sample}. "
                 f"Two rows for one fit are two different answers to one question, and which is "
                 f"right is the producer's call, not this ingester's."
+            )
+        unknown = _unknown_definitions(manifest.definitions, schema, rows)
+        if unknown:
+            declared = ", ".join(sorted(manifest.definitions)) or "(none declared)"
+            raise IngestError(
+                f"table {label}: {len(unknown)} definition_id(s) the delivery does not declare, "
+                f"e.g. {', '.join(sorted(unknown)[:3])}. Declared: {declared}. A number whose "
+                f"definition id does not resolve is the failure a definition register exists to "
+                f"prevent, so the write fails rather than the row landing (aging 024 section 2a). "
+                f"Add it to `definitions:` in the study manifest, or correct the column."
             )
         prepared[name] = rows_to_table(label, schema, rows)
 

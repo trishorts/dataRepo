@@ -239,3 +239,42 @@ def test_a_study_table_has_the_same_columns_empty_as_filled(tmp_path, store):
     catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
     columns, _ = run_query(catalog, 'SELECT * FROM "age_effects" LIMIT 1')
     assert columns[:2] == list(STUDY_PROVENANCE_COLUMNS)
+
+
+# --- the core table the study layer draws from must not re-average what the layer separates -------
+
+
+def test_ptm_stoichiometry_keeps_the_two_estimators_apart():
+    # aging 026: `age_effects.estimator` exists because count- and intensity-based occupancy differ
+    # threefold and must never be averaged -- but the core table it draws from had ONE
+    # `modified_fraction` column, so a producer had to pick an estimator and discard the other
+    # silently. The rule was enforced one layer up and broken one layer down. Two columns is the
+    # shape that cannot be got wrong; a definition_id discriminator is not, because it means two
+    # rows per (site, group) differing only in a string.
+    fields = {f.name: f for f in TABLES["ptm_stoichiometry"]}
+    assert "modified_fraction" not in fields
+    assert "modified_fraction_count" in fields
+    assert "modified_fraction_intensity" in fields
+
+
+def test_ptm_stoichiometry_counts_covering_psms_not_peptidoforms():
+    # DEF-OCC-PSMS counts COVERING PSMs, and an ambiguous PSM counts in the denominator of every
+    # position it covers. "Unmodified peptidoforms" was a different population and a different
+    # unit, with no arithmetic connecting them -- and it was required, so it could not be omitted.
+    fields = {f.name: f for f in TABLES["ptm_stoichiometry"]}
+    assert "n_unmodified_peptidoforms" not in fields
+    assert "n_modified_peptidoforms" not in fields
+    assert fields["n_covering_psms"].nullable is True
+    assert fields["n_modified_psms"].nullable is True
+
+
+def test_ptm_stoichiometry_can_tell_a_floor_from_a_measured_zero():
+    # DEF-OCC-INT-ZERO. Without the flag, "not detected" and "measured at zero" both land as 0.0
+    # and the difference is unrecoverable -- an absence reading as a measurement.
+    assert "intensity_is_floor" in {f.name for f in TABLES["ptm_stoichiometry"]}
+
+
+def test_ptm_stoichiometry_has_no_uncertainty_column():
+    # Neither estimator produces one, and a numeric column gets filled anyway. Same argument
+    # QuantProject made against R7b's inference_confidence.
+    assert "uncertainty" not in {f.name for f in TABLES["ptm_stoichiometry"]}

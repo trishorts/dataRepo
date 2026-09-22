@@ -384,6 +384,16 @@ def ptm_site_rows(
       PSM. That accounted for the other 36. Contaminant sites are kept and marked rather than
       dropped: they are real measurements, and BSA and trypsin sites are used as a process control.
       Decoys are still excluded.
+    * **No terminal-placement skip.** This one was a single `continue` and it cost 1,367 sites at
+      q <= 0.01 across three datasets (aging 024 section 4). Every modification at a peptide
+      N-terminus was dropped, so `ptm_sites` held **zero** rows for 3,085 peptidoforms and 18,566
+      PSMs that `peptidoforms` held in full -- a projection gap, not a data-loss gap, which is why
+      it is a ruling and not an incident. Six chemistries, led by `UNIMOD:1` acetylation with
+      12,448 PSMs. The 239 `UNIMOD:1` rows that WERE written are all `on K`: a reader querying
+      `ptm_sites` for acetylation got a lysine-only answer with nothing saying so. N-terminal
+      acetylation is co-translational, among the most abundant marks in any proteome, and governs
+      the N-degron pathway -- protein turnover, which is proteostasis, which is a hallmark this
+      repository exists to measure.
     """
     n = len(columns.get("full_sequence", ()))
     full = columns.get("full_sequence", [])
@@ -392,6 +402,9 @@ def ptm_site_rows(
     levels = columns.get("ambiguity_level") or [""] * n
     qs = columns.get("q_value") or [None] * n
     status = columns.get("decoy_contam_target") or [""] * n
+    # The residue before the peptide, which is how the producer tells us an initiator methionine
+    # was excised. Without it every co-translational N-terminal acetylation is mislabelled.
+    prev_residues = _column(columns, "previous_residue", "previous_amino_acid") or [""] * n
 
     sites: dict[str, dict[str, Any]] = {}
     for i in range(n):
@@ -412,14 +425,21 @@ def ptm_site_rows(
         if not starts:
             continue
         parsed = proforma(_first(full[i]))
+        previous = _first(prev_residues[i])
         for mod in parsed.mods:
-            if mod.position == N_TERMINUS:
-                continue
             name = _site_key_name(mod.name, full[i])
+            terminal = mod.position == N_TERMINUS
+            # A terminus is a POSITION; the thing modified there is still a residue. So a terminal
+            # mod is keyed on the residue it actually sits on -- the peptide's first -- and never on
+            # a sentinel. `residue` stays null only when the peptide is somehow empty.
+            residue = parsed.base_sequence[:1] or None if terminal else mod.residue
+            offset = 1 if terminal else mod.position
             for index, acc in enumerate(_accessions(accession[i])):
                 start = starts[index] if index < len(starts) else starts[0]
-                position = start + mod.position - 1
-                key = f"{dataset_id}:{acc}:{mod.residue}{position}:{name}"
+                position = start + offset - 1
+                site_type = _site_type(terminal, start, previous)
+                suffix = "" if site_type == "residue" else f"@{site_type}"
+                key = f"{dataset_id}:{acc}:{residue}{position}:{name}{suffix}"
                 row = sites.get(key)
                 if row is None:
                     sites[key] = {
@@ -427,7 +447,8 @@ def ptm_site_rows(
                         "dataset_id": dataset_id,
                         "protein_accession": acc,
                         "position": position,
-                        "residue": mod.residue,
+                        "residue": residue,
+                        "site_type": site_type,
                         "modification": mod.unimod,
                         "modification_name": name,
                         "target_decoy": state,
@@ -446,6 +467,32 @@ def ptm_site_rows(
                         row["target_decoy"] = "target"
                     row["best_ambiguity_level"] = _better_level(row["best_ambiguity_level"], level)
     return [sites[k] for k in sorted(sites)]
+
+
+def _site_type(terminal: bool, start: int, previous_residue: str) -> str:
+    """Which `SiteType` a placement is, from the producer's own coordinates.
+
+    Only N-terminal placements are classified, because only they are distinguishable in what
+    MetaMorpheus writes. A modification on a peptide's LAST residue and one on its C-terminus render
+    identically in a full sequence (`...K[mod]`), and the mod file's `PP` line -- the only thing
+    that could separate them -- is not parsed by `modlist`. Guessing would move existing ids for no
+    evidence, so a C-terminal placement stays `residue`, which is what it has always effectively
+    been. Raised to aging as DATAREPO-26.
+
+    The initiator-methionine case is the whole reason this is not `start == 1`. Co-translational
+    N-terminal acetylation follows Met excision, so the modified residue is **residue 2** and the
+    peptide's previous residue is the excised `M`. Both of the fixture's protein N-terminal
+    acetylations are of this shape (`[UniProt:N-acetylalanine on A]AAAGG...`, span `[2 to 16]`,
+    previous residue `M`), and a naive rule would label the most abundant terminal chemistry in the
+    proteome `peptide_n_term`.
+    """
+    if not terminal:
+        return "residue"
+    if start == 1:
+        return "protein_n_term"
+    if start == 2 and previous_residue.strip().upper() == "M":
+        return "protein_n_term"
+    return "peptide_n_term"
 
 
 def _site_key_name(name: str, full_sequence: str) -> str:

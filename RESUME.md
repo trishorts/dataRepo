@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 57 |
+| Commits | 60 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 18 |
-| Open gaps | 26 |
+| Open gaps | 29 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -92,6 +92,46 @@ DATAREPO-20(c) is still the expensive open question and 023 says so in those wor
 The file-level contract is ours and not aging's, and that is logged as **G30** rather than filed
 under a closed 20(a). If stage 7 writes another shape, `study.read_table_file` changes and nothing
 else does.
+
+## 2026-09-21 (later): S39, and a commitment that had to be asked for twice
+
+aging read 021, 022 and 023 all at once and replied with **024, 025 and 026**. Two of those changed
+what shipped the same day.
+
+**S39: 1,367 terminal PTM sites at q<=0.01 were never written, and nothing said so.** One `continue`
+in `ptm_site_rows` skipped every modification placed at a peptide N-terminus, so `ptm_sites` held
+**zero** rows for 3,085 peptidoforms and 18,566 PSMs that `peptidoforms` held in full. The 239
+`UNIMOD:1` rows that *were* there are all `on K`, so a query for acetylation came back lysine-only
+with nothing marking the absence. We had reported this as 13 sites; aging measured it and it was
+thirty times larger. A projection gap, not a data-loss gap -- which is why it was a ruling and not
+an incident.
+
+Fixed in **0.8.0 / schema 0.0.5** with `site_type`, ruled by aging 024 §4. A column and not a
+positional convention because **a protein N-terminal acetylation and an N6-acetyllysine on residue 1
+are different chemistries at the same coordinate**. Their condition was that no existing id moves,
+and it is met structurally -- the site type joins the key only when it is not `residue`. Verified by
+diffing a re-ingest: **33 -> 36 sites, 0 ids lost, 0 carried-over rows changed any value.**
+
+**The initiator methionine is the part worth remembering.** Co-translational N-terminal acetylation
+follows Met excision, so the modified residue is **residue 2** and the previous residue is the
+excised `M`. A rule of "peptide starts at residue 1" would have labelled the most abundant terminal
+mark in the proteome `peptide_n_term`. Both fixture acetylations are of exactly that shape.
+
+**And aging had to ask twice for something we had already agreed to.** Their 026: five
+`ptm_stoichiometry` corrections accepted in our own thread 012, then missed by 0.5.0, 0.6.0 and
+0.7.0. Their framing is the right one -- *a dropped commitment rather than a decision*. Worse, their
+sharpest point was one we had not seen: 0.6.0 gave `age_effects` an `estimator` enum **because
+count- and intensity-based occupancy differ threefold and must never be averaged**, while the core
+table it draws from still had a single `modified_fraction` forcing exactly that average. The rule
+was enforced one layer up and broken one layer down in the same week. All five are now in, corrected
+while the table still held 0 rows, with four tests whose only job is to fail if the shape drifts
+back. **The commitment now lives in the suite rather than in a thread**, which is the only place it
+could have survived three releases.
+
+Also in 0.8.0, both in aging's shapes rather than ours: `Dataset.permitted_responses` (an allow-list,
+and in `CONTENT_FIELDS` -- two bundles over the same rows, one usable for site localization and one
+not, are not the same object), and a study delivery declaring **its own** definition register, which
+was their correction to a check we had offered against the wrong table.
 
 ## The ingester works
 
@@ -307,11 +347,12 @@ from a single query.
 
 ## Pick up at
 
-**Nothing of ours blocks aging, and aging owe replies on 021, 022 and 023.** Code is datarepo
-**0.7.0**, schema **0.0.4**, study layer `aging` **0.1.0**; `bundle.INGESTER_VERSION` sits at
-**0.5.0** and should stay there until an ingest reads or writes something differently, and
-`study.STUDY_INGESTER_VERSION` at **0.1.0** under the same rule. 219 tests pass, the schema lints,
-and there is no generated-file drift.
+**aging owe replies on 025 and 027; nothing of ours blocks them.** Code is datarepo **0.8.0**,
+schema **0.0.5**, study layer `aging` **0.1.0**. `bundle.INGESTER_VERSION` is **0.6.0** and
+`study.STUDY_INGESTER_VERSION` **0.2.0** -- both moved in 0.8.0 because both paths now derive and
+write different rows, so **aging owe themselves one re-ingest**, which covers S39,
+`permitted_responses`, the definition register and the `ptm_stoichiometry` correction together.
+228 tests pass, the schema lints, and there is no generated-file drift.
 
 **First, always:** run the thread checker (command in the `design/threads/aging/` bullet above).
 aging work in parallel and a reply may have landed; read it before starting anything below, because
@@ -328,7 +369,17 @@ items 1 and 2 are the things they were asked.
    a sandbox: it will `read_csv_auto` anything on disk). Done means **zero silently-wrong answers**
    on aging's questions, read from their master and never copied - not a percentage (D15). The
    `mcp` SDK goes in as an optional `[mcp]` extra; no R client.
-2. **DATAREPO-20(c) - what is a feature's cross-dataset identity?** This is now the expensive one.
+2. **G17 is closed but R7 has no producer, and aging think it belongs here.** Their 025 measured
+   the join at **92.51%** across three datasets (up from 212 of 433 on one), so the design question
+   from our 012 §2 is closed on their evidence. `ptm_stoichiometry` now has the right shape and 0
+   rows. Writing its producer is the natural next ingest-side job -- but note the ordering that got
+   us here: shape first, then a producer, and do not write one against a shape neither side has
+   queried.
+3. **DATAREPO-20(c) is ANSWERED; the check it unblocks is not built (G32).** A feature's
+   cross-dataset identity is the UniProt accession, and the join goes through **membership in
+   `protein_accessions`**, never the id string -- measured by aging at 2,608 pooled accessions
+   against 2,497 for any id-based join, the 111 lost being paralogue families. Land the check with
+   the membership-join view, not as a bare constraint.
    20(a) is BUILT on its default in 0.7.0 (`datarepo study`, G30 tracks what is still ours to
    guess), which means `age_effect_meta` can be delivered and its join key is still undecided. A
    `protein_group_id` here is scoped to its dataset, so it cannot be a cross-dataset key, and
