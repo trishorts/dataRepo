@@ -63,7 +63,7 @@ SUPPORTED_STUDY_MANIFEST_VERSIONS = {1}
 #: "these are the same model results". Bump it in the same commit as any change to what this module
 #: reads, parses, coerces or writes. It is separate from the ingester's because the two paths move
 #: independently -- a change to how a `.psmtsv` is parsed says nothing about a delivered age effect.
-STUDY_INGESTER_VERSION = "0.3.0"
+STUDY_INGESTER_VERSION = "0.4.0"
 
 STUDY_BUNDLE_MANIFEST = "study.json"
 

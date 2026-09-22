@@ -220,6 +220,7 @@ def test_a_dataset_level_refusal_needs_no_feature(tmp_path, store):
     refusals = [
         {
             "dataset_id": DATASET,
+            "organism": "NCBITaxon:9606",
             "response": "abundance",
             "estimator": "intensity",
             "quant_basis": "mbr_included",
@@ -232,6 +233,24 @@ def test_a_dataset_level_refusal_needs_no_feature(tmp_path, store):
     manifest = write_delivery(tmp_path, {"age_effect_refusals": refusals}, store=store)
     result = write_study_bundle(manifest)
     assert result.row_counts == {"age_effect_refusals": 1}
+
+
+def test_a_refusal_must_name_its_organism(tmp_path, store):
+    # aging 042 section 2: "why is there no mouse estimate for this feature?" is read off this row,
+    # and an answer that needs a join back to `datasets` will sometimes be answered wrongly.
+    refusal = {
+        "dataset_id": DATASET,
+        "response": "abundance",
+        "estimator": "intensity",
+        "quant_basis": "mbr_included",
+        "model_form": "linear",
+        "stratum": "all",
+        "fit_refused": "no_age_metadata",
+        "definition_id": "aging:DEF-AGE-EFFECT",
+    }
+    manifest = write_delivery(tmp_path, {"age_effect_refusals": [refusal]}, store=store)
+    with pytest.raises(IngestError, match="required 'organism'"):
+        write_study_bundle(manifest)
 
 
 def test_a_list_column_survives_a_tsv(tmp_path, store):

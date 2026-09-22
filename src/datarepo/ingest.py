@@ -25,7 +25,7 @@ from .reconcile import build as build_checks
 from .reconcile import finding_rows as reconciliation_findings
 from .reconcile import metric_conflicts
 from .sources import identifications, provenance as prov, quant, runs as runs_source, sdrf as sdrf_source
-from .sources import search_params
+from .sources import protein_db, search_params
 from .usi import RunNameMap
 
 #: Manifest `quant_method` spellings mapped onto the schema's enum.
@@ -320,7 +320,20 @@ def ingest_dataset(
     psm_rows = identifications.psm_rows(
         psm_columns, dataset_id, proforma=proforma, run_names=run_names, search=search_label
     )
-    ptm_sites = identifications.ptm_site_rows(psm_columns, dataset_id, proforma=proforma)
+    # Sites are placed by finding each peptide in the searched proteins, because the producer's
+    # spans cannot be paired with its accessions (aging 043, DATAREPO-32). The databases are inputs
+    # to every ptm_sites row, so they are in the content hash; they are not copied.
+    sequences = protein_db.load(search_provenance, manifest.work_root)
+    for db in sequences.files:
+        # Role carries the file name: `bundle_id` orders sources by (role, path), and a path is
+        # absolute and site-specific, so two databases under one role could hash in a different
+        # order on another machine.
+        writer.add_hashed_source(Path(db["path"]), f"protein_database:{Path(db['path']).name}", db["sha256"])
+    unplaced: dict[str, int] = {}
+    ptm_sites = identifications.ptm_site_rows(
+        psm_columns, dataset_id, proforma=proforma, sequences=sequences, unplaced=unplaced
+    )
+    site_check = identifications.verify_site_residues(ptm_sites, sequences)
 
     peptide_columns: dict[str, list[Any]] = {}
     if all_peptides_path.is_file():
@@ -457,6 +470,8 @@ def ingest_dataset(
     findings += metric_conflicts(metrics, dataset_id)
     findings += _modification_findings(proforma, dataset_id)
     findings += _usi_findings(run_names, dataset_id)
+    findings += _unplaced_site_findings(unplaced, sequences, dataset_id)
+    findings += _site_residue_findings(site_check, dataset_id)
 
     # --- assemble ------------------------------------------------------------------------------
     writer.add("datasets", [dataset_row])
@@ -496,6 +511,12 @@ def ingest_dataset(
             "entries": len(registry),
             "files": registry.sources,
             "unresolved": proforma.unresolved,
+        },
+        "protein_databases": {
+            "read": sequences.files,
+            "missing": sequences.missing,
+            "unplaced_site_pairs": unplaced,
+            "site_residue_check": site_check,
         },
         "reconciliation": [c.as_dict() for c in checks],
         "collapsed_duplicates": [c.as_dict() for c in collapsed],
@@ -618,6 +639,83 @@ def _modification_findings(proforma: ProformaCache, dataset_id: str) -> list[dic
                 f"so a query by name finds them and a query by UNIMOD accession will not."
             ),
             "source": "datarepo ingest",
+        }
+    ]
+
+
+def _unplaced_site_findings(
+    unplaced: dict[str, int], sequences: protein_db.ProteinSequences, dataset_id: str
+) -> list[dict[str, Any]]:
+    """Say how many (PSM, protein) pairs got no site because their position could not be found.
+
+    The alternative was the old behaviour: pair the producer's spans with its accessions and write
+    a confident wrong position (aging 043). An unplaced site is a gap a reader can see; a misplaced
+    one is a fact they will quote.
+    """
+    if not unplaced and not sequences.missing:
+        return []
+    parts = []
+    if unplaced.get("no_sequence"):
+        parts.append(f"{unplaced['no_sequence']} had no sequence in the searched databases")
+    if unplaced.get("peptide_not_in_sequence"):
+        # Measured on PXD036557: every one was a level 4/5 PSM, ambiguous between peptide
+        # SEQUENCES, whose accession list mixes the proteins of all candidates. The stored
+        # peptidoform is the first candidate, and these proteins carry another one.
+        parts.append(
+            f"{unplaced['peptide_not_in_sequence']} named a protein that does not contain the "
+            f"stored peptide -- typically a PSM ambiguous between peptide sequences (level 4 or 5), "
+            f"where this protein carries a different candidate than the first, which is the one "
+            f"stored"
+        )
+    if sequences.missing:
+        parts.append("database(s) named by the search provenance but not on disk: " + ", ".join(sequences.missing))
+    return [
+        {
+            "finding_id": f"{dataset_id}:unplaced_ptm_sites",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "unplaced_ptm_sites",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                "Some modifications on peptides shared between proteins were not written to "
+                "ptm_sites for one or more of those proteins, because the peptide could not be "
+                "located in that protein's sequence and the producer's residue spans cannot be "
+                "paired with its accessions. Of the (PSM, protein) pairs affected: "
+                + "; ".join(parts)
+                + ". Sites on the other proteins of the same PSMs are written. Counts are in "
+                "bundle.json under protein_databases."
+            ),
+            "source": "datarepo ingest (aging 043, DATAREPO-32)",
+        }
+    ]
+
+
+def _site_residue_findings(check: dict[str, int], dataset_id: str) -> list[dict[str, Any]]:
+    """A finding when any written site does not name the residue at its own position.
+
+    Should never fire for a site placed by alignment, which is correct by construction. It exists
+    for the span fallback and for whatever comes next -- the defect it would have caught was found
+    by a consumer, from outside, after it had shipped in every bundle for days.
+    """
+    bad = check.get("wrong_residue", 0) + check.get("beyond_length", 0)
+    if not bad:
+        return []
+    return [
+        {
+            "finding_id": f"{dataset_id}:ptm_site_residue_mismatch",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "ptm_site_residue_mismatch",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"{check.get('wrong_residue', 0)} ptm_sites row(s) name a residue that is not at "
+                f"their position in the searched sequence, and {check.get('beyond_length', 0)} have "
+                f"a position beyond the protein's length. Treat those positions as wrong. Counts "
+                f"are in bundle.json under protein_databases.site_residue_check."
+            ),
+            "source": "datarepo ingest (DATAREPO-32 self-check)",
         }
     ]
 

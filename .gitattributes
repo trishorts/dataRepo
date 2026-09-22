@@ -3,3 +3,5 @@ docs/schema/*.md text eol=lf
 schema/**/*.yaml text eol=lf
 *.yaml text eol=lf
 *.py text eol=lf
+# Fixture databases are checked against a sha256 in the fixture provenance, so their bytes must not move.
+tests/data/work_root/db/*.xml -text

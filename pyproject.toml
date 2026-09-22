@@ -24,7 +24,7 @@ dependencies = [
 # named `mzlib` on PyPI and imports as `pymzlib`; its wheels are per-platform and carry the mzLib
 # bridge, so nothing has to be built and PYMZLIB_BRIDGE is not needed. It stays optional because
 # the wheel is ~62 MB and `build`, `catalog` and `query` never read a producer file.
-readers = ["mzlib>=0.1.1"]
+readers = ["mzlib>=0.1.1", "lxml>=5"]  # lxml: 3x faster protein-database parse; the stdlib fallback reads identically
 
 # The MCP SDK, for `datarepo mcp` (D12). Optional for the same reason `readers` is: `ingest`,
 # `build` and `query` never touch it, and the core stays at three dependencies. `serve()` accepts

@@ -209,6 +209,15 @@ This folder is a `/project`-managed research project. **You are de facto working
   shares it**, and `protein_rows` zipped it positionally, costing ~7,200 proteins their species.
   **Neither round of agent review found it**, because all four agents were reasoning about the
   catalog and the defect lived upstream in a file they could not read.
+- **No two `|`-joined MetaMorpheus cells are aligned unless MetaMorpheus says so, and it does not.**
+  Twice now. `Organism Name` collapses to one value when every protein shares it (0.13.0), and
+  `Start and End Residues In Full Sequence` is de-duplicated *and* repeated per occurrence (aging
+  043, 0.15.0), so gamma-actin carried POTE-E's numbering for 2,266 sites. The comment above the
+  second bug said "one span per accession, paired by position" and **predicted the failure it was
+  committing**. Equal lengths are not evidence either: two proteins, one sharing a span and one
+  repeating the peptide, also give two spans. Where a fact per accession is needed, derive it from
+  the thing itself (sites now come from the searched sequence) or return null. `_per_accession`'s
+  broadcast/zip/null rule is safe only for a column that collapses and never repeats.
 - **Never `git add -A` in this repo.** It swept the unfinished DRAFT of thread 036 -- the one
   carrying the false MetaMorpheus claim -- into a release commit and pushed it. Threads are never
   edited after posting, and that one had not been posted (it was never in aging's repo, so no peer

@@ -325,7 +325,7 @@ def test_the_searched_database_comes_from_the_provenance_inputs():
     doc = json.loads((RUN / "04_search/provenance.json").read_text(encoding="utf-8"))
     name, sha = search_params.searched_database(doc)
     assert name == "test_human.xml"
-    assert sha == "e" * 64
+    assert sha == "89fb8c7a1140939de96ca740ab818deedd70063d00ac3789976908eec8d8ad6d"
 
 
 # --- results.txt and USIs -----------------------------------------------------------------------
@@ -443,27 +443,130 @@ def test_residue_starts_keeps_one_span_per_protein():
     assert _residue_starts("") == []
 
 
-@needs_pymzlib
-def test_a_site_is_placed_in_each_protein_at_that_proteins_own_coordinates(registry):
-    """Taking the leading protein's start for all of them is right once and wrong thereafter.
+def _sequences(**by_acc):
+    from datarepo.sources.protein_db import ProteinSequences
 
-    PXD036557 carries 3,154 PSMs whose accessions have differing spans; none is at ambiguity
-    level 1, so only the level filter has kept this from producing wrong positions.
+    seqs = ProteinSequences()
+    for acc, seq in by_acc.items():
+        seqs.add(acc, seq)
+    return seqs
+
+
+_PEP = "PEPTCIDEK"   # Cys at peptide position 5
+
+
+def _shared(accessions, spans, **over):
+    columns = {
+        "full_sequence": ["PEPTC[Common Fixed:Carbamidomethyl on C]IDEK"],
+        "accession": [accessions],
+        "start_and_end_residues_in_parent_sequence": [spans],
+        "ambiguity_level": ["2D"],
+        "q_value": [0.001],
+        "decoy_contam_target": ["T"],
+    }
+    columns.update({k: [v] for k, v in over.items()})
+    return columns
+
+
+@needs_pymzlib
+def test_a_site_is_placed_in_each_protein_by_its_own_sequence(registry):
+    """Each protein gets the position the peptide actually has in it, from the sequence."""
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    seqs = _sequences(P11111="A" * 9 + _PEP + "G" * 5, P22222="A" * 154 + _PEP)
+    rows = ptm_site_rows(
+        _shared("P11111|P22222", "[10 to 18]|[155 to 163]"), "PXD1",
+        proforma=ProformaCache(registry), sequences=seqs,
+    )
+    assert {r["protein_accession"]: r["position"] for r in rows} == {"P11111": 14, "P22222": 159}
+
+
+@needs_pymzlib
+def test_a_deduplicated_span_cell_does_not_misplace_the_site(registry):
+    """aging 043: `P60709|P63261|Q6S8J3` beside `[216 to 238]|[916 to 938]`.
+
+    Two proteins share a span, so the producer writes it once. Pairing by index gave the third
+    protein the second's... nothing, and fell back to the first span -- gamma-actin ended up with
+    POTE-E's numbering and POTE-E with actin's.
     """
     from datarepo.proforma import ProformaCache
     from datarepo.sources.identifications import ptm_site_rows
 
-    columns = {
-        "full_sequence": ["PEPTC[Common Fixed:Carbamidomethyl on C]IDEK"],
-        "accession": ["P11111|P22222"],
-        "start_and_end_residues_in_parent_sequence": ["[10 to 20]|[155 to 165]"],
-        "ambiguity_level": ["1"],
-        "q_value": [0.001],
-        "decoy_contam_target": ["T"],
-    }
-    rows = ptm_site_rows(columns, "PXD999999", proforma=ProformaCache(registry))
-    placed = {r["protein_accession"]: r["position"] for r in rows}
-    assert placed == {"P11111": 14, "P22222": 159}
+    seqs = _sequences(
+        P1="A" * 9 + _PEP, P2="C" * 9 + _PEP, P3="G" * 99 + _PEP,
+    )
+    rows = ptm_site_rows(
+        _shared("P1|P2|P3", "[10 to 18]|[100 to 108]"), "PXD1",
+        proforma=ProformaCache(registry), sequences=seqs,
+    )
+    assert {r["protein_accession"]: r["position"] for r in rows} == {"P1": 14, "P2": 14, "P3": 104}
+
+
+@needs_pymzlib
+def test_matching_counts_are_not_evidence_of_alignment(registry):
+    """The class, not the reproduction: equal span and accession counts can still be misaligned.
+
+    P1 contains the peptide twice; P2 shares P1's first occurrence. The producer writes two spans
+    for two accessions -- and index pairing would give P2 the position of P1's SECOND copy.
+    """
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    seqs = _sequences(P1="A" * 9 + _PEP + "G" * 40 + _PEP, P2="C" * 9 + _PEP)
+    rows = ptm_site_rows(
+        _shared("P1|P2", "[10 to 18]|[59 to 67]"), "PXD1",
+        proforma=ProformaCache(registry), sequences=seqs,
+    )
+    placed = sorted((r["protein_accession"], r["position"]) for r in rows)
+    assert placed == [("P1", 14), ("P1", 63), ("P2", 14)]
+
+
+@needs_pymzlib
+def test_a_shared_peptide_with_no_sequence_is_counted_not_guessed(registry):
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    unplaced: dict[str, int] = {}
+    rows = ptm_site_rows(
+        _shared("P1|P2", "[10 to 18]|[155 to 163]"), "PXD1",
+        proforma=ProformaCache(registry), sequences=_sequences(P1="A" * 9 + _PEP), unplaced=unplaced,
+    )
+    assert [(r["protein_accession"], r["position"]) for r in rows] == [("P1", 14)]
+    assert unplaced == {"no_sequence": 1}
+
+
+@needs_pymzlib
+def test_a_single_accession_can_still_use_its_spans_without_a_sequence(registry):
+    """One accession means every span is its own; no pairing is involved."""
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    rows = ptm_site_rows(
+        _shared("P1", "[10 to 18]|[59 to 67]"), "PXD1", proforma=ProformaCache(registry)
+    )
+    assert sorted(r["position"] for r in rows) == [14, 63]
+
+
+@needs_pymzlib
+def test_the_initiator_methionine_is_read_from_each_proteins_own_sequence(registry):
+    """`Previous Residue` is collapsed like the spans, so it comes from the sequence too.
+
+    The same peptide at residue 2 after an M in one protein, and after a K in another, is a
+    protein N-terminus in the first and a peptide N-terminus in the second.
+    """
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    columns = _shared(
+        "P1|P2", "[2 to 10]",
+        full_sequence="[UniProt:N-acetylalanine on A]AEPTCIDEK",
+        previous_residue="M",
+    )
+    seqs = _sequences(P1="MAEPTCIDEK", P2="KAEPTCIDEK")
+    rows = ptm_site_rows(columns, "PXD1", proforma=ProformaCache(registry), sequences=seqs)
+    kinds = {r["protein_accession"]: r["site_type"] for r in rows}
+    assert kinds == {"P1": "protein_n_term", "P2": "peptide_n_term"}
 
 
 # --- ptm_sites after aging 013: no level filter, contaminants kept and marked --------------------

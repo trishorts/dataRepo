@@ -20,6 +20,7 @@ from typing import Any, Iterable, Sequence
 from ..errors import IngestError
 from ..proforma import N_TERMINUS, ProformaCache
 from ..usi import RunNameMap, mint
+from .protein_db import ProteinSequences, occurrences
 
 _RANGE = re.compile(r"\[(\d+)\s+to\s+(\d+)\]")
 
@@ -88,10 +89,11 @@ def _better_level(current: str | None, candidate: str | None) -> str | None:
 
 
 def _residue_starts(value: Any) -> list[int]:
-    """Every start residue in a `[a to b]|[c to d]` field, in the order the accessions are in.
+    """Every start residue in a `[a to b]|[c to d]` field.
 
-    MetaMorpheus writes one span per protein the peptide maps to, `|`-separated and positionally
-    aligned with the accession column, so the two must be zipped rather than reduced.
+    **Not aligned with the accession column.** MetaMorpheus de-duplicates the spans and repeats one
+    per occurrence, so the list can be shorter or longer than the accessions (aging 043). This
+    docstring used to say the opposite, which is how the positional pairing got written.
     """
     return [int(m.group(1)) for m in _RANGE.finditer("" if value is None else str(value))]
 
@@ -302,7 +304,11 @@ def protein_rows(
                     "canonical_accession": acc.split("-")[0] if "-" in acc else acc,
                     "gene": primary,
                     "organism": _entry_taxon(source_db, organism),
-                    "organism_name": organism_name or None,
+                    # A reversed decoy is no organism's protein, so it carries no species name
+                    # either (G44). MetaMorpheus wrote one for some decoys and not others -- 11,804
+                    # of 11,804 missing in one dataset, 149 of 7,157 in another -- so leaving it
+                    # verbatim put a species on a reversed sequence in some datasets only.
+                    "organism_name": None if source_db == "decoy" else organism_name or None,
                     "length": None,
                     "source_db": source_db,
                     "uniprot_release": None,
@@ -423,12 +429,21 @@ def ptm_site_rows(
     dataset_id: str,
     *,
     proforma: ProformaCache,
+    sequences: ProteinSequences | None = None,
+    unplaced: dict[str, int] | None = None,
     q_threshold: float = 0.01,
 ) -> list[dict[str, Any]]:
     """Derive PtmSite rows from accepted, non-decoy PSMs that place a modification.
 
     A site is emitted when two things hold: the match is not a decoy and is at or below
-    `q_threshold`, and the peptide's position in the protein is known.
+    `q_threshold`, and the peptide's position in the protein is known -- from the searched
+    database's sequence, never by pairing the producer's spans with its accessions (`_placements`,
+    DATAREPO-32).
+
+    Args:
+        sequences: the searched databases' sequences (`protein_db.load`). Without them only
+            single-accession PSMs can be placed.
+        unplaced: filled with `{reason: count}` of (PSM, accession) pairs that could not be placed.
 
     Three conditions this used to impose are gone. The first two were measured against PXD036557
     (aging 012/013); the third against PXD027318 and PXD032202 (aging 019):
@@ -478,8 +493,10 @@ def ptm_site_rows(
     qs = columns.get("q_value") or [None] * n
     status = columns.get("decoy_contam_target") or [""] * n
     # The residue before the peptide, which is how the producer tells us an initiator methionine
-    # was excised. Without it every co-translational N-terminal acetylation is mislabelled.
+    # was excised. Without it every co-translational N-terminal acetylation is mislabelled. Read
+    # only for a single-accession PSM with no sequence; otherwise the sequence itself says.
     prev_residues = _column(columns, "previous_residue", "previous_amino_acid") or [""] * n
+    sequences = sequences if sequences is not None else ProteinSequences()
 
     sites: dict[str, dict[str, Any]] = {}
     for i in range(n):
@@ -490,17 +507,17 @@ def ptm_site_rows(
         if state == "decoy":
             continue
         level = str(levels[i] or "").strip() or None
-        # One span per accession, paired by position. A peptide shared between proteins starts at a
-        # different residue in each, so taking the first span for all of them would place the site
-        # correctly in the leading protein and wrongly in every other. The file carries 3,154 such
-        # PSMs in PXD036557; none is at ambiguity level 1, so the filter below is the only reason
-        # this has never fired. Relaxing that filter without this pairing would put wrong positions
-        # in the repository.
-        starts = _residue_starts(ranges[i])
-        if not starts:
-            continue
         parsed = proforma(_first(full[i]))
-        previous = _first(prev_residues[i])
+        if not parsed.mods:
+            continue
+        placements = _placements(
+            parsed.base_sequence,
+            _accessions(accession[i]),
+            ranges[i],
+            prev_residues[i],
+            sequences,
+            unplaced,
+        )
         for mod in parsed.mods:
             name = _site_key_name(mod.name, full[i])
             terminal = mod.position == N_TERMINUS
@@ -509,8 +526,7 @@ def ptm_site_rows(
             # a sentinel. `residue` stays null only when the peptide is somehow empty.
             residue = parsed.base_sequence[:1] or None if terminal else mod.residue
             offset = 1 if terminal else mod.position
-            for index, acc in enumerate(_accessions(accession[i])):
-                start = starts[index] if index < len(starts) else starts[0]
+            for acc, start, previous in placements:
                 position = start + offset - 1
                 site_type = _site_type(terminal, start, previous)
                 suffix = "" if site_type == "residue" else f"@{site_type}"
@@ -542,6 +558,91 @@ def ptm_site_rows(
                         row["target_decoy"] = "target"
                     row["best_ambiguity_level"] = _better_level(row["best_ambiguity_level"], level)
     return [sites[k] for k in sorted(sites)]
+
+
+def verify_site_residues(sites: Sequence[dict[str, Any]], sequences: ProteinSequences) -> dict[str, int]:
+    """Check every site against the searched sequence: is its residue really at its position?
+
+    This is the check aging ran from outside to find DATAREPO-32 (1,452 rows naming a residue not
+    at that position, 297 beyond the protein's length). It runs inside every ingest now, because
+    the one path that still trusts the producer's spans -- a single-accession PSM whose protein has
+    no sequence -- is exactly where a wrong position could come back, and a check a consumer has
+    to remember to run is one they will not.
+
+    Returns:
+        `{"residue_matches", "wrong_residue", "beyond_length", "no_sequence"}` counts. A terminal
+        site with no residue is counted under `residue_matches` only if its position exists.
+    """
+    counts = {"residue_matches": 0, "wrong_residue": 0, "beyond_length": 0, "no_sequence": 0}
+    for site in sites:
+        candidates = sequences.get(site["protein_accession"])
+        position, residue = site["position"], site["residue"]
+        if not candidates:
+            counts["no_sequence"] += 1
+        elif all(position < 1 or position > len(s) for s in candidates):
+            counts["beyond_length"] += 1
+        elif residue is None or any(1 <= position <= len(s) and s[position - 1] == residue for s in candidates):
+            counts["residue_matches"] += 1
+        else:
+            counts["wrong_residue"] += 1
+    return counts
+
+
+def _placements(
+    base_sequence: str,
+    accessions: list[str],
+    ranges: Any,
+    previous_cell: Any,
+    sequences: ProteinSequences,
+    unplaced: dict[str, int] | None,
+) -> list[tuple[str, int, str]]:
+    """`(accession, 1-based peptide start, residue before it)` for every place a PSM's peptide sits.
+
+    **The spans cell is never paired with the accession cell.** MetaMorpheus de-duplicates it --
+    `P60709|P63261|Q6S8J3` beside `[216 to 238]|[916 to 938]` -- and lists a repeated peptide once
+    per occurrence, so an index pairing is wrong in both directions, *including when the counts
+    agree* (two proteins, one sharing a span and one with a repeat, also gives two spans). It was
+    paired by index with a `starts[0]` fallback until aging 043 measured the result: 2,266 sites at
+    positions no alignment supports, 2,166 real ones missing, 297 beyond the protein's length --
+    gamma-actin carrying POTE-E's numbering. None at ambiguity level 1, which is why the level
+    filter hid it; the comment that stood here predicted exactly that and then mis-described the
+    file.
+
+    So the position comes from the searched database: find the peptide in each member protein and
+    emit every occurrence, as MetaMorpheus's occupancy code does (aging verified 33,531 of its 33,539
+    sites carry the residue their modification names). The residue before the peptide comes from
+    the same sequence, because `Previous Residue` is collapsed the same way.
+
+    Without a sequence the spans can still be used in one case: a PSM with **one** accession, where
+    every span belongs to it and no pairing is needed. Anything else is not placed and is counted
+    in `unplaced`, so the bundle says how many sites it could not position rather than guessing.
+    """
+    out: list[tuple[str, int, str]] = []
+    missed: dict[str, str] = {}
+    for acc in accessions:
+        candidates = sequences.get(acc)
+        if not candidates:
+            missed[acc] = "no_sequence"
+            continue
+        found = False
+        for sequence in candidates:
+            for start in occurrences(base_sequence, sequence):
+                previous = sequence[start - 2] if start >= 2 else ""
+                if (acc, start, previous) not in out:
+                    out.append((acc, start, previous))
+                found = True
+        if not found:
+            missed[acc] = "peptide_not_in_sequence"
+    if not missed:
+        return out
+    if len(accessions) == 1:
+        starts = _residue_starts(ranges)
+        previous = _per_accession(previous_cell, len(starts)) if starts else []
+        return [(accessions[0], s, previous[k] or "") for k, s in enumerate(starts)]
+    if unplaced is not None:
+        for reason in missed.values():
+            unplaced[reason] = unplaced.get(reason, 0) + 1
+    return out
 
 
 def _site_type(terminal: bool, start: int, previous_residue: str) -> str:

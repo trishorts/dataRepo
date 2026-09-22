@@ -545,7 +545,7 @@ gaps:
     sort again. Do NOT add the column meanwhile -- it is `Protein.organism` with a better motive
     and, unlike that one, undetectable by a reader.
   - >-
-    G44 `Protein.organism_name` is populated for decoy entries, inconsistently, while
+    G44 CLOSED 2026-09-22 in 0.15.0: decoy `organism_name` is NULL at ingest, riding the DATAREPO-32 INGESTER_VERSION bump as promised in 041. Original: `Protein.organism_name` is populated for decoy entries, inconsistently, while
     `Protein.organism` is correctly NULL for them. Measured on catalog `f8fc910cce116fbe`
     (9 datasets, 2026-09-22): decoys missing `organism_name` run 149 of 7,157 in PXD023381 and
     899 of 14,886 in PXD027318 but 11,804 of 11,804 in PXD024803 and 17,030 of 17,030 in
@@ -633,6 +633,25 @@ gaps:
     biological modification classification has no owner (REQ-PTMQTL-3). Context: unenriched
     corpus, 1,396 level-1 phospho residue sites in total; 309 peptidoforms carry two or more
     non-artefact mods. Default: build nothing until ptmQtl describe one real row of each result.
+  - >-
+    G50 `ptm_sites` misplaced a shared peptide's sites (aging 043, DATAREPO-32). FIXED in 0.15.0
+    (2026-09-22), OPEN until aging re-ingest and re-run their `site_positions.py` probe. Cause:
+    `ptm_site_rows` paired `Start and End Residues In Full Sequence` with `Accession` by index
+    (fallback `starts[0]`), and MetaMorpheus de-duplicates that column and repeats it per
+    occurrence. Sites are now placed by aligning the peptide to each member protein of the searched
+    database (`sources/protein_db.py`, sha256-checked against the provenance); `Previous Residue`
+    comes from the sequence too. Unplaceable pairs go to an `unplaced_ptm_sites` finding; on
+    PXD036557 all were level 4/5 PSMs whose protein carries a different candidate peptide.
+  - >-
+    G51 The first real C-TERMINAL modification is in the corpus, and we store it wrongly. Found
+    2026-09-22 by 0.15.0's own site self-check. PXD050351 `KPVADYFL-[UNIMOD:34]` (Leucine methyl
+    ester, P60510, level 1, q=0.008): the ProForma parse leaves `-` in `base_sequence` (3 PSMs, 2
+    peptidoforms: also `RTPDYFL-[UNIMOD:34]`), and `ptm_sites` gets residue `-` at position 308 of
+    a 307-residue protein, `site_type` residue. aging's DATAREPO-26 answer said 0 C-terminal
+    placements existed; this one post-dates it. Present in 0.9.0 too. Default: report to aging
+    (it is their DATAREPO-26/G33 ruling on how to type a C-terminal site), fix with the next
+    INGESTER_VERSION bump -- strip the terminal `-` from base_sequence and give the site a
+    C-terminal site type -- and do NOT ship a C-terminal site type before they rule.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

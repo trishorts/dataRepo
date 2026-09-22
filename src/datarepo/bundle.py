@@ -43,7 +43,7 @@ QPX_VERSION = "unpinned"
 #: writes.** It lags `__version__` on purpose; they are not meant to agree. The catalog's equivalent
 #: is `catalog.CATALOG_VERSION`, and `catalog_id` carries `__version__` as well because a catalog is
 #: rebuilt cheaply and a bundle is not.
-INGESTER_VERSION = "0.9.0"
+INGESTER_VERSION = "0.10.0"
 
 BUNDLE_MANIFEST = "bundle.json"
 SOURCES_DIR = "sources"
@@ -189,6 +189,16 @@ class BundleWriter:
         if copy_as:
             entry["bundle_path"] = f"{SOURCES_DIR}/{copy_as}"
             self._copied.append((path, copy_as))
+        self.sources.append(entry)
+        return entry
+
+    def add_hashed_source(self, path: Path, role: str, sha256: str) -> dict[str, Any]:
+        """Record an input file whose sha256 the caller has already computed, without copying it.
+
+        For a protein database: 1 GB, hashed once to check it against the search provenance, and
+        never copied into a bundle -- it is the producer's input, archived with their release (D8).
+        """
+        entry = {"role": role, "path": str(path), "size_bytes": path.stat().st_size, "sha256": sha256}
         self.sources.append(entry)
         return entry
 

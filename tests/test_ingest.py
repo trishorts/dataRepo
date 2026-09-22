@@ -40,6 +40,27 @@ def test_the_manifest_records_what_was_read_and_what_came_out(bundle):
     assert "provenance:04_search" in roles
 
 
+def test_the_searched_databases_are_hashed_in_and_every_site_is_checked_against_them(bundle):
+    """DATAREPO-32: positions come from the searched sequences, and the ingest proves it on itself.
+
+    The databases are inputs to every ptm_sites row, so a different database must give a different
+    bundle id -- and the ingest's own residue check must find nothing wrong on the fixture, whose
+    shared peptides are exactly the case the old index pairing got wrong.
+    """
+    doc = json.loads((bundle.bundle_path / "bundle.json").read_text(encoding="utf-8"))
+    roles = {s["role"]: s for s in doc["sources"]}
+    assert "protein_database:test_human.xml" in roles
+    assert "protein_database:test_contaminants.xml" in roles
+    assert not (bundle.bundle_path / "sources" / "test_human.xml").exists(), "never copied"
+    dbs = doc["protein_databases"]
+    assert dbs["missing"] == []
+    check = dbs["site_residue_check"]
+    assert check["wrong_residue"] == 0 and check["beyond_length"] == 0
+    assert check["residue_matches"] == doc["tables"]["ptm_sites"]
+    codes = {f["code"] for f in bundle.findings}
+    assert "ptm_site_residue_mismatch" not in codes
+
+
 def test_the_reader_log_says_which_backend_read_each_file(bundle):
     doc = json.loads((bundle.bundle_path / "bundle.json").read_text(encoding="utf-8"))
     backends = {e["file"]: e["backend"] for e in doc["readers"]}
