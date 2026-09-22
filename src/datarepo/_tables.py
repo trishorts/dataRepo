@@ -342,7 +342,7 @@ TABLE_CLASS: dict[str, str] = {
 #: and never alters a core table (U5), so a catalog built without one is still complete --
 #: these are generated separately and are not part of `TABLES`.
 STUDY_VERSIONS: dict[str, str] = {
-    "aging": "0.1.0",
+    "aging": "0.2.0",
 }
 
 STUDY_TABLES: dict[str, dict[str, pa.Schema]] = {
@@ -357,6 +357,8 @@ STUDY_TABLES: dict[str, dict[str, pa.Schema]] = {
         ]),
         "age_effects": pa.schema([  # AgeEffect
             pa.field("dataset_id", pa.string(), nullable=False),
+            pa.field("organism", pa.string(), nullable=False),
+            pa.field("age_centre_years", pa.float64(), nullable=False),
             pa.field("feature_type", pa.string(), nullable=False),
             pa.field("feature_id", pa.string(), nullable=False),
             pa.field("response", pa.string(), nullable=False),
@@ -403,6 +405,7 @@ STUDY_TABLES: dict[str, dict[str, pa.Schema]] = {
             pa.field("definition_id", pa.string(), nullable=False),
         ]),
         "age_effect_meta": pa.schema([  # AgeEffectMeta
+            pa.field("organism", pa.string(), nullable=False),
             pa.field("feature_type", pa.string(), nullable=False),
             pa.field("feature_id", pa.string(), nullable=False),
             pa.field("response", pa.string(), nullable=False),

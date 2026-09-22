@@ -139,6 +139,21 @@ def test_the_meta_table_keys_on_what_may_never_be_pooled():
     assert fields["leave_one_out_max_delta"].nullable is True
 
 
+def test_an_age_effect_can_never_pool_across_organism():
+    # G40, aging DEF-AGE-EFFECT-META v1.2 section 6.4 (their 039/040). A human and a mouse effect
+    # on one feature id must be two meta rows, so organism leads the key; and the guard must be
+    # checkable on age_effects without a join, so it is required there too.
+    meta_key = STUDY_COMPOSITE_IDENTIFIERS[AGING]["age_effect_meta"]
+    assert meta_key[0] == "organism"
+    assert _fields("age_effect_meta")["organism"].nullable is False
+    fields = _fields("age_effects")
+    assert fields["organism"].nullable is False
+    # The centre was a literal 50, a human constant; a row with no centre cannot have its
+    # intercept or its spline knots read, so there is no n/a.
+    assert fields["age_centre_years"].nullable is False
+    assert pa.types.is_floating(fields["age_centre_years"].type)
+
+
 def test_an_age_effect_is_never_a_clock():
     # Section 8: an effect is per feature; predicting a donor's age is a model over many features.
     # Different tables, different definitions, and no column in which to confuse them.

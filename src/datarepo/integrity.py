@@ -106,8 +106,9 @@ STUDY_COMPOSITE_IDENTIFIERS: dict[str, dict[str, tuple[str, ...]]] = {
             "dataset_id", "feature_id", "response", "estimator", "quant_basis", "model_form",
             "stratum",
         ),
+        # `organism` first (aging DEF-AGE-EFFECT-META v1.2 section 6.4, G40): never pool across it.
         "age_effect_meta": (
-            "feature_id", "response", "estimator", "quant_basis", "stratum", "tissue",
+            "organism", "feature_id", "response", "estimator", "quant_basis", "stratum", "tissue",
             "acquisition", "quant_method",
         ),
         "organelle_age_summaries": ("compartment", "organism", "organism_part", "response"),

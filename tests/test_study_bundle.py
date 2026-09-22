@@ -44,6 +44,8 @@ DATASET = "PXD000001"
 #: One complete age effect, with every NOT NULL column of `aging:DEF-AGE-EFFECT v1` section 2 filled.
 EFFECT = {
     "dataset_id": DATASET,
+    "organism": "NCBITaxon:9606",
+    "age_centre_years": "50",
     "feature_type": "protein_group",
     "feature_id": "P11111",
     "response": "abundance",
@@ -242,6 +244,7 @@ def test_a_list_column_survives_a_tsv(tmp_path, store):
         "estimator": "intensity",
         "quant_basis": "mbr_included",
         "stratum": "all",
+        "organism": "NCBITaxon:9606",
         "tissue": "liver",
         "acquisition": "DDA",
         "quant_method": "label_free",
