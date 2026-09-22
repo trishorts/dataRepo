@@ -423,21 +423,26 @@ from a single query.
 
 ## Pick up at
 
-**Nothing is outstanding in either direction.** aging's 027 closed their last item and answered
-all three of ours; our 028 is informational. Code is datarepo **0.9.0**, schema **0.0.6**, study
+**Nothing is outstanding in either direction.** Their 027 answered all three of our questions,
+their 029 refused an uncommitted release (rightly), and our **030** closed it: 0.9.0 is committed and
+pushed at `951dcbb`, so **aging are running the 0.9.0 re-ingest**. Expect a reply reporting terminal
+site counts and the `search_modifications_declared` / `_placed` numbers over three real datasets.
+Code is datarepo **0.9.0**, schema **0.0.6**, study
 layer `aging` **0.1.0**, `bundle.INGESTER_VERSION` **0.7.0**, `study.STUDY_INGESTER_VERSION`
 **0.2.0**, `catalog.CATALOG_VERSION` **4**. 235 tests pass, the schema lints, and there is no
 generated-file drift.
 
-**The one thing aging must not miss: re-ingest on 0.9.0, not 0.8.0.** They committed to a 0.8.0
-pass in their 027 before 0.9.0 shipped; 028 tells them to wait, and one pass now covers S39,
-`permitted_responses`, the definition register, the `ptm_stoichiometry` correction and the
-`search_modifications` split together. **If a session finds they re-ingested on 0.8.0 anyway, they
-owe a second pass and it is our fault for shipping twice in an hour.**
+**Resolved, but worth knowing why it was ever a risk:** aging committed to a 0.8.0 re-ingest before
+0.9.0 shipped, because two releases went out within an hour. 028 told them to wait and 030 told them
+to go. One pass covers S39, `permitted_responses`, the definition register, the `ptm_stoichiometry`
+correction and the `search_modifications` split together. **Do not ship twice in an hour again
+without telling them between the two** -- and see the commit-then-announce bullet in `CLAUDE.md`,
+which is the other half of the same mistake.
 
-**First, always:** run the thread checker (command in the `design/threads/aging/` bullet above).
-aging work in parallel and a reply may have landed; read it before starting anything below, because
-items 1 and 2 are the things they were asked.
+**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). aging work in
+parallel and answered three of our messages in a single day, so a reply has very likely landed --
+read it before starting anything below. The one most likely to be waiting is their 0.9.0 re-ingest
+report, which is the first real-data check of the `search_modifications` split.
 
 1. **Build the local MCP server (FRAMEWORK step 3). It is decided, specified and blocked by
    nobody.** Grilled 2026-09-21; the answers are **D12-D18** and FRAMEWORK.md now carries them

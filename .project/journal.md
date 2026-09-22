@@ -500,3 +500,112 @@ Three times in two days: manifest entry under-hashed, manifest prose over-hashed
 over-hashed. Each time the test is one sentence — *does this change what the rows say* — and each
 time it was available and nobody asked it. That sentence is now in CLAUDE.md's bite-list rather than
 in a journal entry, which is the only place it can do any good.
+
+## 2026-09-21 - Three releases, seven decisions, and two lessons that were ours
+
+The longest session so far, and the shape of it is worth recording as much as the content: almost
+everything that shipped today was **in reply to something aging said**, and the two most valuable
+things learned were **defects in how we work**, not in the code.
+
+**0.7.0 built DATAREPO-20(a) on its own default.** aging had owed us an answer for a day, so D7
+applied: build on the recorded default and mark it. `datarepo study` writes a separately
+content-addressed study bundle under `<store>/_study/<layer>/`, and `build --study` loads it opt-in.
+The property that made it safe to build ahead of an answer is the same one that made it worth
+building: a study bundle is a **separate object**, so the blast radius of being wrong about aging's
+hand-over is one reader function. Their 024 came back "you built ahead of us and the shape is right;
+the delay was ours", with two changes, one of which (`delivery` being advisory rather than
+identifying) was already true and already had a test proving it. That is the first time a
+pre-emptive default has come back accepted unchanged, and the reason is that we asked in 022 §2
+before building rather than after.
+
+**Steps 3-6 of FRAMEWORK are decided as D12-D18**, after a `/grill-me`. Three of the seven changed
+the plan rather than ratifying it, and all three changes came from checking a number rather than
+accepting a framing:
+- **Three MCP tools, not eight.** Most of the eight were thin wrappers over SQL we would write
+  anyway, and several answered questions no measurement has asked.
+- **The acceptance bar was the wrong shape.** "Agent answers >=X% of the question set" mostly
+  measures *aging's data*: `SCHEMA_COVERAGE.md` says 94 of 168 questions wait on a producer, so the
+  number would jump when they deliver age effects with nothing here having changed. The bar is now
+  zero silently-wrong answers, either direction.
+- **Steps 4-5 conflated "a server" with "on the web".** The static site, `llms.txt`, Croissant and a
+  Zenodo DOI need no host and no answer to N1/G9, so they come *before* the server. REST and Docker
+  Compose are deferred until someone actually wants REST.
+
+**And `read_only=True` is not a sandbox.** Measured rather than assumed, which is the only reason it
+was found: a read-only DuckDB connection read a file outside the store via `read_csv_auto` and ran a
+three-billion-row scan to completion. DuckDB 1.5 has no `statement_timeout` either. The sandbox
+therefore splits in two -- cheap lockdown now, sqlglot allow-list when a public endpoint exists --
+because locally it bounds blast radius and publicly it bounds an attacker. Different job, different
+time.
+
+**S39 was the biggest thing in the code, and it was one line.** `ptm_site_rows` had
+`if mod.position == N_TERMINUS: continue`. We had reported it to aging as 13 missing sites; they
+measured the corpus and it was **2,091 terminal sites at q<=0.01** -- 1,220 protein N-terminal, 871
+peptide N-terminal, 20,789 PSMs, `ptm_sites` 35,615 -> 38,045 with every other table identical
+row-for-row. `peptidoforms` held every one of them, so it was a projection gap rather than data
+loss, which is why it was a ruling and not an incident. A reader querying `ptm_sites` for
+acetylation got a lysine-only answer, because the 239 `UNIMOD:1` rows that existed were all `on K`.
+
+**The part of that fix worth keeping is the bit we added against their ruling.** aging's rule implied
+a protein N-terminus is where the peptide starts at residue 1. Co-translational N-terminal
+acetylation follows **initiator-methionine excision**, so it sits on residue 2 with the excised `M`
+as the previous residue -- and on their corpus **958 of the 1,220 protein N-termini are at position
+2**. A `start == 1` rule would have mislabelled 79% of them as cleavage artefacts. We had three
+fixture rows and an argument; they had the number. Arguing from a mechanism against a stated rule
+paid, and it paid because the mechanism was checkable.
+
+**We also refused to guess twice, and both refusals were right.** C-terminal placements are
+indistinguishable from last-residue ones in what MetaMorpheus writes, so they stay `residue` -- aging
+then measured and found **0 C-terminal chemistries have ever been declared to the engine**, so the
+hole is latent rather than absent, and will be *worse* than S39 when it appears because it produces
+no signal at all. And we asked which table `search_modifications_placed` should derive from rather
+than picking: the answer was **peptidoforms, not `ptm_sites`**, because a placed view built on
+`ptm_sites` would have reported N-terminal acetylation as never placed while 3,085 peptidoforms
+carried it. S39 reproduced in the one view whose whole job is to be trusted about absence. Asking
+cost a day; guessing would have cost a table.
+
+### The two lessons that were ours
+
+**We announced releases that existed only in the working tree -- twice in one day.** aging went to
+re-ingest 0.7.0 and found `study.py` uncommitted; thread 028 said "we shipped 0.9.0" with twelve
+files uncommitted. They refused both times and were right to: a bundle id hashed on an
+`INGESTER_VERSION` and `SCHEMA_VERSION` that exist in no commit is reproducible by nobody, which is
+exactly the property `manifest.CONTENT_FIELDS` and the version split were built to protect. The
+thing we had not considered at all: **they build from a read-only clone at our committed `HEAD`, so
+our tip is the only thing they can see** -- an announced-but-unpushed release does not inconvenience
+them, it makes the thread message false. The rule went into `CLAUDE.md`'s bite-list rather than here,
+because the journal is where the `__version__`-in-the-bundle-hash lesson went to die three times.
+
+**A measurement is only true of the grain it was taken at.** aging retracted their own 1,367 rather
+than let us verify against it: it counted peptidoforms whose ProForma *begins* with a modification,
+so it conflated the two site types and missed every first-residue placement written
+`C[UNIMOD:385]PEPTIDE` instead of as a prefix -- all 240 `Ammonia loss on C` sites. We had asked to
+be checked against that number and would have "passed" while being wrong about which sites were
+which. It had already reached six places including the schema description, where the next session
+would have read it as measured fact; all six now carry the corpus figures, verified prose-only
+(`_tables.py` byte-identical, fixture bundle id `d13e382106002a1c` on both sides). This is now four
+instances between the two projects, counting aging's own three, and the general form is worth more
+than any of them: **carrying a number to a finer grain silently re-labels it.**
+
+And the same hazard caught us one layer up. Our 022 §1 argued that `age_effects.estimator` must exist
+*because count- and intensity-based occupancy differ threefold and must never be averaged*, while
+the core `ptm_stoichiometry` it draws from still had a single `modified_fraction` forcing precisely
+that average. True where written, false one layer down. It took aging's 026 to see it -- and 026 was
+also a **dropped commitment**: five corrections we accepted in our own thread 012 and then shipped
+0.5.0, 0.6.0 and 0.7.0 without. Their framing ("worth a message rather than a shrug") was correct.
+All five are now in, corrected while the table still held 0 rows, with four tests whose only job is
+to fail if the shape drifts back. The commitment lives in the suite now rather than in a thread,
+which is the only place it could have survived three releases.
+
+### Two smaller things, both found by reading rather than running
+
+`pyproject.toml` restated `version = "0.3.1"` while the package said 0.7.0 and the **installed**
+distribution reported `0.1.0` -- three answers to one question, for four releases, with nothing to
+catch it. `__version__` is in every `catalog_id`, so an operator reconciling "what did I install"
+against a catalog was reading two different numbers. Now `dynamic`, with a test.
+
+And a stale claim repeated in four files: that pyMzLib's mzLib bridge "is not built" in CI. The user
+corrected it, and the pyMzLib project confirms wheels for win-x64, linux-x64, osx-x64 and osx-arm64
+that carry the bridge -- `pip install mzlib` works anywhere, and our own CI already installed it and
+ran the parser tests rather than skipping them. **The comment had outlived the condition it
+described**, which is the documentation version of the grain lesson.
