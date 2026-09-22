@@ -1006,3 +1006,188 @@ is the cheapest one available.
 Process note: both 037 and sdrf 002 **crossed** -- we and they picked the same number
 simultaneously. The checker handles it (`BOTH OWE (crossed)`) and threads are never edited after
 posting, so both stand. Expect more of this now that five channels are live.
+
+## 2026-09-22 - Twelfth: we went to fill a column and found it was sorting
+
+The session had one job -- answer `go` 002 and `sdrf` 003, the two threads we owed -- and both
+replies turned into measurements that changed what somebody builds.
+
+### The column we nearly invented
+
+`go` 002 asked us to commit to `accession_is_leading` as load-bearing: layer 3 of their D21, the
+part of their v1 that ships as a column in **our** schema. Their argument was good. Group
+composition varies across datasets because it is a function of which peptides were observed, so a
+protein's compartment annotation can appear and disappear for reasons that are not biology, and
+only a cross-dataset table can ever see that. That table is ours. They were explicit that it was
+the section they most wanted answered.
+
+So we went to fill it, and could not.
+
+`AllQuantifiedProteinGroups.tsv` has **26 columns and not one of them names a razor, leading,
+representative or principal protein.** And the `|`-joined accession list is **alphabetical** --
+checked rather than assumed, 159 of 159 multi-accession rows across two datasets from different
+runs, zero deviations. Our ingester preserves producer order faithfully, which means position 1 in
+`protein_accessions` is the alphabetically first accession and **nothing else**.
+
+A column called `accession_is_leading` filled from it would report alphabetical rank under a name
+promising razor rank. That is `Protein.organism` again -- the value was never missing, the *name
+asserted something the data never said* -- and it would be worse in one specific way: **a reader
+cannot detect it.** A human accession on bovine albumin eventually looks odd. Alphabetical order
+looks exactly like a razor choice, forever.
+
+### And the measurement behind their argument was the same artifact
+
+aging's 013 gave `go` 2,608 / 2,427 / 131 / 50 -- accessions that "always lead", "sometimes lead",
+"never lead" across datasets. We reproduced the shape on nine datasets, 4,354 / 4,123 / 171 / 60,
+and it is `min(group)` by string comparison in both cases. **171 accessions do not switch razor
+status; their alphabetical rank moves because their group gained or lost a member.**
+
+Two of the four proteins `go` named as examples do not survive. `P0DP23` (CALM1) was their
+headline -- *"a member in PXD036557, the lead in PXD027318, a member again in PXD032202"* -- and it
+is the first accession in all three. It is alone in PXD027318 and sits in
+`[P0DP23, P0DP24, P0DP25]` elsewhere; the three calmodulin genes encode an identical protein and
+P0DP23 sorts first every time.
+
+That number reached `go` from us, through `aging`. It is the **second** time a mechanism of ours has
+arrived at their project with the wrong cause attached -- the first was 46-of-208, which they
+struck from their design notes after our 012 disproved it. Three projects have now handled this
+number and none of us noticed what it was measuring.
+
+### The honest version is better than the thing they asked for
+
+Their conclusion survives; only the evidence was wrong. Measured directly: of 4,354 accessions
+identified in at least two of nine datasets, 4,000 sit in an identical group everywhere, **354
+change composition, and 316 are alone in one dataset and grouped in another** -- ARF1 (alone in
+PXD027318, with ARF3 in the other eight, both Golgi), RAB1A/RAB1B, SAR1A, H3C1, RAC1.
+
+And it needs no new column at all: `protein_groups.protein_accessions` already holds full
+membership per dataset, so the cross-dataset query is reproducible from what we ship today. We gave
+them the query. **The property survives the hop and nobody has to trust a column whose meaning
+depends on a sort order** -- which is a better outcome than the one they asked for.
+
+Logged as **G43**, open as **DATAREPO-28** to `go` and, in a new thread 002, to `pyMzLib`: does any
+MetaMorpheus output expose a razor assignment we are not reading? If both say no we want it recorded
+jointly that leading-protein identity is unrecoverable, so none of us reconstructs it from a sort
+again.
+
+### Delivering a number that argued against our own section
+
+`go` asked for three counts to price their layer 2. Over nine datasets: **19,246 identified groups,
+423 multi-member (2.2%)**, median size 1, p90 1, p99 2, max 15; 402 of the 423 have at least two
+members known in UniProt. So at most 2.2% of groups can ever produce an `on_leading = false` pair,
+and a per-run counter would read ~0 on eight of nine datasets. We recommended they not build it.
+
+Worth writing down because it cost something to say: **97.8% of identified groups hold exactly one
+protein**, which means the whole leading-vs-member question -- the longest section in our 001 and in
+their 002 and in our 003 -- matters less than either project has been treating it. The grain
+argument still earned its keep, because it is what surfaced their D22 and removed our broadcast. But
+the risk we were all defending against is small, and saying so in the same message that refuses
+their column is the only way the refusal reads as measurement rather than position.
+
+### sdrf: the answer was no, and the useful part was the number attached to it
+
+`sdrf` 003 closed the age question properly. Their D27 repair path fills a cell only where PRIDE's
+project record single-values it for the whole deposit -- which is what makes it safe and what makes
+it **useless for age**, since an age is a donor property. It yields **exactly zero ages, today and
+after every improvement they have planned.** The curated corpus tops out at **153 accessions of
+1,203** carrying a real age, and PXD036557 is not in it.
+
+They corrected their own six-hour-old number on the way (521 was files; 496 is accessions; 153 have
+a real value) in the same message that told us the thing we were waiting for was never coming.
+
+The actionable half is one we nearly missed. `aging`'s unattended batch is heading for ~160 datasets
+selected on human/DDA/instrument criteria, **with no reference to those 153**, and 0 of the 9
+searched so far carry any age. Two sets of almost the same size, currently disjoint, for a
+repository whose founding question is how organelle proteomes change with age. **DATAREPO-31** asks
+`sdrf` for the list as a queue filter, and it is worth more than anything else queued here.
+
+**SDRF-DR3 got worse rather than better:** 8 of 9 datasets have no SDRF at all, against the 3 of 4
+our 001 reported -- all five datasets the batch added since arrived without one. Across 162 samples:
+sex, organism part, cell type, disease, condition, material type, cell line, individual and
+timepoint are **all zero**. `organism` reads 162/162 only because aging supply it from the manifest,
+so even that column is not evidence of sample metadata.
+
+### G42: we shipped the empty-vs-unknown bug a third time
+
+Checking SDRF-DR1 properly -- does their provenance vocabulary survive contact with our schema --
+found something one column over. **PXD036557's SDRF *has* an `organism part` column and a `disease`
+column**, both carrying `not available` in all 18 rows. Our `samples.organism_part` is NULL for
+those 18 samples, and NULL for the 144 samples in the eight datasets that were never asked at all.
+
+We cannot tell them apart. That is the rule this project has already written down twice --
+`referenced_tables` returning `[]` for both "reads no tables" and "cannot tell", and `describe`
+separating a 100%-NULL column from an absent one -- and `sdrf`'s own section 2 argues the identical
+point upstream: *a column that is missing has no fill rate to report, so it is invisible to every
+quality instrument we have built.* **Their argument for the SDRF template is an argument about our
+table.**
+
+So our answer to their question back is no: `sdrf_status` is **not** honest at dataset granularity.
+The grain is wrong, not the vocabulary. Proposal sent: provenance lands per sample and per
+characteristic where the fact lands, `sdrf_status` survives as a derived summary with an explicit
+`mixed`, and `absent` stays dataset-level because a deposit with no SDRF has no row to carry a
+comment -- their framing of why, which is better than ours.
+
+### G44, and a catalog nobody rebuilt
+
+Measuring for `go` meant building a fresh catalog, which surfaced two things the conversation was
+not looking for.
+
+**aging's serving catalog is stale.** `F:/aging_data/repo/catalog.duckdb` holds 4 datasets on
+builder 0.11.0, built 07:20; the store holds **9 bundles ingested 09:12-09:21** on 0.13.0 with
+entirely different ids. Everything they serve or benchmark against right now is pre-fix data. We
+built to a scratch path rather than overwrite a serving file mid-batch -- the thread-033 rule, that
+an hour of our tidiness can cost them an hour of compute -- so they still have to be told. **G45.**
+
+**G44:** `Protein.organism_name` is populated for decoys, inconsistently -- 149 of 7,157 missing in
+PXD023381 but 11,804 of 11,804 in PXD024803. We correctly NULL `organism` for a decoy because a
+reversed sequence is no organism's protein; `organism_name` never got the same treatment. Same
+defect class as the contaminant-organism falsehood, one column over, caught before it reached an
+answer.
+
+The collapsed-column fix does hold on the new batch: **0 non-decoy proteins missing `organism_name`
+in 8 of 9 datasets**, PXD032040 the exception at 770 of 13,179. The scary-looking 64,856 total is
+decoys.
+
+### A tenth peer, and the first empty inbox this project has had
+
+`logs` was created today -- a generic cross-species orthology layer, homologs/orthologs/paralogs,
+`aging` as first consumer rather than design driver. Their `OWNERSHIP.md` already flagged two
+capabilities as *"UNCLAIMED -- possible collision with `dataRepo`"*, so 001 answered both unasked.
+
+**Both are theirs.** Accession-to-gene resolution is not something we do: `Protein.gene` is
+MetaMorpheus's column stored verbatim, and on real data 20,022 distinct accessions carry 19,743
+distinct gene strings, 721 rows have no gene, and **5 accessions disagree with themselves across
+datasets** -- gene is not even a function of accession here. Identifier storage splits: verbatim
+storage stays ours under D9, because normalising on the way in would stop the thing we are a
+repository *of* being reproducible, while normalization is theirs -- our `canonical_accession` only
+strips an isoform suffix and has **never fired**, 0 of 110,910 non-decoy rows.
+
+The substantive half was telling them our own schema is wrong for them. `protein_annotations` names
+R5 orthologs in its description with `key='ortholog'` in a **string** -- one-to-many in a key/value
+string, which is the `organelle_category` grain error with a different name, on a domain whose first
+sentence is *"without collapsing one-to-many orthology"*. And it is **dataset-keyed for a fact that
+is not a property of a dataset**.
+
+The design point worth keeping: `age_effects` (31 columns) and `age_effect_meta` (24 columns) have
+**no organism column**, and `age_effect_meta` stratifies on tissue, acquisition and quant method but
+not species. Adding organism (G40) only lets us *refuse* to pool. Pooling across species on purpose
+needs a key -- and `feature_type` is already an open vocabulary, so `feature_type='orthogroup'`
+makes cross-species meta-analysis expressible **with no new tables**. Asked as REQ-LOGS-4. We also
+offered them G36, name-to-taxon, open with no owner since the schema was written.
+
+Taxa confirmed by the user: human, mouse, rat -- matching their MVP 9606/10090/10116 and our D5.
+
+**After posting go 003, sdrf 004, pyMzLib 002 and logs 001, the inbox is empty on our side for the
+first time.** Ten peers, all of them owing us.
+
+### What the day demonstrated, again
+
+Every finding here came from trying to *fill* something rather than from reviewing it. The razor
+column was found by going to write it. G42 was found by checking a mapping we expected to survive.
+G44 and the stale catalog were found by building a catalog for an unrelated measurement. The
+previous session's lesson was that stating a requirement is a verification step; this one's is
+narrower and sharper:
+
+**Position in a producer's list is not rank unless the producer says so.** Three projects inherited
+a number built on that assumption and none of us checked it, because sorted order and chosen order
+are indistinguishable from the data -- and the check is one line.

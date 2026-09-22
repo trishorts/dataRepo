@@ -226,6 +226,47 @@ decisions:
       minutes -- because a producer guessing at a distribution we can query is waste on both sides.
       Corollary held deliberately: dataRepo will have a second consumer (a project not yet started)
       and we do NOT build for it; when it exists it states its needs, same rule pointed outward.
+
+  - id: D22
+    date: 2026-09-22
+    text: >-
+      Accepted go's column contract (their 002), and refused the one column we cannot ground.
+      TAKEN AS RULED: their D22 makes `accession_used` set-valued and equal to exactly the group
+      members carrying a term, so we expand their `(protein_group, term)` row over
+      `accession_used` and NEVER over our own `protein_accessions` -- the broadcast problem in our
+      001 section 2 disappears, and every stored row is an accession that genuinely carries the
+      term. `inherited` and `propagated` are nullable booleans, two-state, with NO distance column
+      (GO is a DAG, so a distance needs a hidden shortest-vs-longest path rule that would live
+      nowhere). `organelle_label` is renamed `organelle_category`, nullable; subcategory is stored
+      WITH its `mitochondrion:inner_membrane` qualification, because stripping the prefix
+      re-creates the position-pairing hazard it exists to remove. Three version fields, not one:
+      `AnnotationSource.version` = the organelle map, `.ontology_release` = the go.obo release,
+      `.output_format_version` = the column set, which is the one that lets the ingester refuse an
+      unknown format loudly instead of silently mapping a shifted column. REFUSED:
+      `accession_is_leading` (G43) -- the producer exposes no razor protein and sorts its accession
+      list alphabetically, so the column would assert what the data never said. Our schema stops
+      citing REQ-GO-2..10; go's standing instruction is 'trust D1-D22'. HELD pending DATAREPO-29/30:
+      whether `organelle_category`/`organelle_subcategory` live in a term-keyed table rather than
+      repeated per protein, since both are a function of `(go_id, organelle_map_version)` alone.
+
+  - id: D23
+    date: 2026-09-22
+    text: >-
+      The identifier seam with `logs` (cross-species orthology, tenth peer, opened 2026-09-22).
+      Their OWNERSHIP.md flagged two capabilities as possibly colliding with us and we conceded
+      both in our 001. **Accession-to-gene resolution is theirs**: our `Protein.gene` is
+      MetaMorpheus's `Gene` column stored verbatim with no lookup, and on real data 20,022 distinct
+      accessions carry 19,743 distinct gene strings with 5 accessions disagreeing with themselves
+      across datasets -- gene is not a function of accession here, which is a faithful record and
+      not a resolution. **Identifier STORAGE stays ours and is not negotiable** (D9): we store the
+      producer's string verbatim, because normalising on the way in stops the thing we are a
+      repository OF being reproducible. **Normalization is theirs** -- `canonical_accession` only
+      strips an isoform suffix, is a string operation with no reference data behind it, and has
+      never once fired (0 of 110,910 non-decoy rows). Secondary/demerged/obsolete accessions and
+      RefSeq-UniProt mapping are logs' to own and ours to store as their output. Also told them
+      `protein_annotations` (key/value string, dataset-keyed) is the WRONG home for their
+      one-to-many output and asked them to confirm it before either side builds -- the G39 lesson
+      applied before it costs anything.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -494,10 +535,33 @@ gaps:
     reached an answer. Default: NULL `organism_name` for decoys at ingest, which is an
     `INGESTER_VERSION` bump. NOT urgent -- no view or benchmark question reads decoy rows -- but
     it is a lie sitting in a column whose whole job is to be the verbatim species evidence.
+  - >-
+    G45 aging's serving catalog is stale and they have not been told. Measured 2026-09-22:
+    `F:/aging_data/repo/catalog.duckdb` holds 4 datasets on builder 0.11.0, built 07:20, while the
+    store holds 9 bundles ingested 09:12-09:21 on 0.13.0 with entirely different ids
+    (PXD023381 is `64ea541b11d57f4d` in the catalog and `1600ae76b313a561` in the store). So
+    everything they currently serve, benchmark or cite is pre-collapsed-column-fix data. We built
+    to a scratch path rather than overwrite a serving file mid-batch (the thread-033 rule: an hour
+    of our tidiness can cost them an hour of compute), which means the telling is still owed.
+    Send as thread 039, and fold in G44 since it is also an ingest-side fix they would want before
+    re-ingesting again. NOT urgent for us -- our measurements used the fresh scratch catalog
+    `f8fc910cce116fbe` -- but every number they quote until then is from the old data.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
 skip_log:
+  - date: 2026-09-22
+    item: "threads.py QID regex cannot represent sdrf's SDRF-DR1..DR5 question IDs"
+    reason: >-
+      The checker validates question IDs against `^(?:REQ-)?[A-Z][A-Z0-9]{1,15}-[A-Z]?\d+$` -- ONE
+      optional letter before the digits. `DATAREPO-28`, `LOGS-Q1` and `REQ-LOGS-5` all pass;
+      `SDRF-DR1` fails, so sdrf's own question IDs cannot go in message front matter and `ledger`
+      cannot track them. Worked around in our 004 by carrying them in the prose ledger and leaving
+      `answers: []`, because renaming a peer's IDs is worse than not tracking them. NOT FIXED here
+      deliberately: `threads.py` is a shared asset under `~/.claude/skills/project/assets/` used by
+      all ten /project folders, so widening the regex is a change to every project's tooling and
+      belongs in its own pass with the other nine in mind -- not at the end of a session, on our
+      own authority, to suit one peer's naming.
   - date: 2026-09-20
     item: "G26 - replace the in-house modification registry with QuantProject's loader-generated IdWithMotif-to-Unimod.1.0.591.tsv"
     reason: >-

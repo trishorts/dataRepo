@@ -126,6 +126,23 @@ This folder is a `/project`-managed research project. **You are de facto working
   aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.
   Its DIVERGED check normalizes line endings, so CRLF/LF differences between the two copies are fine.
 
+- **Position in a producer's list is not rank unless the producer says so.** `go` asked us to store
+  `accession_is_leading`. MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has **26 columns and none
+  names a razor, leading or principal protein**, and its `|`-joined `Protein Accession` list is
+  **alphabetical** -- 159 of 159 multi-accession rows across two datasets, zero deviations. So
+  element 0 is alphabetical rank. A cross-dataset "leads here, not there" count built on it
+  (aging's 013: 2,608/2,427/131/50) is `min(group)` by string comparison, and **three projects
+  passed that number around without anyone checking**, because sorted order and chosen order are
+  indistinguishable from the data. Two of the four proteins named as examples do not reproduce.
+  The check is one line (`a == sorted(a)`); the column would have been `Protein.organism` again,
+  except undetectable -- a human accession on bovine albumin eventually looks odd, alphabetical
+  order never does. G43, open as DATAREPO-28 to go and pyMzLib.
+- **Findings come from trying to FILL a thing, not from reviewing it.** Everything found on
+  2026-09-22: the razor artifact came from going to write the column; G42 from checking a mapping we
+  expected to survive; G44 and aging's stale catalog from building a catalog for an unrelated
+  measurement. Two rounds of agent review had already missed the collapsed column for the same
+  reason. **Reviewing asks "is this right?"; filling asks "what goes here?" -- and only the second
+  one fails loudly.**
 - **A required column with no true value gets a false one.** `Protein.organism` was
   `required: true`, so all 339 contaminant entries read `NCBITaxon:9606` -- porcine trypsin, bovine
   albumin at q=0 in all three datasets, E. coli lacZ -- and "no non-human proteins were identified"

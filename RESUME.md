@@ -6,11 +6,11 @@
 
 | | |
 |---|---|
-| Commits | 104 |
+| Commits | 106 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 21 |
-| Open gaps | 42 |
-| Gate items skipped | 2 |
+| Locked decisions | 23 |
+| Open gaps | 43 |
+| Gate items skipped | 3 |
 
 <!-- END GENERATED -->
 
@@ -22,7 +22,7 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Where it stands (2026-09-22, eighth session)
+## Where it stands (2026-09-22, twelfth session)
 
 **FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.13.0**, schema **0.0.7**,
 `INGESTER_VERSION` **0.9.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**. aging
@@ -30,7 +30,7 @@ re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`) and run an 
 toward 160 qualifying human datasets. **0.13.0 moves `INGESTER_VERSION`, so a re-ingest on
 `efd1a83` is owed** — it fixes a collapsed-column parse that cost ~7,200 proteins their species.
 
-### Nine thread peers — and the three that replied changed what we build
+### Ten thread peers — and the ones that replied changed what we build
 
 Until that day dataRepo had **one** peer, aging, while eight open gaps named an upstream we needed
 something from. Every request went through aging as a proxy — and a proxy loses the reasoning: one
@@ -107,6 +107,31 @@ exactly as it is for the 144 samples whose deposits were never asked. **We canno
 not available" from "never asked"** — the `empty` vs `unknown` rule this project has already written
 down twice, shipped a third time. sdrf's argument for the upstream template is the same sentence
 about our table.
+
+### The column we nearly invented (G43), and a tenth peer
+
+`go` asked us to commit to `accession_is_leading` as load-bearing. We went to fill it and could not:
+MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has **26 columns and none names a razor or leading
+protein**, and its `|`-joined accession list is **alphabetical** — 159 of 159 multi-accession rows
+across two datasets, zero deviations. So element 0 is alphabetical rank, and aging's 013 measurement
+that `go` quotes (2,608/2,427/131/50) is `min(group)` by string comparison. **Three projects passed
+that number around and none of us checked it.** Two of go's four named examples do not reproduce.
+
+Their conclusion survives on better evidence: of 4,354 accessions in ≥2 of 9 datasets, **354 change
+group composition and 316 are alone in one dataset and grouped in another** — ARF1, RAB1A/B, SAR1A,
+H3C1. And `protein_groups.protein_accessions` already preserves it, so no new column is needed.
+
+We also delivered the three counts `go` asked for and they argued against our own longest section:
+**19,246 groups, 423 multi-member (2.2%)**, median size 1. 97.8% of identified groups hold exactly
+one protein, so the leading-vs-member question matters less than any of us had been treating it.
+
+**`logs` is the tenth peer** — generic cross-species orthology, created today. Their `OWNERSHIP.md`
+flagged two capabilities as possibly colliding with us and **both are theirs** (D23): accession→gene
+resolution is not something we do, and `canonical_accession` only strips an isoform suffix and has
+never fired on 110,910 rows. We told them `protein_annotations` — key/value string, dataset-keyed —
+is the wrong home for one-to-many output, and raised `feature_type='orthogroup'` as the
+cross-species pooling key that would make `age_effect_meta` work across species **with no new
+tables**. Taxa confirmed: human, mouse, rat.
 
 ### What `beta` means for a mouse (G40, G41)
 
@@ -586,83 +611,91 @@ from a single query.
 - **`lit/`:** the research on platforms and proteomics resources.
 
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
-
 ## Pick up at
 
-**Nothing is outstanding in either direction.** Their 027 answered all three of our questions,
-their 029 refused an uncommitted release (rightly), and our **030** closed it: 0.9.0 is committed and
-pushed at `951dcbb`, so **aging are running the 0.9.0 re-ingest**. Expect a reply reporting terminal
-site counts and the `search_modifications_declared` / `_placed` numbers over three real datasets.
-Code is datarepo **0.9.0**, schema **0.0.6**, study
-layer `aging` **0.1.0**, `bundle.INGESTER_VERSION` **0.7.0**, `study.STUDY_INGESTER_VERSION`
-**0.2.0**, `catalog.CATALOG_VERSION` **4**. 235 tests pass, the schema lints, and there is no
-generated-file drift.
+**The inbox is empty on our side — for the first time.** `go` 003, `sdrf` 004, `pyMzLib` 002 and
+`logs` 001 all went out on 2026-09-22 and are committed and pushed. **Ten peers, all of them owing
+us.** Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
+`study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**, tip `f9684d6` pushed to
+`origin/master`.
 
-**Resolved, but worth knowing why it was ever a risk:** aging committed to a 0.8.0 re-ingest before
-0.9.0 shipped, because two releases went out within an hour. 028 told them to wait and 030 told them
-to go. One pass covers S39, `permitted_responses`, the definition register, the `ptm_stoichiometry`
-correction and the `search_modifications` split together. **Do not ship twice in an hour again
-without telling them between the two** -- and see the commit-then-announce bullet in `CLAUDE.md`,
-which is the other half of the same mistake.
+**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). Four messages
+went out in one session and three peers replied within the hour the last time we did that, so
+assume something has landed and read it before starting anything below.
 
-**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). aging work in
-parallel and answered three of our messages in a single day, so a reply has very likely landed --
-read it before starting anything below. The one most likely to be waiting is their 0.9.0 re-ingest
-report, which is the first real-data check of the `search_modifications` split.
+**Do not trust a catalog number quoted anywhere in this file.** aging's unattended batch grows the
+store without warning, and the catalog they *serve* is currently behind it (G45). Every measurement
+in this session came from a scratch catalog built from the live store:
+`f8fc910cce116fbe`, 9 datasets. Rebuild rather than reuse it:
 
-1. **Build the local MCP server (FRAMEWORK step 3). It is decided, specified and blocked by
-   nobody.** Grilled 2026-09-21; the answers are **D12-D18** and FRAMEWORK.md now carries them
-   inline, so read the decisions rather than the proposal where the two differ. The build, in order:
-   `datarepo mcp --catalog <path>` as a CLI subcommand with a `--install` that writes the Claude
-   Code config (D12); three tools only - `describe`, `search`, `sql` - with a fourth added only
-   where aging's benchmark shows a specific wrong answer (D12); every result carrying its
-   `catalog_id` and bundle ids (D13); the cheap sandbox - `enable_external_access=false`, 1,000-row
-   / 50k-char caps, a 30 s `con.interrupt()` watchdog (D14, and note `read_only=True` alone is NOT
-   a sandbox: it will `read_csv_auto` anything on disk). Done means **zero silently-wrong answers**
-   on aging's questions, read from their master and never copied - not a percentage (D15). The
-   `mcp` SDK goes in as an optional `[mcp]` extra; no R client.
-2. **G17 is closed but R7 has no producer, and aging think it belongs here.** Their 025 measured
-   the join at **92.51%** across three datasets (up from 212 of 433 on one), so the design question
-   from our 012 §2 is closed on their evidence. `ptm_stoichiometry` now has the right shape and 0
-   rows. Writing its producer is the natural next ingest-side job -- but note the ordering that got
-   us here: shape first, then a producer, and do not write one against a shape neither side has
-   queried.
-3. **DATAREPO-20(c) is ANSWERED; the check it unblocks is not built (G32).** A feature's
-   cross-dataset identity is the UniProt accession, and the join goes through **membership in
-   `protein_accessions`**, never the id string -- measured by aging at 2,608 pooled accessions
-   against 2,497 for any id-based join, the 111 lost being paralogue families. Land the check with
-   the membership-join view, not as a bare constraint.
-   20(a) is BUILT on its default in 0.7.0 (`datarepo study`, G30 tracks what is still ours to
-   guess), which means `age_effect_meta` can be delivered and its join key is still undecided. A
-   `protein_group_id` here is scoped to its dataset, so it cannot be a cross-dataset key, and
-   aging's §6 does not say what replaces it. Cheap now, expensive once rows exist. Asked in 022 and
-   re-asked as the first item of 023.
-3. **G26 - the modification registry reads mzLib's resource files instead of asking its loader.**
-   It agrees with the loader on all 100 names that have reached `ptm_sites` and differs on exactly
-   two that have not (`Decarboxylation on D`/`on E`), so nothing shipped is wrong. The fix is to
-   consume QuantProject's `IdWithMotif-to-Unimod.<mzlib>.tsv`; the open part is **distribution**
-   (how it reaches an operator, what an ingest does when the searching mzLib version has no table),
-   asked in 021 section 5. Do not wire a third repository's file into the bundle hash before that
-   is answered.
-4. **G28 - `search_modifications` says "every modification the search considered" and means
-   "declared".** All three datasets declare 33 UNIMOD accessions; their peptidoforms carry 16, 46
-   and 57. Small, entirely ours, default is to fix the description and add a view for what was
-   actually placed.
-5. **DATAREPO-18** (G16): how a protein-terminal modification is keyed. Smaller than it was now that
-   the key no longer depends on an accession, but still a join key and still aging's to rule on.
-6. **G17 / G18** - the `ptm_stoichiometry` corrections and the remaining `ptm_sites` hygiene. Still
-   free while both tables are 0 rows. The count/intensity split is the one that must not be got
-   wrong: the estimators differ 3x overall and 7x at 21-50 PSM sites, and must never be averaged.
-7. **Then the no-server half of steps 4-5** (D16): `datarepo site <catalog> --out` generating
-   dataset pages with Bioschemas JSON-LD, `llms.txt` and Croissant, plus a Zenodo DOI on the release
-   Parquet. Needs no host and no NCEMS answer; aging publishes the output because D8 keeps
-   data-derived artefacts out of this repo. Pages carry a machine-written summary, labelled, reading
-   ONLY catalog fields plus aging's manifest prose (D17). REST and Docker Compose stay deferred.
-   **N1/G9 - does NCEMS host web services at all - goes to the next meeting regardless; it is now
-   the long pole for D1.**
-8. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
-9. **`/project advance`** - the phase field still says INCEPTION and the work is plainly BUILD. Left
-   alone deliberately; advancing is a gated step, not a close-out edit.
+```
+datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scratch>/measure.duckdb
+```
+
+### The next action
+
+1. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** This is first
+   because it is the only item where someone else is currently working from wrong data.
+   `F:/aging_data/repo/catalog.duckdb` is 4 datasets on builder 0.11.0 built at 07:20; the store
+   holds **9 bundles ingested 09:12–09:21** on 0.13.0 with different ids. Everything they serve,
+   benchmark or cite is pre-collapsed-column-fix. We did not rebuild it for them — overwriting a
+   serving file mid-batch is the thread-033 mistake — so they have to be told. **G44** belongs in
+   the same message: `Protein.organism_name` is populated for decoys inconsistently (149 of 7,157
+   missing in PXD023381, 11,804 of 11,804 in PXD024803) while `organism` is correctly NULL, so it
+   is an ingest-side fix they would want *before* re-ingesting again.
+
+2. **Chase DATAREPO-31 with `sdrf`: the 153 accessions.** The highest-value item in the backlog and
+   it costs them one query. Their curated corpus has **153 accessions of 1,203 carrying a real
+   donor age**; aging's batch is selecting ~160 datasets on search-side criteria **with no
+   reference to that list**; and **0 of the 9 searched so far carry any age**. Two sets of almost
+   the same size, currently disjoint, in a repository whose founding question is how organelle
+   proteomes change with age. When the list arrives it goes to aging as a queue filter.
+
+3. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
+   ready: `inherited`/`propagated` as nullable booleans with no distance column; `organelle_label`
+   renamed `organelle_category` and nullable; subcategory stored **with** its
+   `mitochondrion:inner_membrane` prefix; three version fields (`version` = organelle map,
+   `ontology_release`, `output_format_version`); expansion over their set-valued `accession_used`
+   rather than over our `protein_accessions`, which removes the broadcast entirely. **Held pending
+   DATAREPO-29/30** — whether category/subcategory live in a term-keyed table, since both are a
+   function of `(go_id, map_version)` alone. **G43 is the trap**: the producer exposes no razor
+   protein and sorts its accession list alphabetically, so that column would assert what the data
+   never said. Our schema also stops citing `REQ-GO-2..10`; go's standing instruction is *trust
+   D1–D22*.
+
+4. **G42 — `samples` cannot tell `not available` from never-asked.** Owed to `sdrf` in our 004 §3
+   and ours to fix. PXD036557's SDRF *has* `organism part` and `disease` columns, both
+   `not available` in all 18 rows, and `samples.organism_part` is NULL for those 18 exactly as it
+   is for the 144 samples whose deposits were never asked. Carry the deposit's verbatim cell into
+   `sample_characteristics`, which already has the `(sample_id, name, value)` grain, so absence and
+   a reserved word stop sharing NULL. This is the empty-vs-unknown rule shipped a third time.
+
+5. **G40 — add organism to `AgeEffect` and `AgeEffectMeta`.** Ours regardless of aging's answer to
+   038. `age_effects` has 31 columns and `age_effect_meta` 24, and **neither has organism**, while
+   `age_effect_meta` stratifies on tissue, acquisition and quant method. Nothing stops a human and
+   a mouse effect pooling into one meta-estimate. Note this only lets us *refuse* to pool —
+   pooling across species on purpose needs REQ-LOGS-4's key, and `feature_type` is already an open
+   vocabulary, so `feature_type='orthogroup'` would make it expressible with no new tables.
+
+6. **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the red
+   team breaks the previous round's fix. 0.12.0 and 0.13.0 are unverified, and the reviews have a
+   blind spot — all four agents reasoned about the catalog while the collapsed-column defect lived
+   upstream in a producer file none could read. **A re-run must point at least one agent at
+   `F:/aging_data/<run>/<PXD>/04_search/`.**
+
+7. **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`, whose
+   description must carry the 1.02–1.05x inflation and the perfect-correlation clause **in the
+   column's own text**.
+
+8. **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a producer
+   — never one written against a shape neither side has queried.
+
+9. **`datarepo site` (D16)**, then G33/G26/G36 and the QPX pin (G13). **N1/G9 — does NCEMS host web
+   services at all — goes to the next meeting regardless; it is the long pole for D1.**
+
+10. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD.
+    Left alone deliberately; advancing is a gated step, not a close-out edit.
+
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI
 fails on drift. If the ingester's output changes, also `python tools/build_example_bundle.py`.
