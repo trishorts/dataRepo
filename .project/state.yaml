@@ -557,7 +557,7 @@ gaps:
     `INGESTER_VERSION` bump. NOT urgent -- no view or benchmark question reads decoy rows -- but
     it is a lie sitting in a column whose whole job is to be the verbatim species evidence.
   - >-
-    G45 TOLD in thread 041 section 2 (2026-09-22); the rebuild is aging's. Still stale at close-out:
+    G45 CLOSED 2026-09-22: aging 042 rebuilt the serving catalog (`7b9de8696589c948`, 0.14.0, 10 datasets, 185 checks), confirmed from the MCP server. It goes stale again at their 0.15.0 re-ingest. Previously: TOLD in thread 041 section 2 (2026-09-22); the rebuild is aging's. Still stale at close-out:
     the `datarepo` MCP server registered in both folders reads this file, so answers from it are
     pre-0.13.0 data until they rebuild. Original text: aging's serving catalog is stale and they
     have not been told. Measured 2026-09-22:
