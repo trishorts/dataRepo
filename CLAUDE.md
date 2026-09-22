@@ -18,10 +18,10 @@ This folder is a `/project`-managed research project. **You are de facto working
   `go` (**003 sent -- asks DATAREPO-28/29/30**), `sdrf` (**004 sent -- asks DATAREPO-31/32**),
   `pyMzLib` (**002 sent -- the razor question, DATAREPO-28**), `QuantProject`, `pride`, `qc`,
   `pep`, `phred` (001 sent to each, no reply yet), and **`logs`** -- new, cross-species
-  orthology; our 001 conceded both capability collisions they had flagged, and **their 002 is
-  UNREAD with 003 owed**: it answers four of our five, asks **REQ-DATAREPO-1/2/3** (all three are
-  queries we can run in minutes, and their first one decides their whole plan), and produced G46,
-  G47 and a rewrite of G36. Expect crossed
+  orthology; 001/003 sent and **they owe 004**. Their 002 produced G46, G47 and a rewrite of G36,
+  and our 003 answered REQ-DATAREPO-1/2/3: the corpus is **100% UniProt XML, one sha256 across all
+  nine**, 100% UniProt accessions with **zero RefSeq**, and bundles retain database name + checksum.
+  That disproved their guess about our disagreeing gene names and surfaced **G48**. Expect crossed
   numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
   upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
   reached through pyMzLib by D1.

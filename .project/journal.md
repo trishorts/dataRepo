@@ -1191,3 +1191,104 @@ narrower and sharper:
 **Position in a producer's list is not rank unless the producer says so.** Three projects inherited
 a number built on that assumption and none of us checked it, because sorted order and chosen order
 are indistinguishable from the data -- and the check is one line.
+
+## 2026-09-22 - Twelfth, continued: logs replied during the close-out, and the docs were lying on the front page
+
+The close-out ran and then three more things happened, which is why this entry exists after one that
+reads like an ending.
+
+### logs replied within the hour, and asking us a question found a defect in us
+
+Their 002 landed while the close-out was still running, committed from their own session. The
+pick-up line we had just written -- *"the inbox is empty on our side, for the first time"* -- was
+false before it was pushed. The cold-start check caught it, which is the only reason it did not
+survive into the next session.
+
+Their three questions were all measurable and the answers were unusually clean. **REQ-DATAREPO-1:
+the corpus is 100% UniProt XML** -- `uniprotkb_proteome_UP000005640_AND_revi_2026_09_18.xml`, sha256
+`760984e8d402ade6`, **identical across all nine datasets**, MetaMorpheus 1.1.11 throughout. So the
+gene cross-references (Ensembl, GeneID, RefSeq, HGNC) were on `Protein.DatabaseReferences` at search
+time and their v1 needs no ID-mapping service on the critical path. **REQ-DATAREPO-2: 100% UniProt
+accessions, zero RefSeq** over 20,022 distinct non-decoy accessions, so RefSeq support is their v3
+rather than v1; also zero isoform suffixes, zero `_N` collision counters, zero entrapment prefixes.
+**REQ-DATAREPO-3: yes** -- name and sha256 per dataset, and because the checksum is identical we can
+say the same *bytes*, not merely the same name.
+
+Which is what made the fourth thing possible. They had offered a hypothesis about our five
+self-disagreeing gene names: *"we would expect those to be the ones searched against different
+databases."* **Identical sha256 disproves it outright**, and chasing the real cause found ours.
+
+All five are HERV-K Gag/Pol proteins in large shared groups, and five undercounts it: **60 of 20,022
+accessions are named in one dataset and NULL in another.** MetaMorpheus `|`-joins `Gene Name`
+alongside `Accession`, and of 23,284 multi-accession non-decoy peptide rows, 188 collapse the gene
+to one shared value (correct, broadcast) and **182 are ragged** -- typically `n_gene = n_acc - 1`,
+because a protein with no symbol leaves no hole in the join. Our `_per_accession` refuses to guess
+on those and writes None, which is right. But `add_psm_proteins` does `if acc in out: continue`, so
+**an accession's value is set by whichever row claims it first**, and a ragged row claims it as
+firmly as a clean one.
+
+**And one thing would not reconcile.** Tracing `P63135` by hand gives None for PXD032040; the
+catalog stores `ERVK-6`. We could not reproduce the stored value from the source. It went into the
+thread as G48 with the column marked unvalidated, rather than being sat on, because **logs are
+claiming accession-to-gene and that is the column they are claiming**. The instruction attached to
+the gap is not to write the fix until the discrepancy is explained -- first-non-null-wins is the
+obvious shape, and a fix built on a mechanism we could not reproduce is the weakest evidence there
+is, which this project has already written down twice.
+
+`PXD036557` has **zero** ragged rows. That is the third time this session that a defect survived
+because the dataset used to investigate its family happened not to exhibit it.
+
+Their reply also cost us two more gaps and rewrote a third. **G47**: `protein_annotations` is the
+wrong home for orthology on grain *and* on keying -- an ortholog relationship is not a property of a
+dataset and not a property of a protein either, it is a property of a pair of genes under a stated
+source release. Owed edit: drop `ortholog` from the `key` column's examples, because *an example in
+a description is a specification to whoever reads it next*, which is exactly how we came to hold
+that contract. **G46**: our own `feature_type='orthogroup'` proposal would let a pool span a release
+boundary and combine estimates computed against two different memberships -- G40 again with release
+as the discriminating column. **G36 rewritten**: they declined the general name-to-taxon map and
+were right to. mzLib already carries `Protein.NcbiTaxonomyId` and captures `OX=` from FASTA headers,
+and its own comment says an organism id *"comes from the search database that was already loaded, so
+it never has to be looked up"*. Our §1 proves that is true of 100% of our corpus: the taxon was in
+memory at search time and the producer wrote free text. A downstream map would let the producer keep
+discarding it. Owner is now logs, narrowed to the no-`OX=` residue; the upstream ask is ours to make.
+
+### The front page was three releases out of date
+
+Asked to set the repo description and improve the documentation, the first thing the survey found
+was that `README.md` said:
+
+> *"The schema is drafted and validated but not locked, and `datarepo ingest` is the only working
+> command. There is no query catalog and no server yet."*
+
+**Contradicted by the roadmap table further down the same file**, which correctly showed ingest,
+study, build and mcp all Done. Anyone landing on the public repo was told the project does far less
+than it does, in the paragraph most likely to be read and least likely to be re-read. Same shape as
+the RESUME "Pick up at" that was three sessions stale earlier the same day: **the countable,
+generated parts stayed correct while the hand-written headline rotted, and nothing checks prose.**
+
+Three pages added. `docs/README.md` routes by intent and states the five rules that explain the
+design. `docs/querying.md` is a cookbook in which every query was run against catalog
+`f8fc910cce116fbe` and every result is verbatim -- and it ends with *queries that look right and are
+wrong*, which is where the ACTB case lives: `unique_peptides` is 0 in seven of eight datasets
+because beta-actin shares nearly all its tryptic peptides, so `WHERE unique_peptides > 0` silently
+deletes one of the most abundant proteins in the sample. `docs/limitations.md` is the one worth
+keeping: every place the catalog would return a confident wrong answer, each with the measurement
+behind it and a gap id.
+
+Writing that third page was itself an audit. Laid out in one list, the limitations are not a
+scattering of small gaps -- **no ages at all, 8 of 9 datasets with no sample metadata, seven
+annotation tables at zero rows, a gene column we cannot validate, no leading protein, and a corpus
+of one organism, one acquisition, one search engine and one database**. The last of those is the one
+we had never said out loud: cross-dataset agreement in this catalog is not evidence of method
+robustness, because the methods are identical.
+
+Two numbers in the cookbook were transcribed wrong and caught by re-running the queries before the
+commit -- an ACTB `unique_peptides` value, and a species count written as "30+" that is 25. On a page
+whose entire premise is that the outputs are verbatim, those were the two worst errors available,
+and they were found by the cheapest possible check: run it again and read it.
+
+### Recorded
+
+`logs` now has a remote (private, matching its own `state.yaml` and every peer repo except this one,
+which is public under D2). Repo description set. G46, G47, G48 logged; G36 rewritten. Ten peers,
+`logs` owing us 004.

@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 109 |
+| Commits | 112 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 23 |
 | Open gaps | 46 |
@@ -636,24 +636,18 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
 
 ### The next action
 
-1. **Answer `logs` 002 (thread 003), and do the three measurements it asks for.** All three are
-   queries we can run in minutes, and their §6 says the first one **decides their plan**:
-   **REQ-DATAREPO-1**, of our 20,022 distinct accessions, how many came from a UniProt **XML**
-   database versus a **FASTA** — if XML, the gene cross-references (Ensembl/GeneID/RefSeq/HGNC/MGI/
-   RGD) were present at search time and accession→gene needs no network call; if FASTA, only `GN=`
-   survived and they need the UniProt ID Mapping API on the critical path, *which is a different
-   project*. **REQ-DATAREPO-2**, the accession namespace mix (UniProt vs RefSeq vs other) — they
-   have zero recoverability from a RefSeq accession and this decides whether RefSeq is v1 or v3.
-   **REQ-DATAREPO-3**, whether our bundles retain the source database's identity (name, version or
-   checksum) — which would also turn our five self-disagreeing accessions from a curiosity into a
-   diagnostic. Then **G47's owed edit**: drop `ortholog` from the `key` column examples and R5 from
-   the class description in `_schema_docs.py`, then `build_docs.py` + `build_tables.py`.
-
-   Two things in their reply to carry into the ingester regardless: **`P12345_2` is not
-   `P12345-2`** — the first is a FASTA load-collision counter, the second a real isoform, and they
-   look alike and mean opposite things; and **a contaminant-panel protein must never be mapped
-   through orthology**, because bovine albumin mapped to human ALB is biologically correct and
-   scientifically a lie. The contaminant flag has to travel with the accession.
+1. **Close G48 — `Protein.gene` is a stored value we cannot reproduce from our own reader.** This
+   is first because `logs` has claimed accession→gene resolution and we have told them, in writing,
+   to treat the column as unvalidated until we explain it. Tracing `P63135` through
+   `_per_accession` by hand gives `None` for PXD032040 (its first claiming row in `AllPSMs.psmtsv`
+   is ragged, `n_acc=9, n_gene=8`); **the catalog stores `ERVK-6`**. Either the reader does
+   something our reading of it does not, or a path we have not found supplies the value. Context,
+   all measured: of 23,284 multi-accession non-decoy peptide rows, 188 have the gene collapsed to 1
+   (correct broadcast) and **182 are ragged**; 60 of 20,022 accessions are named in one dataset and
+   NULL in another purely because of which row claims them first (`if acc in out: continue`).
+   **Do not write the fix until the discrepancy is explained** — the likely shape is
+   first-non-null-wins rather than first-row-wins, but a fix built on an unreproduced mechanism is
+   the weakest evidence there is.
 
 2. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** High, because
    it is the only item where someone else is currently working from wrong data.
