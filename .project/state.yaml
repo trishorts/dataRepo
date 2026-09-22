@@ -348,6 +348,25 @@ gaps:
     their half: they handed us a clause without handing us its scope. Re-ingest on 0.11.0 confirmed
     both halves on real data: PXD032202's spurious count_mismatch is gone, PXD027318's now states
     49,399 vs 49,394 rather than a number that was neither side's.
+  - >-
+    G37 Agent-review findings recorded and deliberately NOT fixed in 0.12.0, so they are not lost.
+    From the 2026-09-22 rounds, none of them reachable without effort and none producing a stated
+    falsehood: (a) `search` does not reach STUDY-LAYER tables at all -- `search('age', kind=sample)`
+    lists `samples` and `sample_characteristics` and never mentions `sample_ages`, so on an aging
+    instance the single most relevant table is invisible to the tool whose job is telling hits from
+    empty sources; (b) `search(kind=modification)` does not collapse on `chemistry_key`, so one
+    chemistry under two engine names returns as two rows and the obvious follow-up query
+    undercounts (serine phospho by 64% on the three-dataset catalog); (c) emptiness is only ever
+    catalog-wide -- a table with rows for one dataset and none for another gets no guard, and
+    `sample_characteristics` is exactly that shape; (d) `sql` has no units guard for
+    `quant_values.value`, though the same argument that put `empty_tables` in the envelope applies;
+    (e) VOLUME: the benchmark agent called the per-call `provenance` block 'noise as emitted' (572
+    of 802 characters on a one-row result) and the repeated all-NULL banner 2,062 characters in one
+    `describe('samples')`, and `describe('ptm_sites')` runs ~4,000 words in CONCISE mode because
+    `ptm_site_id`'s description is a 600-word design argument. The risk is specific and worth
+    taking seriously: an agent that learns to skip the envelope skips `empty_tables`, which is the
+    field that does the most work. Do not fix these piecemeal -- decide first what the envelope is
+    FOR, then cut.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
