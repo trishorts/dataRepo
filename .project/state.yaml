@@ -217,7 +217,8 @@ decisions:
       a mechanism we had already disproved, and aging had to retract it on our behalf -- their
       words, that the sentence 'transplanted a number out of a comparison it was measured in, into
       a claim it does not support'. **The number survives the hop; the reason does not.** Channels
-      are now open with go, sdrf, pyMzLib and QuantProject (001 on each, 2026-09-22), all using the
+      are now open with go, sdrf, pyMzLib, QuantProject, pride, qc, pep and phred (001 on each,
+      2026-09-22) -- NINE peers counting aging -- all using the
       same `design/threads/<peer>/` convention on both sides. The rule: **a consumer who does not
       state their requirements has delegated the design of their own inputs to someone with less
       information**, and one who states them through an intermediary has delegated the reasoning

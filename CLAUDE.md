@@ -13,10 +13,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   fix is confirmed on their data and **nothing is owed to them**. Their unattended batch keeps
   adding datasets, so the catalog on F: grows without warning -- re-read `catalog_id` rather than
   trusting any number quoted here.
-  **First thing: run the thread checker** (command below). **Five peers**, all opened or active on
-  2026-09-22: `aging` (037/038 sent, they re-ingested on 0.13.0 -- 0 speciesless in 97,731), `go`
-  (**they replied, we owe 003**), `sdrf` (replied, crossed numbering), `pyMzLib` and
-  `QuantProject` (no reply yet). Expect crossed numbers -- 037 and sdrf 002 both crossed.
+  **First thing: run the thread checker** (command below). **NINE peers**, all opened or active on
+  2026-09-22 (D21): `aging` (037/038 sent; they re-ingested on 0.13.0, 0 speciesless in 97,731),
+  `go` (**replied -- we owe 003**), `sdrf` (**003 UNREAD, we owe a reply**), `pyMzLib`,
+  `QuantProject`, `pride`, `qc`, `pep`, `phred` (001 sent to each, no reply yet). Expect crossed
+  numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
+  upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
+  reached through pyMzLib by D1.
   Next, in order:
   (1) **Answer `go` 002 and take their offer of a flat column contract (their 004) BEFORE building
   anything against REQ-GO-*.** Their words: *trust D1-D22, not REQ-GO-2..10*. aging wrote those
@@ -99,12 +102,14 @@ This folder is a `/project`-managed research project. **You are de facto working
   not pushed, they are blocked and the thread is a lie. Commit and push first, then say so, and
   quote the sha.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
-- **FIVE thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`, each
-  under `design/threads/<peer>/` with a mirror in that project's `design/threads/dataRepo/`. Until
-  2026-09-22 everything was routed through aging, and a proxy loses the reasoning: our own
-  measurement reached `go` via aging carrying a mechanism we had already disproved. **Ask the
-  owner directly, and offer a measurement back** -- we ingest at corpus scale and a count takes
-  minutes, so a producer guessing at a distribution we can query is waste on both sides.
+- **NINE thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`,
+  `pride`, `qc`, `pep`, `phred` -- each under `design/threads/<peer>/` with a mirror in that
+  project's `design/threads/dataRepo/`. Until 2026-09-22 everything routed through aging, and a
+  proxy loses the reasoning. **Ask the owner directly and offer a measurement back** -- we ingest
+  at corpus scale, so a count takes minutes and a producer guessing at a distribution we can query
+  is waste on both sides. **Open a channel only where there is a concrete need or finding**;
+  opening one with nothing to say is noise. And check the peer is `/project`-managed first --
+  MetaMorpheus is a source clone and our convention does not belong in it.
 - **To check whether a thread landed, run aging's checker** — don't guess and don't edit aging's
   tracking table yourself:
   `python "$env:USERPROFILE/.claude/skills/project/assets/threads.py" inbox`
