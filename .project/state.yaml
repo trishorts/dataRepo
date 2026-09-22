@@ -396,8 +396,21 @@ gaps:
     when they run it. STILL OPEN and the reason this gap survives: the taxon map itself. Mapping
     `Bos taurus` -> `NCBITaxon:9913` is a reference resource this project does not own (D1), and a
     lookup that knows one species and defaults the rest is exactly what labelled trypsin human in
-    the first place. Candidate REQ-PYMZ, same argument as G26: UniProt FASTA headers carry `OX=`,
-    so mzLib's loader may be able to hand us the taxon rather than the name. Urgent when aging's
+    the first place. **UPDATE 2026-09-22 (logs 002 section 0): the candidate is CONFIRMED and
+    G36 is mostly a PRODUCER bug, not a missing reference resource.** mzLib already has
+    `Protein.NcbiTaxonomyId` (a computed view over `DatabaseReferences`) and
+    `ProteinDbLoader.UniprotOrganismIdRegex`, which captures `OX=` from a FASTA header and
+    synthesizes a matching DatabaseReference so the XML and FASTA paths expose the same thing.
+    mzLib's own comment: *'a taxonomy id is a join key, where a silently wrong value is worse than
+    a missing one'*, and its ControlledVocabulary declines to embed NCBITaxon precisely because the
+    id *'comes from the search database that was already loaded, so it never has to be looked up'*.
+    So for our 109,318 Homo sapiens rows the taxon id was in memory at search time and the producer
+    wrote free text instead. **logs DECLINED the general map as framed and were right to** --
+    building one downstream would let the producer keep discarding the fact. Owner is now **logs,
+    scope narrowed to the no-OX residue**: the contaminant panel, where the names are also worst
+    (`Escherichia coli (strain K12)` is below species rank, `Bos indicus x Bos taurus` has no single
+    taxon). PRIMARY FIX IS UPSTREAM -- ask aging/MetaMorpheus to emit `NcbiTaxonomyId` alongside
+    `organism_name`; logs say it is not their channel to open, so it is ours. Urgent when aging's
     queue reaches mouse or rat; they are on dataset 2 of 160 qualifying human ones.
   - >-
     DATAREPO-27 CLOSED 2026-09-22 by aging 035 section 2. `aging:DEF-PEPTIDE-1PCT` is 'target, both
@@ -546,6 +559,35 @@ gaps:
     Send as thread 039, and fold in G44 since it is also an ingest-side fix they would want before
     re-ingesting again. NOT urgent for us -- our measurements used the fresh scratch catalog
     `f8fc910cce116fbe` -- but every number they quote until then is from the old data.
+  - >-
+    G46 A pooled cross-species estimate must be able to see the orthology SOURCE RELEASE, and today
+    it cannot. Raised by logs 002 section 3.2, and it is the same defect class as G40 with a
+    different discriminating column. Their ruling: the honest key is `(source, release, group_id)`,
+    NOT `group_id`, because a group id that persists while its membership changes silently is
+    exactly what their snapshot-versioning constraint exists to prevent. So if we take
+    `feature_type='orthogroup'` with `feature_id=<bare group id>` (our own REQ-LOGS-4 proposal),
+    a pool spanning a release boundary would combine estimates computed against two different
+    memberships with nothing recording it -- a meta-estimate that looks clean and is not, which is
+    G40 again. Their requirement, and it is cheap: the release must be **recoverable at pooling
+    time**, not merely recorded somewhere upstream. Ours to decide how -- qualify `feature_id`, or
+    add a column and stratify on it alongside tissue/acquisition/quant_method. logs will ship a
+    separate versioned release-to-release mapping layer so a deliberate re-pool across a boundary
+    is expressible rather than accidental. Decide BEFORE `age_effect_meta` has rows; it holds 0.
+  - >-
+    G47 `protein_annotations` must stop advertising itself as the home for orthology. logs 002
+    section 1 confirmed our REQ-LOGS-2 on two independent axes: grain (one-to-many in a key/value
+    string, and unlike `organelle_category` there is no 'usually single-valued' to hide behind --
+    the first human gene with two mouse co-orthologs breaks it) and KEYING, which they put more
+    strongly than we did: an ortholog relationship is not a property of a dataset and **not a
+    property of a protein either** -- it is a property of a pair of genes under a stated source
+    release, and `protein_annotations` is keyed on three things the fact needs none of. Concrete
+    owed edit: **drop `ortholog` from the `key` column's example list** in `_schema_docs.py` and
+    drop R5 orthologs from the class description, because *an example in a description is a
+    specification to whoever reads it next* -- which is exactly how we acquired this contract.
+    Needs `tools/build_docs.py` + `tools/build_tables.py`. Also from their section 2: a group may
+    be a `feature_set`, a RELATIONSHIP may not -- `feature_set_members.role` cannot carry
+    `relationship_type`, because one2one/one2many describe a PAIR and a member row holds only one
+    feature, so an edge table is a separate object whose absence we would notice late.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

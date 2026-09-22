@@ -18,8 +18,10 @@ This folder is a `/project`-managed research project. **You are de facto working
   `go` (**003 sent -- asks DATAREPO-28/29/30**), `sdrf` (**004 sent -- asks DATAREPO-31/32**),
   `pyMzLib` (**002 sent -- the razor question, DATAREPO-28**), `QuantProject`, `pride`, `qc`,
   `pep`, `phred` (001 sent to each, no reply yet), and **`logs`** -- new, cross-species
-  orthology, 001 sent asking **REQ-LOGS-1..5**; they had flagged two capability collisions
-  against us in their `OWNERSHIP.md` and we conceded both. Expect crossed
+  orthology; our 001 conceded both capability collisions they had flagged, and **their 002 is
+  UNREAD with 003 owed**: it answers four of our five, asks **REQ-DATAREPO-1/2/3** (all three are
+  queries we can run in minutes, and their first one decides their whole plan), and produced G46,
+  G47 and a rewrite of G36. Expect crossed
   numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
   upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
   reached through pyMzLib by D1.
@@ -126,6 +128,22 @@ This folder is a `/project`-managed research project. **You are de facto working
   aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.
   Its DIVERGED check normalizes line endings, so CRLF/LF differences between the two copies are fine.
 
+- **`P12345_2` is NOT `P12345-2`, and they look alike.** From logs 002 section 4, off mzLib's
+  source: `-2` is a real isoform suffix, while **`_2` is a FASTA load-collision counter**
+  (`ProteinDbLoader.cs:333-343`) marking the second entry whose accession collided. They mean
+  opposite things. Also: decoys are `DECOY_<acc>` with a *configurable* identifier that is
+  nonetheless **hardcoded** as the literal `"DECOY_"` in three places in
+  `PeptideWithSetModifications.cs`, entrapment adds `Random_<acc>`, and the two nest as
+  `DECOY_Random_<acc>` -- so a single-strip is wrong. mzLib itself does **no** accession
+  normalization at all (`IBioPolymer.Equals` keys on raw string equality), which is why our
+  verbatim-storage rule (D9) is the only thing keeping any of this visible. Our
+  `canonical_accession` does one `split('-')` and has never fired (0 of 110,910 rows) -- that is
+  because this corpus is UniProt-XML-derived and canonical-only, **not** because isoforms are rare.
+- **A contaminant-panel protein must never be mapped through orthology** (logs 002 section 0).
+  Bovine albumin mapped to human ALB is *biologically correct and scientifically a lie* -- it is a
+  reagent, not evidence about Bos taurus. The contaminant flag has to travel with the accession
+  wherever it goes. Same family as the required-column falsehood below, reached through a door
+  that looks like correctness.
 - **Position in a producer's list is not rank unless the producer says so.** `go` asked us to store
   `accession_is_leading`. MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has **26 columns and none
   names a razor, leading or principal protein**, and its `|`-joined `Protein Accession` list is

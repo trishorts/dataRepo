@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 106 |
+| Commits | 107 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 23 |
-| Open gaps | 43 |
+| Open gaps | 45 |
 | Gate items skipped | 3 |
 
 <!-- END GENERATED -->
@@ -613,9 +613,11 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**The inbox is empty on our side — for the first time.** `go` 003, `sdrf` 004, `pyMzLib` 002 and
-`logs` 001 all went out on 2026-09-22 and are committed and pushed. **Ten peers, all of them owing
-us.** Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
+**`logs` 002 is UNREAD and we owe 003.** It landed within the hour of our 001, during the close-out.
+`go` 003, `sdrf` 004, `pyMzLib` 002 and `logs` 001 all went out on 2026-09-22 and are committed and
+pushed; eight of ten peers still owe us. **Read `design/threads/logs/002_logs_2026-09-22.md` first**
+— it answers four of our five questions, asks **REQ-DATAREPO-1/2/3**, and produced G46 and G47 plus
+a rewrite of G36. Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
 `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**, tip `f9684d6` pushed to
 `origin/master`.
 
@@ -634,8 +636,27 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
 
 ### The next action
 
-1. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** This is first
-   because it is the only item where someone else is currently working from wrong data.
+1. **Answer `logs` 002 (thread 003), and do the three measurements it asks for.** All three are
+   queries we can run in minutes, and their §6 says the first one **decides their plan**:
+   **REQ-DATAREPO-1**, of our 20,022 distinct accessions, how many came from a UniProt **XML**
+   database versus a **FASTA** — if XML, the gene cross-references (Ensembl/GeneID/RefSeq/HGNC/MGI/
+   RGD) were present at search time and accession→gene needs no network call; if FASTA, only `GN=`
+   survived and they need the UniProt ID Mapping API on the critical path, *which is a different
+   project*. **REQ-DATAREPO-2**, the accession namespace mix (UniProt vs RefSeq vs other) — they
+   have zero recoverability from a RefSeq accession and this decides whether RefSeq is v1 or v3.
+   **REQ-DATAREPO-3**, whether our bundles retain the source database's identity (name, version or
+   checksum) — which would also turn our five self-disagreeing accessions from a curiosity into a
+   diagnostic. Then **G47's owed edit**: drop `ortholog` from the `key` column examples and R5 from
+   the class description in `_schema_docs.py`, then `build_docs.py` + `build_tables.py`.
+
+   Two things in their reply to carry into the ingester regardless: **`P12345_2` is not
+   `P12345-2`** — the first is a FASTA load-collision counter, the second a real isoform, and they
+   look alike and mean opposite things; and **a contaminant-panel protein must never be mapped
+   through orthology**, because bovine albumin mapped to human ALB is biologically correct and
+   scientifically a lie. The contaminant flag has to travel with the accession.
+
+2. **Tell aging their catalog is stale (G45), as thread 039, and fold in G44.** High, because
+   it is the only item where someone else is currently working from wrong data.
    `F:/aging_data/repo/catalog.duckdb` is 4 datasets on builder 0.11.0 built at 07:20; the store
    holds **9 bundles ingested 09:12–09:21** on 0.13.0 with different ids. Everything they serve,
    benchmark or cite is pre-collapsed-column-fix. We did not rebuild it for them — overwriting a
@@ -644,14 +665,14 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
    missing in PXD023381, 11,804 of 11,804 in PXD024803) while `organism` is correctly NULL, so it
    is an ingest-side fix they would want *before* re-ingesting again.
 
-2. **Chase DATAREPO-31 with `sdrf`: the 153 accessions.** The highest-value item in the backlog and
+3. **Chase DATAREPO-31 with `sdrf`: the 153 accessions.** The highest-value item in the backlog and
    it costs them one query. Their curated corpus has **153 accessions of 1,203 carrying a real
    donor age**; aging's batch is selecting ~160 datasets on search-side criteria **with no
    reference to that list**; and **0 of the 9 searched so far carry any age**. Two sets of almost
    the same size, currently disjoint, in a repository whose founding question is how organelle
    proteomes change with age. When the list arrives it goes to aging as a queue filter.
 
-3. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
+4. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
    ready: `inherited`/`propagated` as nullable booleans with no distance column; `organelle_label`
    renamed `organelle_category` and nullable; subcategory stored **with** its
    `mitochondrion:inner_membrane` prefix; three version fields (`version` = organelle map,
@@ -663,37 +684,37 @@ datarepo build "E:/CodeReview/aging/instance/manifest.yaml" --latest --out <scra
    never said. Our schema also stops citing `REQ-GO-2..10`; go's standing instruction is *trust
    D1–D22*.
 
-4. **G42 — `samples` cannot tell `not available` from never-asked.** Owed to `sdrf` in our 004 §3
+5. **G42 — `samples` cannot tell `not available` from never-asked.** Owed to `sdrf` in our 004 §3
    and ours to fix. PXD036557's SDRF *has* `organism part` and `disease` columns, both
    `not available` in all 18 rows, and `samples.organism_part` is NULL for those 18 exactly as it
    is for the 144 samples whose deposits were never asked. Carry the deposit's verbatim cell into
    `sample_characteristics`, which already has the `(sample_id, name, value)` grain, so absence and
    a reserved word stop sharing NULL. This is the empty-vs-unknown rule shipped a third time.
 
-5. **G40 — add organism to `AgeEffect` and `AgeEffectMeta`.** Ours regardless of aging's answer to
+6. **G40 — add organism to `AgeEffect` and `AgeEffectMeta`.** Ours regardless of aging's answer to
    038. `age_effects` has 31 columns and `age_effect_meta` 24, and **neither has organism**, while
    `age_effect_meta` stratifies on tissue, acquisition and quant method. Nothing stops a human and
    a mouse effect pooling into one meta-estimate. Note this only lets us *refuse* to pool —
    pooling across species on purpose needs REQ-LOGS-4's key, and `feature_type` is already an open
    vocabulary, so `feature_type='orthogroup'` would make it expressible with no new tables.
 
-6. **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the red
+7. **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the red
    team breaks the previous round's fix. 0.12.0 and 0.13.0 are unverified, and the reviews have a
    blind spot — all four agents reasoned about the catalog while the collapsed-column defect lived
    upstream in a producer file none could read. **A re-run must point at least one agent at
    `F:/aging_data/<run>/<PXD>/04_search/`.**
 
-7. **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`, whose
+8. **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`, whose
    description must carry the 1.02–1.05x inflation and the perfect-correlation clause **in the
    column's own text**.
 
-8. **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a producer
+9. **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a producer
    — never one written against a shape neither side has queried.
 
-9. **`datarepo site` (D16)**, then G33/G26/G36 and the QPX pin (G13). **N1/G9 — does NCEMS host web
+10. **`datarepo site` (D16)**, then G33/G26/G36 and the QPX pin (G13). **N1/G9 — does NCEMS host web
    services at all — goes to the next meeting regardless; it is the long pole for D1.**
 
-10. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD.
+11. **`/project advance`** — the phase field still says INCEPTION and the work is plainly BUILD.
     Left alone deliberately; advancing is a gated step, not a close-out edit.
 
 
