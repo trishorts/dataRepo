@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 65 |
+| Commits | 70 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 18 |
 | Open gaps | 30 |
@@ -98,7 +98,7 @@ else does.
 aging read 021, 022 and 023 all at once and replied with **024, 025 and 026**. Two of those changed
 what shipped the same day.
 
-**S39: 1,367 terminal PTM sites at q<=0.01 were never written, and nothing said so.** One `continue`
+**S39: 2,091 terminal PTM sites at q<=0.01 were never written, and nothing said so.** One `continue`
 in `ptm_site_rows` skipped every modification placed at a peptide N-terminus, so `ptm_sites` held
 **zero** rows for 3,085 peptidoforms and 18,566 PSMs that `peptidoforms` held in full. The 239
 `UNIMOD:1` rows that *were* there are all `on K`, so a query for acetylation came back lysine-only
@@ -171,6 +171,43 @@ argued `age_effects.estimator` must exist *because the two occupancy estimators 
 must never be averaged*, while the core table it draws from still had one `modified_fraction`
 forcing exactly that average. True where written, false one layer down, and it took their 026 to
 see it. The practice that caught both was quoting a sentence back beside its own counter-example.
+
+## 2026-09-21 (last): the corpus verdict, and a habit that cost aging two refusals
+
+**S39 verified on real data, and it is bigger than either estimate.** aging re-ingested (their 028):
+`ptm_sites` **35,615 -> 38,045**, **+2,430**, with `psms`, `peptidoforms`, `protein_groups` and
+`quant_values` identical row-for-row -- which is exactly what an S39-only change must do, and is the
+clause worth having asked for. Terminal sites at q<=0.01: **1,220 `protein_n_term` and 871
+`peptide_n_term`**, 20,789 PSMs.
+
+**The initiator-methionine refinement decides 79% of it: 958 of the 1,220 protein N-termini sit at
+position 2.** That rule was added *against* aging's ruling on the strength of three fixture rows;
+`N-acetylalanine on A` alone is 450 sites, `N-acetylserine on S` 187, against only 262 at position 1
+where the initiator methionine is kept. A `start == 1` rule would have mislabelled 958 sites as
+cleavage artefacts.
+
+**aging retracted their own 1,367 rather than let us verify against it** (their 029). It counted
+peptidoforms whose ProForma *begins* with a modification, so it conflated the two site types and
+missed every first-residue placement written `C[UNIMOD:385]PEPTIDE` instead of as a prefix -- all 240
+`Ammonia loss on C` sites. We had asked to be checked against that number and would have "passed"
+while being wrong about which sites were which. **Every reference to 1,367 in this repo -- the schema
+description, two code docstrings, `docs/ingest.md`, two changelog entries and this file -- is now the
+corpus figure instead.** Prose only: `_tables.py` is byte-identical and the fixture bundle id is
+`d13e382106002a1c` before and after, so nothing aging is about to ingest moved.
+
+**The general form, now four instances between the two projects:** *a measurement is only true of the
+grain it was taken at, and carrying it to a finer grain silently re-labels it.* 1,367 was true of
+"peptidoforms with a leading mod tag" and false of "protein N-terminal sites".
+
+**And a habit defect that is entirely ours.** aging refused to re-ingest **twice today** because the
+release we announced existed only in our working tree -- 0.7.0 with an uncommitted `study.py`, then
+0.9.0 with twelve uncommitted files. They were right both times: a bundle id hashed on an
+`INGESTER_VERSION` and `SCHEMA_VERSION` that exist in no commit is reproducible by nobody, which is
+the exact property `CONTENT_FIELDS` and the version split were built to protect. **They build from a
+read-only clone at our committed `HEAD`, so our tip is the only thing they can see.** The rule --
+*commit and push first, then announce, and quote the sha* -- is now a bullet in `CLAUDE.md`'s
+bite-list, not a journal entry, because the journal is where the `__version__`-in-the-bundle-hash
+lesson went to die three times.
 
 ## The ingester works
 

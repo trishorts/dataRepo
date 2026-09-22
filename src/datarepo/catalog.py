@@ -752,8 +752,8 @@ def _build_derived(con: Any) -> None:
     #
     # **Derived from the peptidoforms, not from `ptm_sites`, and the choice is the whole point.**
     # `ptm_sites` is per RESOLVED PROTEIN POSITION, so it drops every placement without one: the
-    # 210 occupancy sites at pos0, the 264 with no determinate position, and -- before 0.8.0 -- the
-    # 1,367 protein-N-terminal sites. A placed view built on it would have reported that N-terminal
+    # 210 occupancy sites at pos0, the 264 with no determinate position, and -- before 0.8.0 -- all
+    # 2,091 terminal sites. A placed view built on it would have reported that N-terminal
     # acetylation was NEVER PLACED in any of the three datasets while 3,085 peptidoforms carried
     # it. That is S39 reproduced in a new table, which is the failure this view exists to prevent:
     # a view trusted about ABSENCE must draw from the table that loses nothing.

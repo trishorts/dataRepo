@@ -384,16 +384,21 @@ def ptm_site_rows(
       PSM. That accounted for the other 36. Contaminant sites are kept and marked rather than
       dropped: they are real measurements, and BSA and trypsin sites are used as a process control.
       Decoys are still excluded.
-    * **No terminal-placement skip.** This one was a single `continue` and it cost 1,367 sites at
-      q <= 0.01 across three datasets (aging 024 section 4). Every modification at a peptide
-      N-terminus was dropped, so `ptm_sites` held **zero** rows for 3,085 peptidoforms and 18,566
-      PSMs that `peptidoforms` held in full -- a projection gap, not a data-loss gap, which is why
-      it is a ruling and not an incident. Six chemistries, led by `UNIMOD:1` acetylation with
-      12,448 PSMs. The 239 `UNIMOD:1` rows that WERE written are all `on K`: a reader querying
-      `ptm_sites` for acetylation got a lysine-only answer with nothing saying so. N-terminal
-      acetylation is co-translational, among the most abundant marks in any proteome, and governs
-      the N-degron pathway -- protein turnover, which is proteostasis, which is a hallmark this
-      repository exists to measure.
+    * **No terminal-placement skip.** This one was a single `continue`. Every modification at a
+      peptide N-terminus was dropped, so `ptm_sites` held **zero** rows for placements
+      `peptidoforms` held in full -- a projection gap, not a data-loss gap, which is why it was a
+      ruling (aging 024 section 4) and not an incident. Measured on the corpus after the fix (aging
+      028): **2,091 terminal sites at q <= 0.01**, being 1,220 `protein_n_term` and 871
+      `peptide_n_term` over 20,789 PSMs, taking `ptm_sites` from 35,615 to 38,045 with every other
+      table identical row-for-row. The 239 `UNIMOD:1` rows that WERE written are all `on K`: a
+      reader querying `ptm_sites` for acetylation got a lysine-only answer with nothing saying so.
+      N-terminal acetylation is co-translational, among the most abundant marks in any proteome,
+      and governs the N-degron pathway -- protein turnover, which is proteostasis, which is a
+      hallmark this repository exists to measure.
+
+      **`_site_type`'s initiator-methionine branch does most of the work here, measured: 958 of the
+      1,220 protein N-termini sit at position 2** (aging 028). A `start == 1` rule would have
+      mislabelled 79% of them as cleavage artefacts.
     """
     n = len(columns.get("full_sequence", ()))
     full = columns.get("full_sequence", [])
