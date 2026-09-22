@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 89 |
+| Commits | 95 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 21 |
-| Open gaps | 37 |
+| Open gaps | 39 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -30,7 +30,7 @@ re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`) and run an 
 toward 160 qualifying human datasets. **0.13.0 moves `INGESTER_VERSION`, so a re-ingest on
 `efd1a83` is owed** — it fixes a collapsed-column parse that cost ~7,200 proteins their species.
 
-### Five thread peers, four of them opened on 2026-09-22
+### Five thread peers — and three replied within the hour
 
 Until that day dataRepo had **one** peer, aging, while eight open gaps named an upstream we needed
 something from. Every request went through aging as a proxy — and a proxy loses the reasoning: one
@@ -52,6 +52,37 @@ on our behalf that nobody had checked against the table.
 sex, tissue, cell type, disease, condition, cell line, individual or timepoint. Three of four
 datasets have no SDRF at all. Every age-stratified question in the benchmark dies there — in a
 repository whose purpose is how organelle proteomes change with age. sdrf had never been told.
+
+**Three replied the same day, and two changed what we build.**
+
+- **`go` — we had been coding against a spec they overruled two threads ago.** REQ-GO-5's
+  leading/union switch, which our 001 spent its longest section on, was rejected in their 008.
+  Their rule instead (D7, hardened into D13 with aging): *emit the data and let the consumer
+  filter; never a run-time switch that changes what a file contains.* Their instruction to us:
+  **"trust D1–D22, not REQ-GO-2..10"** — the requirements aging wrote on our behalf and our schema
+  cites. `inherited`/`propagated` confirmed; `organelle_category` turns out **set-valued**, a grain
+  problem in a `string` column. **go v1 ships partly as a column in our schema** — we are a design
+  stakeholder, not only a consumer.
+- **`sdrf` — the repair path exists (their D27) and `SdrfAge` is merged**, which we had recorded as
+  unbuilt. It now carries the raw cell, added at our request the same day. Their question back: is
+  `sdrf_status` honest at *dataset* granularity when a dataset is partly repaired? No — that is the
+  grain rule aimed at our own schema.
+- **`aging` — re-ingested on 0.13.0: 0 speciesless proteins in 97,731.** Nothing owed to them.
+
+### What `beta` means for a mouse (G40, G41)
+
+`AgeEffect.beta` is the coefficient on `age_decades = (age_years − 50) / 10`. **50 is a human
+lifespan constant** — a 24-month mouse gives −4.8 decades, a "change per decade" for an animal that
+lives two years. And `AgeEffect` has 29 columns, `AgeEffectMeta` 22, and **organism is in neither**,
+while `age_effect_meta` exists precisely to pool across datasets.
+
+A human and a mouse effect for one feature would pool into a meta-estimate with nothing recording
+the difference — the contaminant-organism defect again, except that one was caught in a day and
+this one would reach a meta-analysis. Our half is ours to fix regardless of aging's answer (038);
+the centring constant is their definition. And `age_mappings` already carries `organism`,
+`age_unit`, `life_stage`, `human_equivalent_years` — exactly what is needed — holds zero rows and is
+wired to nothing, while aging's benchmark B6 is one of only two questions our coverage map calls
+*no home*. It has a home.
 
 ### The defect that four review agents missed
 

@@ -387,34 +387,41 @@ gaps:
     FOR, then cut.
   - >-
     G38 SAMPLE METADATA IS THE LARGEST HOLE IN THIS REPOSITORY AND IT IS SDRF-SHAPED. Measured
-    2026-09-22 on catalog 71e48aa46a7c9900: 75 samples, of which **75 carry an organism and ZERO
-    carry sex, organism_part, cell_type, disease, condition, cell_line, individual_id or
-    timepoint**. Three of four datasets carry a `no_sdrf` finding (no SDRF deposited at all, so
-    each run got a synthetic sample); the fourth carries `sdrf_skeleton`; all four carry
-    `no_output_sdrf` because MetaMorpheus #2816 WriteSdrf is unreleased. Consequence: every
-    age-stratified question in aging's benchmark is unanswerable -- young-vs-old in one tissue, sex
-    balance, disease exclusion, tissue coverage -- for a repository whose stated purpose is how
-    organelle proteomes change with age. Raised to sdrf directly as their 001 (D21), asking whether
-    a repair path exists or is planned; `Dataset.sdrf_status` already takes 'repaired' and we would
-    rather store that with a provenance note than nothing. NOT ours to fix: the age normalizer and
-    SDRF curation belong to sdrf (D1). Ours is to keep saying so and to keep the tools honest about
-    it -- `search` now reports a 100%-NULL column rather than returning a bare zero that reads as a
-    considered negative.
+    2026-09-22 on catalog 71e48aa46a7c9900: 75 samples, 75 with an organism and **ZERO** with sex,
+    organism_part, cell_type, disease, condition, cell_line, individual_id or timepoint. Three of
+    four datasets carry `no_sdrf`; the fourth's SDRF is a `sdrf-skeleton-gen v2.0.0` skeleton whose
+    19 columns do not include `characteristics[age]` at all -- absent, not empty. So `age_effect`,
+    which 46 of aging's 168 benchmark questions need, has no input anywhere in the corpus.
+    ANSWERED IN PART by sdrf 002: a repair path EXISTS (their D27) -- mzLib never invents sample
+    metadata, **aging** builds sample blocks for deposits with no usable SDRF and fills
+    organism/part/disease from PRIDE's project record only where exactly ONE value exists, and every
+    block carries provenance. Their proposed `comment[characteristics source]` maps onto our
+    `sdrf_status` (deposited->trusted, pride project record->repaired, config->config_fallback).
+    The age normaliser `SdrfAge` (mzLib #1326) is MERGED, not unbuilt as we had recorded, and now
+    carries the raw cell (mzLib #1333, added at our request). OPEN ON OUR SIDE: their question back
+    -- **is `repaired` honest at DATASET granularity when a dataset is partly repaired?** It is the
+    grain rule aimed at our own schema and we think the answer is no. Plus SDRF-DR1..DR4, four
+    questions we can answer with queries rather than opinions.
   - >-
-    G39 `ProteinLocalization` cannot hold what `go` is about to emit, and both defects are ours.
-    Found 2026-09-22 by reading REQ-GO-7 -- which aging wrote on our behalf and nobody checked
-    against the table -- while opening the go channel. (a) REQ-GO-7 emits `inherited` and
-    `propagated`; we have neither column, so ingesting their file would DROP a flag go set
-    deliberately, PROMOTING an isoform annotation they marked as assumed into one that reads as
-    measured. Default: add both as nullable booleans named exactly as REQ-GO-7 names them.
-    (b) `organelle_label` is `required: true` while their `organelle_category` is 'CC only; empty
-    otherwise' -- the same required-column trap as `Protein.organism` two days earlier. Default:
-    make it nullable. Also open: the group-to-accession grain (their file is per protein group,
-    our table per accession, and REQ-GO-5's leading-only default would leave non-leading members
-    with no row at all -- an absence indistinguishable from 'not localized there'), where P and F
-    aspects live, and two version strings (`go_release` and the category-map version) for one
-    `AnnotationSource.version`. Asked as go 001; their v1 has no code yet, which is the cheap
-    moment. DO NOT ingest a go file before this is settled.
+    G39 `ProteinLocalization` cannot hold what `go` emits. PARTLY ANSWERED by go 002 the same day,
+    and the answer changed the problem. **CONFIRMED and still ours to build:** `inherited` and
+    `propagated` are both boolean with the names we proposed, and go sharpened the argument past
+    ours -- inherited **CC** is the specifically dangerous case, because alternative isoforms differ
+    precisely in cellular component, so the column we were about to not have guards the only aspect
+    our table stores (their D6/D16). `organelle_label` must become nullable. **DISSOLVED:** the
+    group-vs-accession grain question had no referent. go rejected REQ-GO-5's leading/union switch
+    in their 008 (their D7, hardened into D13 with aging: *emit the data and let the consumer
+    filter; never a run-time switch that changes what a file contains*). Every row is every term
+    carried by any member, always, with `n_members` / `n_with` / `on_leading` to reconstruct any
+    rule at query time; their new **D22** names the members carrying each term, so our expansion is
+    an exact join rather than a broadcast. **NEW and unaddressed:** `organelle_category` is
+    SET-VALUED, which is a grain problem in a `string` column, and there is a subcategory column
+    (their D14/D20) we have never seen. **WE WERE BUILDING AGAINST A SUPERSEDED SPEC** -- aging
+    wrote REQ-GO-2..10 on our behalf, we cited it in our own schema description, and three threads
+    of go rulings moved out from under it. Their instruction: *trust D1-D22, not REQ-GO-2..10*, and
+    they offered a flat current column contract as their 004. ACCEPT THAT OFFER before building.
+    Also: go v1 ships in three layers and the third is one column in OUR schema -- we are a design
+    stakeholder, not only a consumer.
   - >-
     G40 NOTHING STOPS A HUMAN AND A MOUSE AGE EFFECT BEING POOLED. `AgeEffect` has 29 columns and
     `AgeEffectMeta` 22, and **organism is in neither** -- while `age_effect_meta` exists precisely

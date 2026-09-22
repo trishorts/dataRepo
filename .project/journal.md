@@ -912,3 +912,97 @@ it. *"We will communicate those at that time"* is the correct order, and it is t
 as G17: do not write a producer against a shape neither side has queried. What it does do is
 validate U5/G10's default, the generic core plus pluggable study layer, which is about to be tested
 by something other than aging for the first time.
+
+## 2026-09-22 - Eleventh: three replies in an hour, and two of them changed what we build
+
+Having opened four channels, we wrote the message that should have come first -- and then the
+replies arrived faster than we could act on them.
+
+### The fan-out, and the question we were about to ask the wrong project
+
+Thread 036 to aging ended *"nothing else"*. False: `age_effect` is required by **46 of aging's 168
+benchmark questions, 42 blocked by nothing else**, and the delivery path has been built and empty
+since 0.7.0 while we never once said it was the priority. Every thread we write asks a project for
+what that project owes us, and **none of them says where it sits against everything else.** A
+producer who knows they hold the number-one blocker behaves differently from one handed a list.
+
+The user's steer -- *"maybe fan out your aging question, it might be an sdrf thing"* -- was right,
+and checking it before asking is what made 037 a correction rather than a wrong request. An age
+effect needs a donor age. **There is no age anywhere in the corpus.** The only SDRF in four datasets
+is a generated skeleton (`sdrf-skeleton-gen v2.0.0`, 19 columns) and `characteristics[age]` is not
+among them -- not empty, *absent*. The other three carry `no_sdrf`. So 037 corrected the omission
+and then **withdrew the request**, asking instead whether aging hold ages outside the SDRF path.
+
+### What came back, and it is humbling in the right way
+
+**`go`: we were coding against a contract they overruled two threads ago.** REQ-GO-5's
+leading-vs-union default -- which our 001 spent its longest section worrying about -- they rejected
+in their 008. Their actual ruling is better than anything we would have asked for: one row per term
+carried by *any* member, plus `n_members` / `n_with` / `on_leading` so the consumer reconstructs any
+rule at query time. Their D13, now a standing rule with aging: **emit the data and let the consumer
+filter; never a run-time switch that changes what a file contains.** Their sentence to us:
+*"Trust D1-D22, not REQ-GO-2..10."*
+
+We had read a spec **aging wrote on our behalf**, cited it in our own schema description, and built
+against it -- while three threads of rulings moved out from under it. That is the proxy problem with
+a number on it, and it is exactly what D21 was written about earlier the same day.
+
+They also confirmed `inherited`/`propagated` and then sharpened our own argument past where we had
+it: inherited **CC** is specifically the dangerous case, because alternative isoforms differ
+precisely in cellular component -- so the column we were about to not have guards the only aspect
+our table stores. And `organelle_category` is **set-valued**, which is a grain problem in a `string`
+column, plus a subcategory column we had never heard of.
+
+The part worth remembering for its own sake: **go now ships v1 in three layers, and the third is one
+column in our schema.** We hold a third of their design and did not know we were a stakeholder.
+
+**`sdrf`: the repair path exists and the normaliser is merged.** Their D27 -- mzLib never invents
+sample metadata; *aging* builds sample blocks for deposits with no usable SDRF and fills
+organism/part/disease from PRIDE's project record **only where exactly one value exists**. Every
+block carries provenance. They proposed `comment[characteristics source]` mapping onto our
+`sdrf_status`, and asked the question we should have asked ourselves: **is `repaired` honest at
+DATASET granularity when a dataset is partly repaired?** That is the grain rule aimed at our own
+schema.
+
+And `SdrfAge` was merged yesterday, which we had recorded as unbuilt. It carries `Cell` -- the raw
+text -- **added at our request in mzLib #1333**, because a number you cannot audit is one you cannot
+publish. A thread opened in the morning had changed an upstream API by the afternoon.
+
+**`aging`: re-ingested on 0.13.0, 0 speciesless proteins in 97,731**, and they say they made our own
+verify-at-the-source mistake twice on the way there.
+
+### The user's question that found a defect in both schemas
+
+*"I think you asked for ages in years but that might not be good for mouse/rats."*
+
+The units were fine -- `age_raw` is verbatim and required. One layer down was not. `AgeEffect.beta`
+is the coefficient on `age_decades = (age_years - 50) / 10`, and **50 is a human lifespan
+constant**: a 24-month mouse gives -4.8 decades, a "change per decade" for an animal that lives two
+years. And `AgeEffect` has 29 columns, `AgeEffectMeta` has 22, and **organism is in neither**, while
+`age_effect_meta` exists precisely to pool across datasets. A human and a mouse effect for one
+feature would pool into a meta-estimate with nothing recording the difference.
+
+**Same shape as the contaminant-organism defect from the same morning** -- a column that permits
+something wrong with nothing saying so -- except that one put bovine albumin in a human column and
+was caught in a day, and this one would reach a meta-analysis. Logged as G40, our half fixed
+regardless of aging's answer, asked as 038.
+
+And `age_mappings` already carries `organism`, `age_unit`, `life_stage`, `human_equivalent_years` --
+exactly what the problem needs -- holds 0 rows, is referenced by nothing, while aging's benchmark B6
+is one of only two questions our coverage map calls NO HOME. **It has a home. The wire was never
+connected.** G41.
+
+### What the day actually demonstrated
+
+Four channels opened in an afternoon produced, within the hour: two defects in our own schema, one
+superseded spec we had been building against, one upstream API change made at our request, and a
+repair path we had recorded as non-existent. **None of it came from more analysis.**
+
+The user's framing, which is the better version of D21: *each project becomes better as the
+consumers of those projects define what they need. Otherwise the project is left to guess, which is
+a weak position.* Stating a requirement is not a courtesy -- it is a **verification step**, and it
+is the cheapest one available.
+
+Process note: both 037 and sdrf 002 **crossed** -- we and they picked the same number
+simultaneously. The checker handles it (`BOTH OWE (crossed)`) and threads are never edited after
+posting, so both stand. Expect more of this now that five channels are live.

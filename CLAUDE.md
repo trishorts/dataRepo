@@ -8,40 +8,42 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
 - **Pick up at:** ingest, build, the study layer and **FRAMEWORK step 3, the MCP server**, are all
   done. Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
-  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. **aging owe a
-  re-ingest on `efd1a83`** (thread 036): 0.13.0 fixes a collapsed-column parse that cost ~7,200
-  proteins their species, so `INGESTER_VERSION` moved and every bundle re-ids. Their catalog today
-  is `71e48aa46a7c9900`, built on 0.11.0, and their unattended batch keeps adding to it.
-  **First thing: run the thread checker** (command below) -- there are now **five peers**, four of
-  them opened 2026-09-22 and none has replied yet.
+  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. **aging have already
+  re-ingested on 0.13.0** (their 037): 0 speciesless proteins in 97,731, so the collapsed-column
+  fix is confirmed on their data and **nothing is owed to them**. Their unattended batch keeps
+  adding datasets, so the catalog on F: grows without warning -- re-read `catalog_id` rather than
+  trusting any number quoted here.
+  **First thing: run the thread checker** (command below). **Five peers**, all opened or active on
+  2026-09-22: `aging` (037/038 sent, they re-ingested on 0.13.0 -- 0 speciesless in 97,731), `go`
+  (**they replied, we owe 003**), `sdrf` (replied, crossed numbering), `pyMzLib` and
+  `QuantProject` (no reply yet). Expect crossed numbers -- 037 and sdrf 002 both crossed.
   Next, in order:
-  (1) **G39 before any `go` ingest**: `ProteinLocalization` cannot hold REQ-GO-7's `inherited` /
-  `propagated` flags, so ingesting their file would promote an assumed annotation to a measured
-  one, and `organelle_label` is `required: true` against a field they leave empty. Both are ours
-  and both are cheap now -- their v1 has no code. Asked as go 001.
-  (2) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
-  red team breaks the previous round's fix (D20 is the worst instance). 0.12.0's fixes are
-  unverified, and 0.13.0 proves the reviews have a blind spot: **both rounds missed the
-  collapsed-column bug, because all four agents were reasoning about the catalog and the defect was
-  upstream of it, in a producer file none of them could read.** A re-run should include at least
-  one agent pointed at `F:/aging_data/<run>/<PXD>/04_search/` rather than at the catalog.
-  (3) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
-  (their 031): identity is the UniProt accession joined through MEMBERSHIP in `protein_accessions`,
-  never the id string; for `ptm_site` it is (accession, residue, position, chemistry) off
-  `ptm_sites_by_chemistry`, not the UNIMOD column. Land it with the membership-join view and the
-  new **`n_source_groups`** column, whose description must carry the 1.02-1.05x inflation and the
-  perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT. A re-ingest is already owed,
-  so this lands in the same pass instead of forcing a second.
-  (4) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
-  producer -- do not write one against a shape neither side has queried.
-  (5) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
-  `llms.txt` and Croissant, published by aging (D8). REST and Compose stay deferred. **N1/G9 --
-  does NCEMS host web services at all -- goes to the next meeting regardless; it is the long pole
-  for D1.**
-  (6) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
-  pyMzLib rather than parsing its resource files. G36 (species to taxon) gets urgent when aging's
-  queue reaches mouse or rat -- they are on 2 of 160 qualifying human datasets, so not soon.
-  (7) QPX pin (G13). **D1-D21 locked.**
+  (1) **Answer `go` 002 and take their offer of a flat column contract (their 004) BEFORE building
+  anything against REQ-GO-*.** Their words: *trust D1-D22, not REQ-GO-2..10*. aging wrote those
+  requirements on our behalf, our schema cites them, and go had overruled the central one two
+  threads earlier -- there is no leading/union switch (their D7/D13: emit the data, let the consumer
+  filter). Then build G39's confirmed half: `inherited` and `propagated` as nullable booleans,
+  `organelle_label` nullable, and decide how a **set-valued** `organelle_category` plus their
+  unseen subcategory column are stored. go v1 ships partly AS A COLUMN IN OUR SCHEMA -- we are a
+  design stakeholder, so push back where they are wrong.
+  (2) **G40 -- add organism to `AgeEffect` and `AgeEffectMeta`, or enforce single-organism meta.**
+  Ours regardless of aging's answer to 038. Nothing currently stops a human and a mouse effect
+  pooling into one meta-estimate.
+  (3) **Answer sdrf's SDRF-DR1..DR4** -- four questions we settle with queries, not opinions, plus
+  their question back to us: is `sdrf_status` honest at DATASET granularity when a dataset is
+  partly repaired? (We think not; it is the grain rule aimed at our own schema.)
+  (4) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
+  red team breaks the previous round's fix (D20 is the worst instance). 0.12.0 and 0.13.0 are
+  unverified, and the reviews have a blind spot: **all four agents reasoned about the catalog while
+  the collapsed-column defect lived upstream in a producer file none could read.** A re-run should
+  point at least one agent at `F:/aging_data/<run>/<PXD>/04_search/`.
+  (5) **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`,
+  whose description must carry the 1.02-1.05x inflation and the perfect-correlation clause IN THE
+  COLUMN'S OWN TEXT.
+  (6) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
+  producer -- never one written against a shape neither side has queried.
+  (7) **`datarepo site` (D16)**; then **G33/G26/G36** (one `REQ-PYMZ` shape, asked as pyMzLib 001);
+  then QPX pin (G13). **N1/G9 goes to the next NCEMS meeting regardless.** **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -188,6 +190,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   via `pip index versions mzlib`) on real data before thread 001 went out. They still reproduce, so
   the report is dated and exact rather than inherited -- and if one had been fixed we would have
   reported a stale failure to the people who fixed it.
+- **A requirement written on your behalf goes stale and you will not notice.** Our schema's own
+  description cites `REQ-GO-2..10` -- which **aging** wrote for us, and which `go` had overruled in
+  two later threads we were not party to. We built a table against the superseded version and only
+  found out by opening the channel and being told *"trust D1-D22, not REQ-GO-2..10"*. If a
+  contract in this schema names requirements somebody else authored, **check them against their
+  owner's current rulings before building**, and prefer a flat current contract from the owner over
+  a requirement list reconstructed from a thread.
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**
