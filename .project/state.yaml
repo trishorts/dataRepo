@@ -207,6 +207,24 @@ decisions:
       **A verification mechanism that can be steered by the thing it verifies is worse than none.**
       Do not reintroduce per-answer narrowing without deriving it from execution rather than from
       the result.
+  - id: D21
+    date: 2026-09-22
+    text: >-
+      dataRepo ASKS ITS UPSTREAMS DIRECTLY. Until 2026-09-22 this project had one thread peer,
+      aging, while eight open gaps named an upstream we needed something from (QuantProject,
+      pyMzLib, mzLib, MetaMorpheus, go). Every request went through aging as a proxy, and a proxy
+      is not merely indirect: our own 012 section 2 measurement reached `go` through aging carrying
+      a mechanism we had already disproved, and aging had to retract it on our behalf -- their
+      words, that the sentence 'transplanted a number out of a comparison it was measured in, into
+      a claim it does not support'. **The number survives the hop; the reason does not.** Channels
+      are now open with go, sdrf, pyMzLib and QuantProject (001 on each, 2026-09-22), all using the
+      same `design/threads/<peer>/` convention on both sides. The rule: **a consumer who does not
+      state their requirements has delegated the design of their own inputs to someone with less
+      information**, and one who states them through an intermediary has delegated the reasoning
+      too. Every thread also OFFERS measurement back -- we ingest at corpus scale and a count takes
+      minutes -- because a producer guessing at a distribution we can query is waste on both sides.
+      Corollary held deliberately: dataRepo will have a second consumer (a project not yet started)
+      and we do NOT build for it; when it exists it states its needs, same rule pointed outward.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -367,6 +385,36 @@ gaps:
     taking seriously: an agent that learns to skip the envelope skips `empty_tables`, which is the
     field that does the most work. Do not fix these piecemeal -- decide first what the envelope is
     FOR, then cut.
+  - >-
+    G38 SAMPLE METADATA IS THE LARGEST HOLE IN THIS REPOSITORY AND IT IS SDRF-SHAPED. Measured
+    2026-09-22 on catalog 71e48aa46a7c9900: 75 samples, of which **75 carry an organism and ZERO
+    carry sex, organism_part, cell_type, disease, condition, cell_line, individual_id or
+    timepoint**. Three of four datasets carry a `no_sdrf` finding (no SDRF deposited at all, so
+    each run got a synthetic sample); the fourth carries `sdrf_skeleton`; all four carry
+    `no_output_sdrf` because MetaMorpheus #2816 WriteSdrf is unreleased. Consequence: every
+    age-stratified question in aging's benchmark is unanswerable -- young-vs-old in one tissue, sex
+    balance, disease exclusion, tissue coverage -- for a repository whose stated purpose is how
+    organelle proteomes change with age. Raised to sdrf directly as their 001 (D21), asking whether
+    a repair path exists or is planned; `Dataset.sdrf_status` already takes 'repaired' and we would
+    rather store that with a provenance note than nothing. NOT ours to fix: the age normalizer and
+    SDRF curation belong to sdrf (D1). Ours is to keep saying so and to keep the tools honest about
+    it -- `search` now reports a 100%-NULL column rather than returning a bare zero that reads as a
+    considered negative.
+  - >-
+    G39 `ProteinLocalization` cannot hold what `go` is about to emit, and both defects are ours.
+    Found 2026-09-22 by reading REQ-GO-7 -- which aging wrote on our behalf and nobody checked
+    against the table -- while opening the go channel. (a) REQ-GO-7 emits `inherited` and
+    `propagated`; we have neither column, so ingesting their file would DROP a flag go set
+    deliberately, PROMOTING an isoform annotation they marked as assumed into one that reads as
+    measured. Default: add both as nullable booleans named exactly as REQ-GO-7 names them.
+    (b) `organelle_label` is `required: true` while their `organelle_category` is 'CC only; empty
+    otherwise' -- the same required-column trap as `Protein.organism` two days earlier. Default:
+    make it nullable. Also open: the group-to-accession grain (their file is per protein group,
+    our table per accession, and REQ-GO-5's leading-only default would leave non-leading members
+    with no row at all -- an absence indistinguishable from 'not localized there'), where P and F
+    aspects live, and two version strings (`go_release` and the category-map version) for one
+    `AnnotationSource.version`. Asked as go 001; their v1 has no code yet, which is the cheap
+    moment. DO NOT ingest a go file before this is settled.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

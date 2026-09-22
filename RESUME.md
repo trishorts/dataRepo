@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 86 |
+| Commits | 89 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 20 |
-| Open gaps | 35 |
+| Locked decisions | 21 |
+| Open gaps | 37 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -29,6 +29,29 @@ with age.
 re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`) and run an unattended batch
 toward 160 qualifying human datasets. **0.13.0 moves `INGESTER_VERSION`, so a re-ingest on
 `efd1a83` is owed** — it fixes a collapsed-column parse that cost ~7,200 proteins their species.
+
+### Five thread peers, four of them opened on 2026-09-22
+
+Until that day dataRepo had **one** peer, aging, while eight open gaps named an upstream we needed
+something from. Every request went through aging as a proxy — and a proxy loses the reasoning: one
+of our measurements reached `go` that way carrying a mechanism we had already disproved, and aging
+had to retract it on our behalf.
+
+`go`, `sdrf`, `pyMzLib` and `QuantProject` now have direct channels (001 on each), each stating
+what we need **and offering measurement back**, since we ingest at corpus scale and a count takes
+minutes.
+
+Opening them paid for itself immediately. **`go`'s output contract cannot be stored by our table**
+(G39): REQ-GO-7 emits `inherited` / `propagated` flags we have no column for, so ingesting their
+file would promote an annotation they deliberately marked as *assumed* into one that reads as
+*measured* — and `organelle_label` is `required: true` against a field they leave empty, the same
+trap that made every contaminant human. Both are ours, found only by reading a contract aging wrote
+on our behalf that nobody had checked against the table.
+
+**And the largest hole in this repository is SDRF-shaped** (G38): 75 samples, **zero** carrying
+sex, tissue, cell type, disease, condition, cell line, individual or timepoint. Three of four
+datasets have no SDRF at all. Every age-stratified question in the benchmark dies there — in a
+repository whose purpose is how organelle proteomes change with age. sdrf had never been told.
 
 ### The defect that four review agents missed
 

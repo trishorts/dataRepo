@@ -12,31 +12,36 @@ This folder is a `/project`-managed research project. **You are de facto working
   re-ingest on `efd1a83`** (thread 036): 0.13.0 fixes a collapsed-column parse that cost ~7,200
   proteins their species, so `INGESTER_VERSION` moved and every bundle re-ids. Their catalog today
   is `71e48aa46a7c9900`, built on 0.11.0, and their unattended batch keeps adding to it.
-  **First thing: run the thread checker** (command below).
+  **First thing: run the thread checker** (command below) -- there are now **five peers**, four of
+  them opened 2026-09-22 and none has replied yet.
   Next, in order:
-  (1) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
+  (1) **G39 before any `go` ingest**: `ProteinLocalization` cannot hold REQ-GO-7's `inherited` /
+  `propagated` flags, so ingesting their file would promote an assumed annotation to a measured
+  one, and `organelle_label` is `required: true` against a field they leave empty. Both are ours
+  and both are cheap now -- their v1 has no code. Asked as go 001.
+  (2) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
   red team breaks the previous round's fix (D20 is the worst instance). 0.12.0's fixes are
   unverified, and 0.13.0 proves the reviews have a blind spot: **both rounds missed the
   collapsed-column bug, because all four agents were reasoning about the catalog and the defect was
   upstream of it, in a producer file none of them could read.** A re-run should include at least
   one agent pointed at `F:/aging_data/<run>/<PXD>/04_search/` rather than at the catalog.
-  (2) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
+  (3) **G32**, `age_effect_meta.feature_id`, fully specified by aging's `DEF-AGE-EFFECT-META v1.1`
   (their 031): identity is the UniProt accession joined through MEMBERSHIP in `protein_accessions`,
   never the id string; for `ptm_site` it is (accession, residue, position, chemistry) off
   `ptm_sites_by_chemistry`, not the UNIMOD column. Land it with the membership-join view and the
   new **`n_source_groups`** column, whose description must carry the 1.02-1.05x inflation and the
   perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT. A re-ingest is already owed,
   so this lands in the same pass instead of forcing a second.
-  (3) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
+  (4) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
   producer -- do not write one against a shape neither side has queried.
-  (4) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
+  (5) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` with Bioschemas JSON-LD,
   `llms.txt` and Croissant, published by aging (D8). REST and Compose stay deferred. **N1/G9 --
   does NCEMS host web services at all -- goes to the next meeting regardless; it is the long pole
   for D1.**
-  (5) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
+  (6) **G33**, **G26** and **G36**, all the same `REQ-PYMZ` shape: ask mzLib's loader through
   pyMzLib rather than parsing its resource files. G36 (species to taxon) gets urgent when aging's
   queue reaches mouse or rat -- they are on 2 of 160 qualifying human datasets, so not soon.
-  (6) QPX pin (G13). **D1-D20 locked.**
+  (7) QPX pin (G13). **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -92,6 +97,12 @@ This folder is a `/project`-managed research project. **You are de facto working
   not pushed, they are blocked and the thread is a lie. Commit and push first, then say so, and
   quote the sha.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
+- **FIVE thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`, each
+  under `design/threads/<peer>/` with a mirror in that project's `design/threads/dataRepo/`. Until
+  2026-09-22 everything was routed through aging, and a proxy loses the reasoning: our own
+  measurement reached `go` via aging carrying a mechanism we had already disproved. **Ask the
+  owner directly, and offer a measurement back** -- we ingest at corpus scale and a count takes
+  minutes, so a producer guessing at a distribution we can query is waste on both sides.
 - **To check whether a thread landed, run aging's checker** — don't guess and don't edit aging's
   tracking table yourself:
   `python "$env:USERPROFILE/.claude/skills/project/assets/threads.py" inbox`
@@ -166,6 +177,17 @@ This folder is a `/project`-managed research project. **You are de facto working
   paths you mean. This is the second convenience in two days that reached further than intended,
   the first being provenance inferred from a query's own output -- the same shape, a tool taking
   what is there rather than what was meant.
+- **A consumer who does not state their requirements has delegated the design of their own inputs
+  to someone with less information** -- and one who states them through an intermediary has
+  delegated the reasoning too (D21). Opening four channels in an afternoon turned up two defects in
+  our OWN schema (G39) that had sat unnoticed because aging wrote REQ-GO-2..10 on our behalf and
+  nobody checked the contract against the table. Writing a first message forces you to state what
+  you need, which forces you to check whether you know.
+- **Re-test an upstream gap before reporting it again.** Already in this list for SDRF; it earned
+  its keep again on 2026-09-22. All three pyMzLib gaps were re-run against 0.1.1 (confirmed latest
+  via `pip index versions mzlib`) on real data before thread 001 went out. They still reproduce, so
+  the report is dated and exact rather than inherited -- and if one had been fixed we would have
+  reported a stale failure to the people who fixed it.
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**

@@ -847,3 +847,68 @@ quietly.
 Twice in two days a convenience reached further than intended: inferring provenance from a query's
 own output, and `git add -A` on a tree with an unfinished message in it. Same shape -- a tool that
 takes what is there rather than what was meant.
+
+## 2026-09-22 - Tenth: we had one thread peer, and eight gaps that needed five
+
+The user's challenge, after watching a thread to `go` get drafted: *"are you waiting on specific
+things from project go? why don't you ask for what you need?"* Then, a step further: **thirty-odd
+projects, and a producer left to guess is in a weak position.**
+
+Checked rather than agreed, and the answer was worse than "not yet". **dataRepo had exactly one
+thread peer: aging.** Eight open gaps name an upstream we need something from -- QuantProject,
+pyMzLib, mzLib, MetaMorpheus, go -- and every single request had been routed through aging.
+
+### Why a proxy is not merely indirect
+
+The evidence was already in the record and we had not read it as evidence. Our 012 section 2
+measurement reached `go` **through aging**, carrying a mechanism we had already disproved, and
+aging had to apologise to `go` on our behalf. Their words to go: the sentence *"transplanted a
+number out of a comparison it was measured in, into a claim it does not support."*
+
+**The number survives the hop. The reason does not.** That is the same hazard as every other one
+this week -- a clause without its scope, a column without its name, a parse without its source --
+and here it is again as a claim without its measurement context, one project removed.
+
+### What opening the channels actually found
+
+Writing a first message forces you to state what you need, which forces you to check whether you
+know. Three of four threads turned up something we did not know we knew:
+
+**`go` is designing their output format right now, and two of our columns cannot hold it.**
+REQ-GO-7 emits `inherited` and `propagated` flags; `ProteinLocalization` has neither. Ingesting
+their file as specified would **promote** an isoform annotation go deliberately marked as assumed
+into one that reads as measured. And `organelle_label` is `required: true` against a field they
+describe as "CC only; empty otherwise" -- the identical required-column trap that made every
+contaminant human two days ago. Both are our bugs, found by reading a contract aging wrote on our
+behalf and nobody had checked against the table.
+
+**sdrf is the largest hole in this repository and had never been told it existed.** 75 samples in
+the live catalog; **zero** carrying sex, organism_part, cell_type, disease, condition, cell_line,
+individual_id or timepoint. Three of four datasets carry `no_sdrf`, the fourth `sdrf_skeleton`.
+Every age-stratified question in aging's benchmark dies there. A repository whose stated purpose
+is *how organelle proteomes change with age* **cannot stratify a single dataset by age today**, and
+the project that owns the repair path had heard nothing from us.
+
+**pyMzLib's gaps were re-tested before being reported**, because the bite-list says SDRF was fixed
+upstream while we were still reporting it. All three reproduce on 0.1.1, confirmed latest:
+`pro_forma` present and 0-populated with an empty `failed_fields`, `AllQuantifiedPeaks.tsv` failing
+on a missing optional `MBR Score` header, two FlashLFQ tables unsupported. Worth the ten minutes:
+the report is now dated and exact rather than inherited.
+
+### The rule
+
+> **A consumer who does not state their requirements has delegated the design of their own inputs
+> to someone with less information.** And one who states them through an intermediary has delegated
+> the reasoning as well.
+
+Each thread offers measurement back, which is what makes it a channel rather than a request queue:
+we ingest at corpus scale, and a count that would settle a design argument takes minutes. If any
+of these projects is guessing at a distribution we can simply query, that is waste on both sides.
+
+### Left alone deliberately
+
+dataRepo will have a second consumer -- a project still in the user's head. We are not building for
+it. *"We will communicate those at that time"* is the correct order, and it is the same discipline
+as G17: do not write a producer against a shape neither side has queried. What it does do is
+validate U5/G10's default, the generic core plus pluggable study layer, which is about to be tested
+by something other than aging for the first time.
