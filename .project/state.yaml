@@ -588,6 +588,26 @@ gaps:
     be a `feature_set`, a RELATIONSHIP may not -- `feature_set_members.role` cannot carry
     `relationship_type`, because one2one/one2many describe a PAIR and a member row holds only one
     feature, so an edge table is a separate object whose absence we would notice late.
+  - >-
+    G48 `Protein.gene` is UNVALIDATED: a stored value we cannot reproduce from our own reader.
+    Found answering logs REQ-DATAREPO-1..3 on 2026-09-22. Tracing `P63135` (a HERV-K Gag protein)
+    through `_per_accession` by hand gives `None` for PXD032040 -- its first claiming row in
+    `AllPSMs.psmtsv` is RAGGED (`n_acc=9, n_gene=8`), and the helper returns None for all when the
+    counts are neither equal nor 1. **The catalog stores `ERVK-6`.** So either the reader does
+    something our reading of it does not, or a path we have not found supplies the value. Told to
+    logs in 003 section 4 rather than sat on, because they are claiming ownership of
+    accession-to-gene and this is that column. CONTEXT, all measured: MetaMorpheus `|`-joins
+    `Gene Name` alongside `Accession`, and of 23,284 multi-accession non-decoy peptide rows across
+    9 datasets, 188 have the gene collapsed to 1 (broadcast, correct) and **182 are RAGGED**,
+    typically `n_gene = n_acc - 1` because one protein on the row has no symbol and the join leaves
+    no hole. We correctly refuse to guess -- but an accession's stored value then depends on which
+    row claims it FIRST (`if acc in out: continue`), and a ragged row claims it as firmly as a
+    clean one. Result: 60 of 20,022 distinct non-decoy accessions are named in one dataset and NULL
+    in another with nothing about the data differing, and 5 carry conflicting names. **PXD036557
+    has ZERO ragged rows**, which is why the original collapsed-column investigation -- done on
+    PXD036557 -- never saw this variant. Fix is probably first-non-null-wins rather than
+    first-row-wins, but DO NOT write it until the ERVK-6 discrepancy is explained: a fix built on a
+    mechanism we could not reproduce is the weakest evidence there is.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
