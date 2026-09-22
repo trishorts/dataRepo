@@ -59,6 +59,17 @@ This folder is a `/project`-managed research project. **You are de facto working
   current release before repeating them** — SDRF was fixed upstream while we were still reporting it.
   For an SDRF use `pymzlib.sdrf.read`, never the generic `read_records`, which is still lossy on one.
 - **PowerShell `Set-Content -Encoding utf8` writes a BOM,** and linkml-validate then rejects the file (the first key reads as `ï»¿datasets`). Write YAML fixtures with the Write tool or `[IO.File]::WriteAllText` using UTF-8 without a BOM.
+- **COMMIT, THEN ANNOUNCE. Never write "shipped" for code that is only in the working tree.**
+  It happened twice on 2026-09-21 and aging caught it both times (their 029). Thread 028 said "we
+  shipped 0.9.0" while twelve files sat uncommitted; earlier the same day they went to re-ingest on
+  0.7.0 and found `study.py` uncommitted. Both times they refused to run, and they were right to:
+  **a bundle id hashed on an `INGESTER_VERSION` and `SCHEMA_VERSION` that exist in no commit is
+  reproducible by nobody**, which is precisely what `manifest.CONTENT_FIELDS` and the
+  `INGESTER_VERSION`/`__version__` split were built to protect. Ingesting against a dirty tree
+  would be them breaking our own rule on our behalf. They build from a read-only clone at our
+  committed `HEAD`, so **our tip is the only thing they can see** -- if a release is announced and
+  not pushed, they are blocked and the thread is a lie. Commit and push first, then say so, and
+  quote the sha.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
 - **To check whether a thread landed, run aging's checker** — don't guess and don't edit aging's
   tracking table yourself:
