@@ -81,19 +81,34 @@ def test_every_result_carries_its_catalog_id(server, call):
     assert provenance["bundles"]
 
 
-def test_sql_provenance_narrows_to_the_bundles_in_the_rows(server):
-    result = server.sql("SELECT dataset_id, bundle_id, count(*) FROM psms GROUP BY 1, 2")
-    assert len(result["provenance"]["bundles"]) == 3
-    result = server.sql("SELECT * FROM psms WHERE dataset_id = 'PXD000001'")
-    bundles = result["provenance"]["bundles"]
-    assert [b["dataset_id"] for b in bundles] == ["PXD000001"]
-    assert "rows returned" in result["provenance"]["bundles_are"]
+def test_sql_provenance_is_the_catalog_and_never_the_query(server):
+    """It does NOT narrow to what an answer touched, and that is the fix, not a regression.
+
+    Narrowing read the result's own `bundle_id`/`dataset_id` columns -- and a query can put
+    anything in a column with those names. `SELECT max(dataset_id) AS dataset_id, count(*) FROM
+    ptm_sites` returned a catalog-wide count stamped with one dataset's bundle, in the same words
+    a correct narrowing uses. Provenance is now a fact about the server: same on every answer.
+    """
+    every = {b["bundle_id"] for b in server.identity.bundles}
+    for sql in (
+        "SELECT dataset_id, bundle_id, count(*) FROM psms GROUP BY 1, 2",
+        "SELECT * FROM psms WHERE dataset_id = 'PXD000001'",
+        "SELECT max(dataset_id) AS dataset_id, count(*) AS n FROM psms",
+        "SELECT 1 AS n",
+    ):
+        provenance = server.sql(sql)["provenance"]
+        assert {b["bundle_id"] for b in provenance["bundles"]} == every, sql
+        assert "fact about the server" in provenance["bundles_are"]
 
 
-def test_a_result_without_provenance_columns_says_so_rather_than_guessing(server):
-    result = server.sql("SELECT 1 AS n")
-    assert len(result["provenance"]["bundles"]) == 3
-    assert "cannot be narrowed" in result["provenance"]["bundles_are"]
+
+def test_provenance_says_whether_the_catalog_is_a_release(server):
+    """A release is archived and never changes; a working build is rebuilt in place."""
+    provenance = server.sql("SELECT 1")["provenance"]
+    assert provenance["catalog_kind"] == "working build"
+    assert "Cite a release" in provenance["catalog_kind_means"]
+    assert provenance["catalog_id"]
+
 
 
 def test_the_catalog_is_the_one_named_never_discovered(tmp_path):
@@ -478,23 +493,30 @@ def test_the_entry_runs_the_module_not_a_script_on_the_path(catalog):
 
 
 def test_sql_names_the_empty_tables_a_query_touched(server):
-    """The worst one. `sql` had none of the guards `describe` and `search` carry.
-
-    A join over two empty tables returned `rows: []` with nothing in the envelope, and "organelles
-    do not age at measurably different rates" was one careless step away -- from the tool
-    `describe`'s own `next` block points at.
-    """
+    """The guard that earned its place: `describe` and `search` had it, `sql` did not."""
     result = server.sql(
         "SELECT a.feature_id FROM age_effects a "
         "JOIN organelle_age_summaries o ON a.feature_id = o.compartment"
     )
     assert result["row_count"] == 0
     assert set(result["empty_tables"]) == {"age_effects", "organelle_age_summaries"}
-    assert "not because the answer is negative" in result["empty_tables_mean"]
-    assert {t["table"] for t in result["tables_touched"]} == {
-        "age_effects",
-        "organelle_age_summaries",
-    }
+    assert "never evidence for a negative answer" in result["empty_tables_mean"]
+
+
+def test_the_empty_table_warning_does_not_assert_a_cause_it_has_not_checked(server):
+    """It used to say "this result is empty because there is nothing to query" and instruct the
+    caller to report non-delivery -- on a query that returned nothing because the filter matched
+    nothing. A warning that asserts an unchecked reason is the failure it was written to prevent."""
+    result = server.sql(
+        "SELECT p.protein_accession FROM proteins p "
+        "LEFT JOIN protein_localizations l USING (protein_accession) "
+        "WHERE p.protein_accession = 'NOTAREALACCESSION'"
+    )
+    assert result["row_count"] == 0
+    assert result["empty_tables"] == ["protein_localizations"]
+    assert "depends on the query" in result["empty_tables_mean"]
+    assert "Say the data has not been delivered" not in result["empty_tables_mean"]
+
 
 
 def test_tables_touched_sees_through_aliases_and_ctes(server):
@@ -510,36 +532,53 @@ def test_tables_touched_sees_through_aliases_and_ctes(server):
 
 
 def test_a_populated_query_still_names_an_empty_table_it_joined(server):
-    """A LEFT JOIN onto an empty table returns rows, and the missing half must still be named."""
     result = server.sql(
         "SELECT p.protein_accession, l.compartment FROM proteins p "
         "LEFT JOIN protein_localizations l ON l.protein_accession = p.protein_accession LIMIT 5"
     )
     assert result["row_count"] > 0
     assert result["empty_tables"] == ["protein_localizations"]
-    assert "missing rather than negative" in result["empty_tables_mean"]
 
 
-def test_provenance_cannot_be_dictated_by_the_query(server):
-    """A bundle id that exists in no catalog was echoed back as the provenance of real rows."""
-    result = server.sql("SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) AS n FROM psms")
-    claimed = {b["bundle_id"] for b in result["provenance"]["bundles"]}
-    assert "deadbeefdeadbeef" not in claimed
-    assert claimed == {b["bundle_id"] for b in server.identity.bundles}
-    assert result["provenance"]["unrecognised_ids_in_result"] == ["deadbeefdeadbeef"]
-    assert "does not hold" in result["provenance"]["bundles_are"]
+
+def test_a_forged_bundle_id_changes_nothing(server):
+    """The old patch rejected UNKNOWN ids and let a real one narrow. Now neither does anything."""
+    every = {b["bundle_id"] for b in server.identity.bundles}
+    forged = server.sql("SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) AS n FROM psms")
+    real = server.sql("SELECT 'PXD000001' AS dataset_id, count(*) AS n FROM psms")
+    for result in (forged, real):
+        assert {b["bundle_id"] for b in result["provenance"]["bundles"]} == every
 
 
-def test_a_real_id_narrows_but_the_claim_says_only_what_it_knows(server):
-    """`SELECT 'PXD000001' AS dataset_id, count(*) FROM psms` counts THREE datasets.
 
-    Validation cannot catch this -- the id is real -- so the wording must not overstate, and
-    `tables_touched` must be there to check it against.
+def test_a_cte_named_after_a_real_table_certifies_nothing(server):
+    """The 0.11.0 hole, and the reason `tables_touched` is a hint rather than evidence.
+
+    `WITH protein_groups_1pct AS (SELECT 99999)` read no catalog bytes and came back certified as
+    having read the real view's rows, with a bundle id attached. Naming a working table after the
+    thing it relates to needs no adversary.
     """
-    result = server.sql("SELECT 'PXD000001' AS dataset_id, count(*) AS n FROM psms")
-    assert [b["dataset_id"] for b in result["provenance"]["bundles"]] == ["PXD000001"]
-    assert "does not prove" in result["provenance"]["bundles_are"]
-    assert {t["table"] for t in result["tables_touched"]} == {"psms"}
+    result = server.sql(
+        "WITH psms AS (SELECT 'PXD000001' AS dataset_id, 99999 AS n) SELECT * FROM psms"
+    )
+    assert result["rows"] == [["PXD000001", 99999]]
+    assert result["tables_touched"] == [], "a CTE name must not be reported as a table read"
+    assert "empty_tables" not in result
+    assert {b["bundle_id"] for b in result["provenance"]["bundles"]} == {
+        b["bundle_id"] for b in server.identity.bundles
+    }
+
+
+def test_an_unparseable_read_says_unknown_not_none(server):
+    """`query_table('x')` takes its target as a string, so no table node exists to find.
+
+    Returning `[]` here read as "touches nothing" -- the silently-wrong shape exactly.
+    """
+    result = server.sql("SELECT count(*) FROM query_table('psms')")
+    assert result["tables_touched"] is None
+    assert "not a claim that none were" in result["tables_touched_undetermined"]
+    assert "empty_tables" not in result
+
 
 
 def test_search_provenance_covers_every_bundle_that_fed_a_visible_number(server):
@@ -614,3 +653,46 @@ def test_a_study_layer_with_no_delivery_is_reported_as_present_and_empty(server)
     assert layers["aging"]["tables_present"] == 8
     assert layers["aging"]["delivery_loaded"] is False
     assert layers["aging"]["rows"] == 0
+
+
+def test_search_says_when_it_cut_the_list_off(server):
+    """`search("KRT")` returned `total_hits: 25` beside `rows: 38002` when 232 matched.
+
+    `SEARCH_LIMIT`'s own comment called it "how many hits one kind returns before it says there are
+    more". It never said. A list whose length is read as a count is a wrong answer with no author.
+    """
+    result = server.search("GENE2", kind="protein", limit=1)
+    assert result["truncated_kinds"] == ["protein"]
+    assert "is NOT a count" in result["truncated_means"]
+    assert len(result["hits"]["protein"]) == 1
+
+
+def test_an_uncut_search_carries_no_truncation_language(server):
+    result = server.search("P11111", kind="protein", limit=25)
+    assert "truncated_kinds" not in result
+
+
+def test_the_protein_caveat_fires_on_every_hit_not_only_the_zero_ones(server):
+    """It used to fire only when EVERY hit had `n_datasets_1pct = 0` -- so never when it mattered.
+
+    `EIF1AY` comes back `n_datasets_1pct: 2` and is in zero accepted protein groups.
+    """
+    for query in ("P11111", "GENE2"):
+        source = next(
+            s for s in server.search(query, kind="protein")["searched"]
+            if s["source"] == "protein_index"
+        )
+        assert "NOT 'identified at 1% protein FDR'" in source["note"], query
+
+
+def test_prose_generated_from_a_different_schema_says_so(server, monkeypatch):
+    """Serving a 0.0.5 catalog from 0.0.7 code, `describe` narrated the contaminant fix in the past
+    tense and pointed at a column that catalog does not have, while printing a populated count that
+    contradicted the same sentence. An agent that called `describe` first came away more confident
+    and more wrong."""
+    assert server.schema_drift is None, "fixture catalog and code should agree"
+    monkeypatch.setattr(server.identity, "schema_version", "0.0.1")
+    assert "THE CATALOG IS RIGHT" in server.schema_drift
+    assert "schema_drift" in server.describe("psms")
+    assert "schema_drift" in server.describe()
+    assert "schema_drift" in server.describe("Acquisition")

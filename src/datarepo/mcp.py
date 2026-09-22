@@ -8,10 +8,19 @@ Three tools ship, and a fourth is added only where aging's benchmark shows a spe
 * `datarepo_search` -- what do you have on LMNA / mitochondria / PXD036557 / "skeletal muscle"?
 * `datarepo_sql` -- read-only SQL for everything else, bounded by `sandbox.Sandbox` (D14).
 
-**Every result carries its provenance** (D13): the `catalog_id`, the catalog's versions, and the
-bundle ids the answer drew on. The failure this forecloses is the one this repository keeps writing
+**Every result carries its provenance** (D13): the `catalog_id`, the catalog's versions, and every
+bundle this catalog holds. The failure this forecloses is the one this repository keeps writing
 threads about -- the same question answered twice, differently, with nothing in either result
 saying which data it saw.
+
+**Provenance is a fact about the server and is inferred from nothing.** It does not narrow to what
+an answer touched, and that is deliberate. It used to, by reading the result's own `bundle_id` and
+`dataset_id` columns -- and a query can put anything in a column with those names, so
+`SELECT max(dataset_id) AS dataset_id, count(*) FROM ptm_sites` returned a catalog-wide count
+stamped with one dataset's bundle, in the same words a correct narrowing uses. The narrowing was
+never needed: `catalog_id` is a hash of the exact (dataset, bundle) set, so naming it already states
+precisely which frozen copy of every dataset was available. That is the whole citation. A slice of
+it is a convenience, it cannot be computed honestly from a result, and so it is not computed.
 
 **The bar is zero silently-wrong answers, not a percentage** (D15). `SCHEMA_COVERAGE.md` says 94 of
 aging's 168 questions wait on a producer, so on this data most honest answers are "no data yet".
@@ -23,8 +32,10 @@ Three things in here exist only to make that answer available instead of an inve
    let an agent conclude no protein is mitochondrial. It says instead that the table which would
    answer this is empty.
 2. `describe` reads its column meanings from `_schema_docs.py`, generated from the LinkML schema by
-   the same tool that generates the Arrow schemas, so a description an agent is given cannot drift
-   from the column it describes.
+   the same tool that generates the Arrow schemas, so a description cannot drift from the column it
+   describes **within one version**. Across versions it can: the prose is generated from the schema
+   THIS CODE was built against, and a catalog built by an older `datarepo` may not match it. Every
+   result carrying a description says so through `schema_drift` when the two differ.
 3. Nothing here summarises or interprets. A tool returns rows and the names of the things it looked
    in; the model reading them does the reasoning, and can be wrong in the open.
 
@@ -46,6 +57,7 @@ from typing import Any, Literal, Sequence, get_args
 
 from . import __version__
 from ._schema_docs import ENUMS, SCHEMA_DESCRIPTION, STUDY_ENUMS, STUDY_TABLE_DOCS, TABLE_DOCS
+from ._tables import SCHEMA_VERSION
 from .catalog import DERIVED_DOCS
 from .errors import CatalogError, DataRepoError, QueryRefused, QueryTimeout
 from .sandbox import CHAR_CAP, ROW_CAP, TIMEOUT_SECONDS, Sandbox
@@ -164,6 +176,36 @@ class CatalogServer:
         self.identity = _read_identity(self.box)
         self._tables: dict[str, dict[str, Any]] | None = None
 
+    @property
+    def schema_drift(self) -> str | None:
+        """Set when the prose this server carries describes a NEWER schema than the catalog holds.
+
+        Column descriptions come from `_schema_docs.py`, generated from the schema **this code**
+        was built against. A catalog built by an older `datarepo` is two things at once: real data,
+        and data whose columns may not match the sentences describing them.
+
+        Not hypothetical, and the worst finding of the 0.11.0 review. Serving a 0.0.5 catalog from
+        0.0.7 code, `describe('proteins')` narrated the contaminant-organism fix in the past tense
+        and directed the reader to `organism_name`, a column that catalog does not have, while
+        `describe('protein_index')` stated flatly that `organism` is "NULL for contaminant and
+        decoy entries" and printed "[38,002 non-null]" on the same line. **An agent that did the
+        diligent thing and called `describe` first came away more confident and more wrong.**
+
+        The fix is not to suppress the prose -- it is correct about the schema it names -- but to
+        say, in every result carrying a description, which schema the description is of.
+        """
+        served = self.identity.schema_version
+        if not served or served == SCHEMA_VERSION:
+            return None
+        return (
+            f"This catalog was built against schema {served}; the descriptions here are generated "
+            f"from schema {SCHEMA_VERSION}, which this server was built against. Where they "
+            f"disagree THE CATALOG IS RIGHT and the description is of a later version: a column "
+            f"the prose mentions may not exist here, and a rule it states may not yet hold. Trust "
+            f"the `type`, the `populated` count and the rows over the prose. Rebuilding the "
+            f"catalog with this version of datarepo makes them agree."
+        )
+
     def close(self) -> None:
         self.box.close()
 
@@ -206,43 +248,54 @@ class CatalogServer:
             self._tables = dict(sorted(found.items()))
         return self._tables
 
-    def _provenance(self, drew_on: list[dict[str, Any]] | None, note: str) -> dict[str, Any]:
+    def _provenance(self) -> dict[str, Any]:
+        """What frozen data this server holds. **Identical on every answer, and inferred from
+        nothing.**
+
+        It used to narrow per answer -- 'the bundles named in the rows returned' -- and that was a
+        mistake of kind, not of implementation. Two different questions were being answered as one:
+
+        * **Which frozen data does this server hold?** A fact about the server, fixed when it opened
+          the file. No question can change it.
+        * **Which slice of it did this answer touch?** A guess, made by reading the query's own
+          output.
+
+        The first is provenance. The second was a convenience, and labelling it as provenance made
+        it forgeable: `SELECT max(dataset_id) AS dataset_id, count(*) FROM ptm_sites` returned the
+        catalog-wide 38,045 stamped with one dataset's bundle, in the same words a correct
+        narrowing uses. Nobody had to be trying.
+
+        **The narrowing added nothing anyway.** `catalog_id` is a hash of the exact (dataset,
+        bundle) set below, so naming it already states, precisely and immutably, which frozen copy
+        of every dataset was available. That is the whole citation. A slice of it is a convenience
+        that cannot be computed honestly here, so it is not computed at all.
+        """
         out = self.identity.base()
-        out["bundles"] = drew_on if drew_on is not None else [
+        out["bundles"] = [
             {"dataset_id": b["dataset_id"], "bundle_id": b["bundle_id"]}
             for b in self.identity.bundles
         ]
-        out["bundles_are"] = note
+        out["bundles_are"] = (
+            "every bundle this catalog holds, which is what `catalog_id` is a hash of. This is a "
+            "fact about the server, not a claim about this answer: no question can change it, and "
+            "it is NOT narrowed to what this particular result touched, because that cannot be "
+            "determined from a result without being wrong sometimes and silent about which times."
+        )
         if self.identity.study_bundles:
             out["study_bundles"] = [
                 {"layer": b.get("layer"), "bundle_id": b.get("bundle_id")}
                 for b in self.identity.study_bundles
             ]
+        # A release is archived at a fixed path and never changes; a working catalog is rebuilt in
+        # place and its id moves when the bundles under it do. Both ids are exact -- only one is
+        # durable, and a caller citing a number needs to know which kind it is holding.
+        out["catalog_kind"] = "release" if self.identity.release else "working build"
+        if not self.identity.release:
+            out["catalog_kind_means"] = (
+                "a working catalog is rebuilt in place, so this catalog_id identifies the data "
+                "exactly today but the file at this path may be replaced. Cite a release."
+            )
         return out
-
-    def _whole_catalog(self) -> dict[str, Any]:
-        return self._provenance(
-            None,
-            "every bundle in this catalog: the result does not carry bundle_id, so which of them "
-            "it drew on cannot be narrowed from the rows",
-        )
-
-    def _from_datasets(self, dataset_ids: set[str]) -> dict[str, Any]:
-        """Provenance narrowed to named datasets, which is most of what `search` returns."""
-        drew = [
-            {"dataset_id": b["dataset_id"], "bundle_id": b["bundle_id"]}
-            for b in self.identity.bundles
-            if b["dataset_id"] in dataset_ids
-        ]
-        if not drew:
-            return self._whole_catalog()
-        return self._provenance(
-            drew,
-            "the bundles of the datasets NAMED IN THE ROWS RETURNED. A row names a dataset; that "
-            "does not prove no other dataset contributed to a number beside it, so this narrows "
-            "the claim only as far as the rows themselves do -- `tables_touched` says what was "
-            "actually scanned",
-        )
 
     # -- describe ---------------------------------------------------------------------------
 
@@ -305,6 +358,7 @@ class CatalogServer:
         return {
             "catalog": str(self.box.path),
             "what_it_is": SCHEMA_DESCRIPTION,
+            **({"schema_drift": self.schema_drift} if self.schema_drift else {}),
             "instance": self.identity.instance,
             "qpx_version": self.identity.qpx_version,
             "datasets": datasets,
@@ -331,7 +385,7 @@ class CatalogServer:
                 "search('<gene, accession, peptide, tissue or modification>') to find ids",
                 "sql('SELECT ...') for anything else",
             ],
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
 
     def _study_layers(self) -> list[dict[str, Any]]:
@@ -394,7 +448,7 @@ class CatalogServer:
                 "study": "delivered by a study layer, keyed on core identifiers (U5)",
                 "table": "a catalog's own bookkeeping (catalog_meta, catalog_bundles, ...)",
             },
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
 
     def _all_docs(self) -> dict[str, dict[str, Any]]:
@@ -498,12 +552,13 @@ class CatalogServer:
             "kind": info.get("kind"),
             "rows": info.get("rows"),
             "one_row_is": doc.get("description"),
+            **({"schema_drift": self.schema_drift} if self.schema_drift else {}),
             "layer": doc.get("layer"),
             # `concise` renders each column as one line instead of a JSON object. The SAME facts,
             # a third of the tokens -- nothing is dropped, because a column description an agent
             # does not read is exactly how it invents what a column means.
             "columns": columns if detail == "detailed" else [_one_line_column(c) for c in columns],
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
         if (info.get("rows") or 0) == 0:
             out["empty_means"] = (
@@ -544,9 +599,10 @@ class CatalogServer:
             "enum": name,
             "layer": layer,
             "means": entry.get("description"),
+            **({"schema_drift": self.schema_drift} if self.schema_drift else {}),
             "values": list(entry.get("values") or []),
             "note": "a column of this enum holds exactly one of these strings, or NULL",
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
 
     def _describe_definition(self, target: str) -> dict[str, Any] | None:
@@ -576,7 +632,7 @@ class CatalogServer:
             "url": rows[0]["url"],
             "metrics_using_it": [r["name"] for r in used_by],
             "provisional": str(rows[0]["definition_id"]).upper().startswith("PROVISIONAL:"),
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
 
     def _describe_study_layer(self, layer: str) -> dict[str, Any]:
@@ -603,7 +659,7 @@ class CatalogServer:
                 "(U5). A table present with 0 rows has been delivered empty, which is a different "
                 "fact from the table not existing -- both mean 'no data', neither means 'no effect'."
             ),
-            "provenance": self._whole_catalog(),
+            "provenance": self._provenance(),
         }
 
     # -- search -----------------------------------------------------------------------------
@@ -632,8 +688,17 @@ class CatalogServer:
 
         hits: dict[str, list[dict[str, Any]]] = {}
         searched: list[dict[str, Any]] = []
+        # One more than asked for, so truncation is OBSERVED rather than inferred from a full page
+        # -- the discipline `sql` already used and `search` did not. Without it `search("KRT")`
+        # returned `total_hits: 25` beside `rows: 38002` when the real count is 232, with nothing
+        # anywhere saying "there are more". `SEARCH_LIMIT`'s own comment claimed it was "how many
+        # hits one kind returns before it says there are more". It never said.
+        truncated: list[str] = []
         for name in kinds:
-            found, sources = getattr(self, f"_search_{name}")(query, limit)
+            found, sources = getattr(self, f"_search_{name}")(query, limit + 1)
+            if len(found) > limit:
+                found = found[:limit]
+                truncated.append(name)
             searched.extend(sources)
             if found:
                 hits[name] = found
@@ -655,7 +720,7 @@ class CatalogServer:
             "hits": hits,
             "total_hits": sum(len(v) for v in hits.values()),
             "searched": searched,
-            "provenance": self._from_datasets(datasets),
+            "provenance": self._provenance(),
         }
         if empty:
             out["searched_but_empty"] = empty
@@ -663,6 +728,13 @@ class CatalogServer:
                 "these tables exist in this catalog and hold no rows, so they could not match "
                 "anything. A question they would have answered has no answer here yet -- that is "
                 "not the same as the answer being no."
+            )
+        if truncated:
+            out["truncated_kinds"] = truncated
+            out["truncated_means"] = (
+                f"{', '.join(truncated)} matched MORE than the {limit} hits shown and was cut off. "
+                f"The list is not complete and its length is NOT a count -- raise `limit`, narrow "
+                f"the query, or count with datarepo_sql."
             )
         if not hits:
             out["no_hits_means"] = (
@@ -762,10 +834,17 @@ class CatalogServer:
             limit,
         )
         notes = []
-        if rows and not any(r.get("n_datasets_1pct") for r in rows):
+        if rows:
+            # ALWAYS, not only when every hit is zero -- which is what it used to do, so the note
+            # never fired on the case that matters. `EIF1AY` comes back `n_datasets_1pct: 2` and
+            # sits in ZERO accepted protein groups; 585 accessions here carry `n_datasets_1pct > 0`
+            # beside a NULL `best_q_value`. The caveat lived only in describe('protein_index'), and
+            # `search` is the tool an agent is told to call first.
             notes.append(
-                "every hit has n_datasets_1pct = 0: the accession is in the search's protein list "
-                "but nothing passed the 1% threshold for it"
+                "n_datasets_1pct counts an accepted protein GROUP **or** an accepted PEPTIDOFORM, "
+                "so it is NOT 'identified at 1% protein FDR'. A NULL best_q_value beside a "
+                "non-zero n_datasets_1pct means NO accepted protein group contains this "
+                "accession -- for protein-level identification query protein_groups_1pct directly"
             )
         if any(r.get("is_decoy") for r in rows):
             notes.append(
@@ -981,8 +1060,8 @@ class CatalogServer:
             provenance of the rows returned.
         """
         result = self.box.query(query, row_cap=max_rows)
-        provenance = self._sql_provenance(result)
-        touched = self._tables_touched(query)
+        provenance = self._provenance()
+        touched, undetermined = self._tables_touched(query)
 
         out: dict[str, Any] = {
             "sql": query,
@@ -995,23 +1074,26 @@ class CatalogServer:
             "tables_touched": touched,
             "provenance": provenance,
         }
-        empty = [t["table"] for t in touched if t.get("rows") == 0]
+        if undetermined:
+            out["tables_touched_undetermined"] = undetermined
+        # The reason this key exists. Every "this table is empty, do not answer from it" guard used
+        # to live in describe() and search(), the two tools an agent may skip, and was absent from
+        # the one it always reaches: a join over two empty tables returned `rows: []` with nothing
+        # in the envelope, and "no compartment shows a differential age effect" was one careless
+        # step away. An envelope field cannot be skipped.
+        empty = [t["table"] for t in (touched or []) if t.get("rows") == 0]
         if empty:
-            # The whole reason this key exists. Every "this table is empty, do not answer from it"
-            # guard used to live in describe() and search(), the two tools an agent may skip --
-            # and was absent from the one it always reaches. A join over two empty tables returned
-            # `rows: []` with nothing in the envelope, and "no compartment shows a differential age
-            # effect" was one careless step away. An envelope field cannot be skipped.
             out["empty_tables"] = empty
+            # States the fact and stops. It used to assert the CAUSE -- "this result is empty
+            # because there is nothing to query... say the data has not been delivered" -- which it
+            # had not established: the same sentence fired on a query that returned nothing because
+            # the gene did not exist. A warning that asserts a reason it has not checked is the
+            # failure it was written to prevent, pointed the other way.
             out["empty_tables_mean"] = (
-                f"{', '.join(empty)} exist in this catalog and hold NO ROWS. "
-                + (
-                    "This result is empty because there is nothing to query, not because the "
-                    "answer is negative. Say the data has not been delivered."
-                    if result.row_count == 0
-                    else "Any part of this answer that depended on them is missing rather than "
-                    "negative."
-                )
+                f"{', '.join(empty)} exist in this catalog and hold NO ROWS, so they contributed "
+                f"nothing here. Whether that is WHY this result looks as it does depends on the "
+                f"query: check before reporting an absence as a finding. An undelivered table is "
+                f"never evidence for a negative answer."
             )
         if result.truncated:
             out["truncated_by"] = result.truncated_by
@@ -1023,13 +1105,23 @@ class CatalogServer:
         return out
 
 
-    def _tables_touched(self, query: str) -> list[dict[str, Any]]:
-        """The catalog tables a statement actually named, with their row counts.
+    def _tables_touched(self, query: str) -> tuple[list[dict[str, Any]] | None, str | None]:
+        """The catalog tables a statement reads, or `(None, why)` when that cannot be determined.
 
-        Parsed out of DuckDB's own serialization of the statement, so aliases, CTEs and subqueries
-        are seen through and a table name inside a string literal is not. Names that are not tables
-        in this catalog (CTE labels, table functions) are dropped.
+        **This reads the query, not the engine.** It is a hint about where to look, never evidence
+        of where an answer came from -- provenance is `catalog_id` and comes from the server, not
+        from anything a question can influence. The distinction is the whole lesson: while this was
+        presented as certification, a `WITH protein_groups_1pct AS (SELECT 99999)` came back with
+        the real view's 8,055-row count attached to a fabricated number.
         """
+        names = self.box.referenced_tables(query)
+        if names is None:
+            return None, (
+                "could not be determined for this statement -- it names a table function that "
+                "takes its target as a string (query/query_table/read_*), or is a kind whose "
+                "reads cannot be parsed. Tables MAY have been read that are not listed. This is "
+                "not a claim that none were."
+            )
         known = self.tables()
         return [
             {
@@ -1037,51 +1129,9 @@ class CatalogServer:
                 "rows": known[name].get("rows"),
                 "kind": known[name].get("kind"),
             }
-            for name in self.box.referenced_tables(query)
+            for name in names
             if name in known
-        ]
-
-    def _sql_provenance(self, result: Any) -> dict[str, Any]:
-        """Which bundles this answer drew on -- **validated**, never taken from a column's name.
-
-        The bundle and dataset ids in a result are values in columns that happen to be *called*
-        `bundle_id` and `dataset_id`, and a query can put anything there:
-        `SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) FROM protein_groups_1pct` used to have a
-        bundle id that exists in no catalog anywhere returned as the provenance of 8,055 real rows.
-        Only ids this catalog actually holds narrow the claim now; anything else falls back to the
-        whole catalog and says why, because a provenance block that can be dictated by the query it
-        describes is worse than none -- it is the D13 failure wearing D13's clothes.
-        """
-        known_bundles = {b["bundle_id"]: b["dataset_id"] for b in self.identity.bundles}
-        known_datasets = {b["dataset_id"] for b in self.identity.bundles}
-
-        claimed_bundles = {str(b) for b in _distinct(result, "bundle_id")}
-        claimed_datasets = {str(d) for d in _distinct(result, "dataset_id")}
-        real_bundles = claimed_bundles & set(known_bundles)
-        real_datasets = claimed_datasets & known_datasets
-        unrecognised = (claimed_bundles - real_bundles) | (claimed_datasets - real_datasets)
-
-        if unrecognised:
-            provenance = self._provenance(
-                None,
-                "every bundle in this catalog. The result carries id-shaped values this catalog "
-                f"does not hold ({', '.join(sorted(unrecognised)[:5])}), so they are not evidence "
-                f"of where the rows came from and the claim is not narrowed",
-            )
-            provenance["unrecognised_ids_in_result"] = sorted(unrecognised)[:20]
-            return provenance
-        if real_bundles:
-            return self._provenance(
-                [
-                    {"dataset_id": known_bundles[b], "bundle_id": b}
-                    for b in sorted(real_bundles)
-                ],
-                "the bundles named in the rows returned. If the answer was truncated, rows not "
-                "returned may come from others",
-            )
-        if real_datasets:
-            return self._from_datasets(real_datasets)
-        return self._whole_catalog()
+        ], None
 
 
 def _one_line_column(entry: dict[str, Any]) -> str:
@@ -1101,13 +1151,6 @@ def _one_line_column(entry: dict[str, Any]) -> str:
     elif entry.get("populated") is not None:
         line += f" [{entry['populated']:,} non-null]"
     return line
-
-
-def _distinct(result: Any, column: str) -> set:
-    if column not in result.columns:
-        return set()
-    index = result.columns.index(column)
-    return {row[index] for row in result.rows if row[index] is not None}
 
 
 # ---------------------------------------------------------------------------------------------

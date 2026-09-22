@@ -280,42 +280,77 @@ class Sandbox:
             raise CatalogError(f"{exc}") from exc
         return [dict(zip(names, row)) for row in rows]
 
-    def referenced_tables(self, sql: str) -> list[str]:
-        """Every base table a statement names, parsed rather than pattern-matched.
+    #: Table functions that can read a table this parse cannot see. `query_table('psms')` and
+    #: `query('SELECT ... FROM psms')` take the table name as a STRING, so it is a literal in the
+    #: AST and no `BASE_TABLE` node exists. Meeting one means the answer is "cannot tell", never
+    #: "touches nothing" -- `SELECT count(*) FROM query_table('ptm_stoichiometry')` returned 0 rows
+    #: and an envelope that named no table at all, which is the silently-wrong shape exactly.
+    OPAQUE_TABLE_FUNCTIONS = frozenset({"query", "query_table", "read_parquet", "read_csv",
+                                        "read_csv_auto", "read_json", "read_json_auto"})
 
-        DuckDB's own `json_serialize_sql` gives the parsed statement, so this sees through aliases,
-        CTEs and subqueries and cannot be fooled by a table name appearing inside a string literal.
-        CTE names appear too; the caller drops anything that is not a real table in this catalog.
+    def referenced_tables(self, sql: str) -> list[str] | None:
+        """The catalog tables a statement reads, or **None when that cannot be determined**.
 
-        Returns an empty list when the statement cannot be serialized -- some `PRAGMA` and `SHOW`
-        forms cannot be. An empty list therefore means "not determined", and a caller must not read
-        it as "touches nothing".
+        Parsed out of DuckDB's own `json_serialize_sql`, so it sees through aliases, subqueries and
+        set operations, and a table name inside a string literal is correctly not a reference.
+
+        **CTE names are subtracted, and that is the whole point.** A `WITH` clause may define a
+        temporary table named after a real one, and it serializes as a `BASE_TABLE` node
+        indistinguishable from the real thing. Before this, a query reading nothing at all --
+
+            WITH protein_groups_1pct AS (SELECT 'PXD036557' AS dataset_id, 99999 AS n)
+            SELECT * FROM protein_groups_1pct
+
+        -- came back certified as having read the `protein_groups_1pct` view's 8,055 rows, with a
+        real bundle id attached. Naming a working table after the thing it relates to is an
+        ordinary thing to write; it needed no adversary.
+
+        Returns:
+            Sorted table names, or `None` when the statement could not be parsed, or names an
+            opaque table function, or is a kind whose reads this cannot see. **None means "unknown"
+            and must never be rendered as "no tables".**
         """
         import duckdb  # noqa: PLC0415
 
         try:
             document = self._con.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()
         except duckdb.Error:
-            return []
+            return None
         if not document or not document[0]:
-            return []
-        found: set[str] = set()
+            return None
+        try:
+            tree = json.loads(document[0])
+        except ValueError:
+            return None
+
+        tables: set[str] = set()
+        ctes: set[str] = set()
+        opaque = False
 
         def walk(node: Any) -> None:
+            nonlocal opaque
             if isinstance(node, dict):
                 if node.get("type") == "BASE_TABLE" and node.get("table_name"):
-                    found.add(str(node["table_name"]))
+                    tables.add(str(node["table_name"]))
+                if node.get("type") == "TABLE_FUNCTION":
+                    name = str((node.get("function") or {}).get("function_name") or "").lower()
+                    if name in self.OPAQUE_TABLE_FUNCTIONS:
+                        opaque = True
+                cte_map = node.get("cte_map")
+                if isinstance(cte_map, dict):
+                    for entry in cte_map.get("map") or []:
+                        if isinstance(entry, dict) and entry.get("key"):
+                            ctes.add(str(entry["key"]))
                 for value in node.values():
                     walk(value)
             elif isinstance(node, list):
                 for value in node:
                     walk(value)
 
-        try:
-            walk(json.loads(document[0]))
-        except ValueError:
-            return []
-        return sorted(found)
+        walk(tree)
+        if opaque:
+            return None
+        return sorted(tables - ctes)
 
     def has_table(self, name: str) -> bool:
         """Is this table or view present? A catalog built before a table existed still is one."""
