@@ -44,6 +44,7 @@ silently-wrong answer.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -278,6 +279,43 @@ class Sandbox:
         except duckdb.Error as exc:
             raise CatalogError(f"{exc}") from exc
         return [dict(zip(names, row)) for row in rows]
+
+    def referenced_tables(self, sql: str) -> list[str]:
+        """Every base table a statement names, parsed rather than pattern-matched.
+
+        DuckDB's own `json_serialize_sql` gives the parsed statement, so this sees through aliases,
+        CTEs and subqueries and cannot be fooled by a table name appearing inside a string literal.
+        CTE names appear too; the caller drops anything that is not a real table in this catalog.
+
+        Returns an empty list when the statement cannot be serialized -- some `PRAGMA` and `SHOW`
+        forms cannot be. An empty list therefore means "not determined", and a caller must not read
+        it as "touches nothing".
+        """
+        import duckdb  # noqa: PLC0415
+
+        try:
+            document = self._con.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()
+        except duckdb.Error:
+            return []
+        if not document or not document[0]:
+            return []
+        found: set[str] = set()
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "BASE_TABLE" and node.get("table_name"):
+                    found.add(str(node["table_name"]))
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        try:
+            walk(json.loads(document[0]))
+        except ValueError:
+            return []
+        return sorted(found)
 
     def has_table(self, name: str) -> bool:
         """Is this table or view present? A catalog built before a table existed still is one."""

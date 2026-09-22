@@ -42,10 +42,11 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal, Sequence, get_args
 
 from . import __version__
 from ._schema_docs import ENUMS, SCHEMA_DESCRIPTION, STUDY_ENUMS, STUDY_TABLE_DOCS, TABLE_DOCS
+from .catalog import DERIVED_DOCS
 from .errors import CatalogError, DataRepoError, QueryRefused, QueryTimeout
 from .sandbox import CHAR_CAP, ROW_CAP, TIMEOUT_SECONDS, Sandbox
 
@@ -235,7 +236,13 @@ class CatalogServer:
         ]
         if not drew:
             return self._whole_catalog()
-        return self._provenance(drew, "the bundles behind the rows returned")
+        return self._provenance(
+            drew,
+            "the bundles of the datasets NAMED IN THE ROWS RETURNED. A row names a dataset; that "
+            "does not prove no other dataset contributed to a number beside it, so this narrows "
+            "the claim only as far as the rows themselves do -- `tables_touched` says what was "
+            "actually scanned",
+        )
 
     # -- describe ---------------------------------------------------------------------------
 
@@ -301,14 +308,12 @@ class CatalogServer:
             "instance": self.identity.instance,
             "qpx_version": self.identity.qpx_version,
             "datasets": datasets,
-            "study_layers": [
-                {
-                    "layer": b.get("layer"),
-                    "layer_version": b.get("layer_version"),
-                    "bundle_id": b.get("bundle_id"),
-                }
-                for b in self.identity.study_bundles
-            ],
+            # Every layer the BUILD knows about, each saying whether a delivery was loaded. Only
+            # the loaded ones used to be reported, so a catalog whose eight `aging` tables exist
+            # and are empty answered `study_layers: []` -- which reads as "there is no study
+            # layer" when it means "the tables are here and nobody has delivered rows yet", and
+            # contradicted `describe('tables')`, which marked the same tables `kind: study:aging`.
+            "study_layers": self._study_layers(),
             "tables_with_rows": [
                 {"table": n, "rows": t.get("rows"), "kind": t.get("kind")}
                 for n, t in sorted(populated.items(), key=lambda kv: -(kv[1].get("rows") or 0))
@@ -328,6 +333,43 @@ class CatalogServer:
             ],
             "provenance": self._whole_catalog(),
         }
+
+    def _study_layers(self) -> list[dict[str, Any]]:
+        """Every study layer this build knows, loaded or not.
+
+        A layer whose tables exist and hold nothing is a different fact from a layer that does not
+        exist -- aging's benchmark distinguishes NO_TABLE from EMPTY_TABLE, and so must this.
+        """
+        loaded = {b.get("layer"): b for b in self.identity.study_bundles}
+        known = self.tables()
+        out: list[dict[str, Any]] = []
+        for layer, tables in STUDY_TABLE_DOCS.items():
+            present = [name for name in tables if name in known]
+            if not present and layer not in loaded:
+                continue
+            delivery = loaded.get(layer) or {}
+            out.append(
+                {
+                    "layer": layer,
+                    "tables_present": len(present),
+                    "delivery_loaded": layer in loaded,
+                    "bundle_id": delivery.get("bundle_id"),
+                    "layer_version": delivery.get("layer_version"),
+                    "rows": sum((known[name].get("rows") or 0) for name in present),
+                }
+            )
+        for layer, delivery in loaded.items():
+            if layer not in STUDY_TABLE_DOCS:
+                out.append(
+                    {
+                        "layer": layer,
+                        "tables_present": None,
+                        "delivery_loaded": True,
+                        "bundle_id": delivery.get("bundle_id"),
+                        "layer_version": delivery.get("layer_version"),
+                    }
+                )
+        return out
 
     def _describe_tables(self) -> dict[str, Any]:
         docs = self._all_docs()
@@ -356,12 +398,45 @@ class CatalogServer:
         }
 
     def _all_docs(self) -> dict[str, dict[str, Any]]:
-        """Schema prose for core and study tables, keyed by table name, with the layer marked."""
+        """Prose for every table an agent can reach, keyed by table name.
+
+        Three sources, and the third is the one that was missing: the core schema, each study
+        layer's schema, and `catalog.DERIVED_DOCS` for the tables and views `build` invents. The
+        derived ones are in no LinkML file, so the generator cannot describe them -- and they are
+        exactly the tables `search` answers from and `describe`'s `next` block points at.
+        """
         docs: dict[str, dict[str, Any]] = {n: dict(d) for n, d in TABLE_DOCS.items()}
         for layer, tables in STUDY_TABLE_DOCS.items():
             for name, doc in tables.items():
                 docs[name] = {**doc, "layer": layer}
+        for name, doc in DERIVED_DOCS.items():
+            docs[name] = {
+                "description": doc["description"],
+                "columns": {
+                    column: {"description": text}
+                    for column, text in (doc.get("columns") or {}).items()
+                },
+                "derived": True,
+            }
         return docs
+
+    def _populated(self, table: str, columns: Sequence[str] | None = None) -> dict[str, int]:
+        """Non-null count per column, in one pass.
+
+        The other half of "an empty table is named". `searched_but_empty` fires on `rows == 0`, so
+        a table with rows and a 100%-NULL column is invisible to it -- and that is the common case
+        on this data, not an edge: aging's `samples` holds 57 rows with `organism_part`,
+        `cell_type`, `disease`, `condition` and `cell_line` all entirely NULL, and
+        `peptidoforms.is_isoform_specific` is NULL on all 394,255 rows while `describe` advertises
+        it as the column that answers isoform questions. A search for "plasma" came back
+        `rows: 57, hits: 0`, which reads as "we looked and it is not there".
+        """
+        names = list(columns) if columns is not None else list(self._column_types(table))
+        if not names:
+            return {}
+        counts = ", ".join(f'count("{name}") AS "{name}"' for name in names)
+        rows = self.box.dicts(f'SELECT {counts} FROM "{table}"')
+        return {k: int(v or 0) for k, v in (rows[0] if rows else {}).items()}
 
     def _column_types(self, table: str) -> dict[str, str]:
         """DuckDB's own types for the table as built, not the Arrow schema's.
@@ -384,9 +459,23 @@ class CatalogServer:
         doc = self._all_docs().get(table, {})
         types = self._column_types(table)
         column_docs = doc.get("columns", {})
+        info = self.tables().get(table, {})
+        total = info.get("rows") or 0
+        # In both detail modes, because a 100%-NULL column is the thing most likely to produce a
+        # confident false negative, and an agent asking for `concise` has not asked to be misled.
+        # Measured: 31 columns over 1.2M `psms` rows costs 60 ms.
+        populated = self._populated(table) if total else {}
         columns = []
         for name in types:
             entry: dict[str, Any] = {"column": name, "type": types.get(name)}
+            if name in populated:
+                entry["populated"] = populated[name]
+                if populated[name] == 0:
+                    entry["all_null"] = (
+                        f"NULL on all {total:,} rows. Nothing has been delivered in this column, "
+                        f"so a query filtering on it returns nothing for THAT reason -- not "
+                        f"because the answer is negative."
+                    )
             cdoc = column_docs.get(name)
             if cdoc:
                 entry["means"] = cdoc.get("description")
@@ -591,7 +680,21 @@ class CatalogServer:
             raise ToolError(f"kind is one of {', '.join(known)}, not {kind!r}")
         return [kind]
 
-    def _source(self, table: str, hits: int, note: str | None = None) -> dict[str, Any]:
+    def _source(
+        self,
+        table: str,
+        hits: int,
+        note: str | None = None,
+        searched_columns: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        """One line of the `searched` block: what was looked in, and what was actually in it.
+
+        `searched_columns` is what makes an absence readable. `rows: 57, hits: 0` looks like a
+        considered negative; it is not one when the five columns that were matched against are NULL
+        on all 57 rows, which is the state of aging's `samples` today. The columns are named
+        whether or not they are empty, because an agent also needs to know that a protein NAME
+        query never touched a name column -- there is no such column in the schema.
+        """
         info = self.tables().get(table)
         entry: dict[str, Any] = {
             "source": table,
@@ -599,6 +702,17 @@ class CatalogServer:
             "rows": None if info is None else info.get("rows"),
             "hits": hits,
         }
+        if searched_columns and (info or {}).get("rows"):
+            entry["columns_searched"] = list(searched_columns)
+            populated = self._populated(table, searched_columns)
+            empty = sorted(name for name, count in populated.items() if count == 0)
+            if empty:
+                entry["columns_all_null"] = empty
+                entry["columns_all_null_mean"] = (
+                    f"{', '.join(empty)} is NULL on all {info['rows']:,} rows of {table}, so no "
+                    f"query could have matched there. Zero hits from this source is missing data, "
+                    f"not a negative answer."
+                )
         if note:
             entry["note"] = note
         return entry
@@ -623,7 +737,9 @@ class CatalogServer:
             [query, like, like, like],
             limit,
         )
-        return rows, [self._source("dataset_overview", len(rows))]
+        return rows, [self._source("dataset_overview", len(rows), searched_columns=(
+            "dataset_id", "title", "instrument_vendor", "organisms",
+        ))]
 
     def _search_protein(self, query: str, limit: int):
         upper = query.upper()
@@ -636,7 +752,7 @@ class CatalogServer:
             "protein_index",
             "SELECT protein_accession, gene, organism, is_contaminant, "
             "starts_with(protein_accession, 'DECOY_') AS is_decoy, n_datasets, "
-            "n_datasets_1pct, dataset_ids_1pct, best_q_value FROM protein_index "
+            "n_datasets_1pct, dataset_ids, dataset_ids_1pct, best_q_value FROM protein_index "
             "WHERE upper(protein_accession) = ? OR upper(coalesce(gene, '')) = ? "
             "OR upper(coalesce(gene, '')) LIKE ? "
             "ORDER BY is_decoy, "
@@ -656,7 +772,21 @@ class CatalogServer:
                 "hits marked is_decoy are reversed-sequence entries the search used to estimate "
                 "FDR; they are not proteins and must never be counted as evidence"
             )
-        return rows, [self._source("protein_index", len(rows), "; ".join(notes) or None)]
+        notes.append(
+            "matched on ACCESSION (exact) and GENE SYMBOL (exact, then prefix) ONLY. There is no "
+            "protein name or description column anywhere in this schema, so a query like "
+            "'cytochrome c oxidase' cannot match however many rows this table holds -- zero hits "
+            "for a protein NAME is 'never searched', not 'not present'. Search the gene symbol "
+            "instead (COX4I1, NDUFA9)"
+        )
+        return rows, [
+            self._source(
+                "protein_index",
+                len(rows),
+                "; ".join(notes),
+                searched_columns=("protein_accession", "gene"),
+            )
+        ]
 
     def _search_peptide(self, query: str, limit: int):
         if not PEPTIDE_RE.match(query.upper()):
@@ -675,7 +805,9 @@ class CatalogServer:
             [query.upper(), f"%{query.upper()}%", query.upper()],
             limit,
         )
-        return rows, [self._source("peptide_index", len(rows))]
+        return rows, [self._source(
+            "peptide_index", len(rows), searched_columns=("base_sequence",)
+        )]
 
     def _search_modification(self, query: str, limit: int):
         like = f"%{query.lower()}%"
@@ -691,7 +823,9 @@ class CatalogServer:
             [like, like],
             limit,
         )
-        sources = [self._source("ptm_sites", len(rows))]
+        sources = [self._source(
+            "ptm_sites", len(rows), searched_columns=("modification_name", "modification")
+        )]
         declared_table = (
             "search_modifications_declared"
             if self.box.has_table("search_modifications_declared")
@@ -738,7 +872,10 @@ class CatalogServer:
             [like] * 7,
             limit,
         )
-        sources = [self._source("samples", len(rows))]
+        sources = [self._source("samples", len(rows), searched_columns=(
+            "organism", "organism_part", "cell_type", "disease", "condition", "cell_line",
+            "source_name",
+        ))]
         characteristics = self._maybe(
             "sample_characteristics",
             "SELECT name, value, count(*) AS n_samples FROM sample_characteristics "
@@ -746,7 +883,9 @@ class CatalogServer:
             [like, like],
             limit,
         )
-        sources.append(self._source("sample_characteristics", len(characteristics)))
+        sources.append(self._source(
+            "sample_characteristics", len(characteristics), searched_columns=("name", "value")
+        ))
         return rows + characteristics, sources
 
     def _search_run(self, query: str, limit: int):
@@ -760,7 +899,9 @@ class CatalogServer:
             [like, like, like],
             limit,
         )
-        return rows, [self._source("runs", len(rows))]
+        return rows, [self._source("runs", len(rows), searched_columns=(
+            "run_id", "file_name", "instrument_model",
+        ))]
 
     def _search_definition(self, query: str, limit: int):
         like = f"%{query.lower()}%"
@@ -772,7 +913,9 @@ class CatalogServer:
             [like, like],
             limit,
         )
-        sources = [self._source("definitions", len(rows))]
+        sources = [self._source(
+            "definitions", len(rows), searched_columns=("definition_id", "text")
+        )]
         metrics = self._maybe(
             "metrics",
             "SELECT dataset_id, scope, scope_id, name, value, definition_id, source FROM metrics "
@@ -781,7 +924,9 @@ class CatalogServer:
             [like, like],
             limit,
         )
-        sources.append(self._source("metrics", len(metrics)))
+        sources.append(self._source(
+            "metrics", len(metrics), searched_columns=("name", "definition_id")
+        ))
         return rows + metrics, sources
 
     def _search_localization(self, query: str, limit: int):
@@ -836,19 +981,8 @@ class CatalogServer:
             provenance of the rows returned.
         """
         result = self.box.query(query, row_cap=max_rows)
-        bundle_ids = _distinct(result, "bundle_id")
-        dataset_ids = _distinct(result, "dataset_id")
-        if bundle_ids:
-            known = {b["bundle_id"]: b["dataset_id"] for b in self.identity.bundles}
-            provenance = self._provenance(
-                [{"dataset_id": known.get(b), "bundle_id": b} for b in sorted(bundle_ids)],
-                "the bundles named in the rows returned. If the answer was truncated, rows not "
-                "returned may come from others",
-            )
-        elif dataset_ids:
-            provenance = self._from_datasets({str(d) for d in dataset_ids})
-        else:
-            provenance = self._whole_catalog()
+        provenance = self._sql_provenance(result)
+        touched = self._tables_touched(query)
 
         out: dict[str, Any] = {
             "sql": query,
@@ -858,8 +992,27 @@ class CatalogServer:
             "truncated": result.truncated,
             "elapsed_seconds": round(result.elapsed_seconds, 3),
             "limits": result.caps,
+            "tables_touched": touched,
             "provenance": provenance,
         }
+        empty = [t["table"] for t in touched if t.get("rows") == 0]
+        if empty:
+            # The whole reason this key exists. Every "this table is empty, do not answer from it"
+            # guard used to live in describe() and search(), the two tools an agent may skip --
+            # and was absent from the one it always reaches. A join over two empty tables returned
+            # `rows: []` with nothing in the envelope, and "no compartment shows a differential age
+            # effect" was one careless step away. An envelope field cannot be skipped.
+            out["empty_tables"] = empty
+            out["empty_tables_mean"] = (
+                f"{', '.join(empty)} exist in this catalog and hold NO ROWS. "
+                + (
+                    "This result is empty because there is nothing to query, not because the "
+                    "answer is negative. Say the data has not been delivered."
+                    if result.row_count == 0
+                    else "Any part of this answer that depended on them is missing rather than "
+                    "negative."
+                )
+            )
         if result.truncated:
             out["truncated_by"] = result.truncated_by
             out["truncated_means"] = (
@@ -868,6 +1021,67 @@ class CatalogServer:
                 f"(count, group by) rather than counting the rows you can see."
             )
         return out
+
+
+    def _tables_touched(self, query: str) -> list[dict[str, Any]]:
+        """The catalog tables a statement actually named, with their row counts.
+
+        Parsed out of DuckDB's own serialization of the statement, so aliases, CTEs and subqueries
+        are seen through and a table name inside a string literal is not. Names that are not tables
+        in this catalog (CTE labels, table functions) are dropped.
+        """
+        known = self.tables()
+        return [
+            {
+                "table": name,
+                "rows": known[name].get("rows"),
+                "kind": known[name].get("kind"),
+            }
+            for name in self.box.referenced_tables(query)
+            if name in known
+        ]
+
+    def _sql_provenance(self, result: Any) -> dict[str, Any]:
+        """Which bundles this answer drew on -- **validated**, never taken from a column's name.
+
+        The bundle and dataset ids in a result are values in columns that happen to be *called*
+        `bundle_id` and `dataset_id`, and a query can put anything there:
+        `SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) FROM protein_groups_1pct` used to have a
+        bundle id that exists in no catalog anywhere returned as the provenance of 8,055 real rows.
+        Only ids this catalog actually holds narrow the claim now; anything else falls back to the
+        whole catalog and says why, because a provenance block that can be dictated by the query it
+        describes is worse than none -- it is the D13 failure wearing D13's clothes.
+        """
+        known_bundles = {b["bundle_id"]: b["dataset_id"] for b in self.identity.bundles}
+        known_datasets = {b["dataset_id"] for b in self.identity.bundles}
+
+        claimed_bundles = {str(b) for b in _distinct(result, "bundle_id")}
+        claimed_datasets = {str(d) for d in _distinct(result, "dataset_id")}
+        real_bundles = claimed_bundles & set(known_bundles)
+        real_datasets = claimed_datasets & known_datasets
+        unrecognised = (claimed_bundles - real_bundles) | (claimed_datasets - real_datasets)
+
+        if unrecognised:
+            provenance = self._provenance(
+                None,
+                "every bundle in this catalog. The result carries id-shaped values this catalog "
+                f"does not hold ({', '.join(sorted(unrecognised)[:5])}), so they are not evidence "
+                f"of where the rows came from and the claim is not narrowed",
+            )
+            provenance["unrecognised_ids_in_result"] = sorted(unrecognised)[:20]
+            return provenance
+        if real_bundles:
+            return self._provenance(
+                [
+                    {"dataset_id": known_bundles[b], "bundle_id": b}
+                    for b in sorted(real_bundles)
+                ],
+                "the bundles named in the rows returned. If the answer was truncated, rows not "
+                "returned may come from others",
+            )
+        if real_datasets:
+            return self._from_datasets(real_datasets)
+        return self._whole_catalog()
 
 
 def _one_line_column(entry: dict[str, Any]) -> str:
@@ -882,6 +1096,10 @@ def _one_line_column(entry: dict[str, Any]) -> str:
         line += f" One of: {', '.join(entry['values'])}."
     if entry.get("unit"):
         line += f" Unit: {entry['unit']}."
+    if entry.get("all_null"):
+        line += f" **{entry['all_null']}**"
+    elif entry.get("populated") is not None:
+        line += f" [{entry['populated']:,} non-null]"
     return line
 
 

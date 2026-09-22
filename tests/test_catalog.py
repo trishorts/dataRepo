@@ -241,6 +241,35 @@ def test_the_sql_acceptance_rule_agrees_with_the_ingesters_own_counter(catalog):
     assert rows(catalog, "SELECT count(*) n FROM psms_1pct")[0]["n"] == producer_counts(as_columns)
 
 
+def test_the_peptidoform_rule_agrees_too_and_carries_no_notch_clause(catalog):
+    """The half of the agreement that was never checked, and drifted for three releases.
+
+    `producer_counts` applied the PSM notch clause (aging 008) to the peptidoform count as well,
+    while `peptidoforms_1pct` never did -- so the two paths disagreed by 3 on each of aging's two
+    larger datasets, and PXD032202 carried a `count_mismatch` finding against a producer number it
+    matched exactly. The test above covered PSMs only, which is how it survived.
+
+    The ambiguous row here is the whole point: it passes both q-value thresholds and an unresolved
+    notch, so it is counted for peptidoforms and would not be for PSMs.
+    """
+    from datarepo.sources.identifications import producer_counts
+
+    peptidoforms = rows(
+        catalog, "SELECT best_q_value, best_q_value_notch, target_decoy FROM peptidoforms"
+    )
+    as_columns = {
+        "q_value": [r["best_q_value"] for r in peptidoforms],
+        "q_value_notch": [r["best_q_value_notch"] for r in peptidoforms],
+        "decoy_contam_target": ["T" if r["target_decoy"] == "target" else "D" for r in peptidoforms],
+        # Every row unresolved: with the clause this counts 0, without it counts the accepted rows.
+        "notch": ["0.00000|1.00290"] * len(peptidoforms),
+    }
+    served = rows(catalog, "SELECT count(*) n FROM peptidoforms_1pct")[0]["n"]
+    assert served == producer_counts(as_columns, require_resolved_notch=False)
+    assert producer_counts(as_columns) == 0, "the PSM clause must still bite when it is asked for"
+    assert served > 0
+
+
 def test_the_overview_headline_is_the_number_the_bundle_reconciled(catalog):
     overview = rows(catalog, "SELECT * FROM dataset_overview ORDER BY dataset_id")
     assert [r["n_peptidoforms_1pct"] for r in overview] == [1, 1]
@@ -536,3 +565,48 @@ def test_a_placed_tag_is_classified_as_accession_mass_or_unresolved(tmp_path, st
         # accession-or-mass grain honest rather than lossy.
         kinds = [row["modification"], row["mass_shift"], row["unresolved_name"]]
         assert sum(k is not None for k in kinds) <= 1
+
+
+def test_every_derived_table_and_view_is_documented():
+    """A derived table with no description is how `n_datasets_1pct` became "identified at 1% FDR".
+
+    The schema tables get their prose generated from `schema/datarepo.yaml`. These do not exist in
+    any schema -- `build` invents them -- so nothing generated could describe them, and for one
+    release nothing did, in exactly the tables `search` answers from. Same shape as
+    `manifest.CONTENT_FIELDS`: adding one means writing down what it means.
+    """
+    from datarepo.catalog import (
+        ACCEPTED_VIEWS,
+        DERIVED_DOCS,
+        DERIVED_TABLES,
+        GRAIN_VIEWS,
+    )
+
+    built = set(DERIVED_TABLES) | set(ACCEPTED_VIEWS) | set(GRAIN_VIEWS)
+    assert built <= set(DERIVED_DOCS), (
+        f"undocumented derived table(s): {sorted(built - set(DERIVED_DOCS))}. "
+        f"Add an entry to catalog.DERIVED_DOCS saying what one row is."
+    )
+    assert set(DERIVED_DOCS) <= built, (
+        f"DERIVED_DOCS describes something the build does not create: "
+        f"{sorted(set(DERIVED_DOCS) - built)}"
+    )
+    for name, doc in DERIVED_DOCS.items():
+        assert len(doc["description"]) > 80, f"{name}'s description says too little"
+
+
+def test_the_documented_derived_columns_exist(catalog):
+    """A description attached to a column that is not there is worse than none."""
+    from datarepo.catalog import DERIVED_DOCS
+
+    for table, doc in DERIVED_DOCS.items():
+        columns = {
+            r["column_name"]
+            for r in rows(
+                catalog,
+                "SELECT column_name FROM information_schema.columns "
+                f"WHERE table_name = '{table}'",
+            )
+        }
+        documented = set(doc.get("columns") or {})
+        assert documented <= columns, f"{table}: documented but absent: {documented - columns}"

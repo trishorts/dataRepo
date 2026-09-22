@@ -441,7 +441,12 @@ def ingest_dataset(
     # --- reconciliation ------------------------------------------------------------------------
     checks = build_checks(
         psm_count_1pct=identifications.producer_counts(psm_columns),
-        peptidoform_count_1pct=identifications.producer_counts(peptide_columns or psm_columns),
+        # No notch clause here: it is a PSM rule (aging 008), and applying it to peptidoforms cost
+        # exactly 3 on each of aging's two larger datasets -- making PXD032202's count_mismatch
+        # finding entirely spurious against a dataset that matched perfectly. See `producer_counts`.
+        peptidoform_count_1pct=identifications.producer_counts(
+            peptide_columns or psm_columns, require_resolved_notch=False
+        ),
         protein_group_count_1pct=protein_group_count,
         runs=run_rows,
         results=results,

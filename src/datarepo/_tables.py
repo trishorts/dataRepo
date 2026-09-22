@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.6"
+SCHEMA_VERSION = "0.0.7"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -157,7 +157,8 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("protein_accession", pa.string(), nullable=False),
         pa.field("canonical_accession", pa.string(), nullable=True),
         pa.field("gene", pa.string(), nullable=True),
-        pa.field("organism", pa.string(), nullable=False),
+        pa.field("organism", pa.string(), nullable=True),
+        pa.field("organism_name", pa.string(), nullable=True),
         pa.field("length", pa.int64(), nullable=True),
         pa.field("source_db", pa.string(), nullable=False),
         pa.field("uniprot_release", pa.string(), nullable=True),

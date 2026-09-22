@@ -173,6 +173,154 @@ INDEX_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: What the derived tables and views MEAN, for `datarepo mcp`'s describe tool.
+#:
+#: These tables exist in no LinkML schema -- `build` invents them -- so `_schema_docs.py` cannot
+#: describe them and for one release nothing did. That was not cosmetic. `protein_index` and the
+#: `_1pct` views are the tables `search` answers from and the ones an agent is steered to first, and
+#: an undocumented column gets read as whatever its name suggests: agents took `n_datasets_1pct` for
+#: "identified at 1% FDR" and reported 879 of 9,130 accession/dataset pairs as protein-level
+#: identifications that are not in `protein_groups_1pct` at all.
+#:
+#: Kept here rather than in `mcp.py` so a description sits beside the SQL that produces it, and
+#: `tests/test_catalog.py` fails if a derived table or view has no entry -- the same shape as
+#: `manifest.CONTENT_FIELDS`: adding one means writing down what it means.
+DERIVED_DOCS: dict[str, dict[str, Any]] = {
+    "dataset_overview": {
+        "description": (
+            "One row per dataset: its axes and its headline counts. The counts are the numbers the "
+            "bundle reconciled against the producer's own summary, so they agree with the bundle "
+            "by construction -- where they disagree with the PRODUCER, a `count_mismatch` finding "
+            "says by how much, and the producer's number stays canonical."
+        ),
+        "columns": {
+            "n_psms_1pct": "PSMs passing the producer's acceptance rule (`psms_1pct`).",
+            "n_psms_all": "Every PSM row, decoys and above-threshold matches included.",
+            "n_protein_groups_1pct": "Protein groups at 1% group-level FDR, contaminants included.",
+            "n_ptm_sites": "Rows in `ptm_sites`, at any ambiguity level, contaminants included.",
+            "n_open_findings": "Findings at severity warning or error. Read them before quoting "
+            "any number from this row.",
+        },
+    },
+    "protein_index": {
+        "description": (
+            "One row per accession ACROSS datasets, built from `proteins` -- which is the search's "
+            "protein DATABASE, not its answer. So this table contains decoys (roughly half of it) "
+            "and contaminants, and a row here is not evidence that anything was identified."
+        ),
+        "columns": {
+            "protein_accession": "The accession as the search database carried it. A `DECOY_` "
+            "prefix marks a reversed sequence: FDR machinery, never a protein.",
+            "n_datasets": "Datasets whose search DATABASE held this accession. Says nothing about "
+            "identification.",
+            "n_datasets_1pct": "Datasets where the accession has evidence that passed acceptance "
+            "-- an accepted protein GROUP **or** an accepted PEPTIDOFORM. It is deliberately the "
+            "looser of the two and is NOT 'identified at 1% protein FDR': on aging's catalog 879 "
+            "of 9,130 pairs counted here are absent from `protein_groups_1pct`, because a peptide "
+            "passed where the protein group did not. For protein-level identification query "
+            "`protein_groups_1pct` directly.",
+            "dataset_ids_1pct": "The datasets `n_datasets_1pct` counted, same caveat.",
+            "dataset_ids": "Every dataset whose database held it, same caveat as `n_datasets`.",
+            "best_q_value": "Lowest PROTEIN-GROUP q-value across datasets, from "
+            "`protein_groups_1pct`. NULL where no accepted group contains the accession -- which "
+            "is why a row can carry `n_datasets_1pct > 0` beside a NULL here. The two columns are "
+            "measured at different levels and a row where they disagree is telling you so.",
+            "gene": "One dataset's gene symbol, chosen arbitrarily but deterministically. "
+            "`protein_datasets` keeps the per-dataset truth.",
+            "organism": "As above, per-accession. NULL for contaminant and decoy entries: a "
+            "contaminant panel is bovine, porcine and bacterial by design.",
+        },
+    },
+    "protein_datasets": {
+        "description": (
+            "One row per (dataset, accession): the per-dataset truth that `protein_index` "
+            "flattens. Built from `proteins`, so it too spans the whole search database."
+        ),
+        "columns": {
+            "n_protein_groups": "Accepted protein groups in that dataset containing the "
+            "accession. Zero means no group passed, not that it was absent from the search.",
+            "n_peptidoforms": "Accepted peptidoforms mapping to it in that dataset.",
+            "best_q_value": "Lowest accepted group q-value; NULL when no group passed.",
+        },
+    },
+    "peptide_index": {
+        "description": (
+            "One row per base (unmodified) sequence across datasets, built from accepted "
+            "peptidoforms only. A sequence absent here was not accepted anywhere; it may still "
+            "appear in `peptidoforms` below threshold."
+        ),
+        "columns": {
+            "n_peptidoforms": "Accepted peptidoform rows with this base sequence, summed over "
+            "datasets -- so one sequence seen in three datasets with two modification states "
+            "each counts six.",
+        },
+    },
+    "search_modifications_placed": {
+        "description": (
+            "What the search actually PLACED on accepted peptidoforms, as against what it was "
+            "told to look for (`search_modifications_declared`). Derived from the peptidoforms, "
+            "never from `ptm_sites`, because `ptm_sites` is per resolved protein position and so "
+            "drops terminal and positionally-indeterminate placements -- a view built on it "
+            "reported N-terminal acetylation as never placed while 3,085 peptidoforms carried it."
+        ),
+        "columns": {
+            "tag": "The ProForma tag verbatim: a UNIMOD accession, a mass shift, or an "
+            "unresolved name. Exactly one of the three columns below is non-null.",
+            "modification": "Set when the tag is a UNIMOD accession. NOT comparable row-for-row "
+            "with `search_modifications_declared`, which names chemistries: one accession spans "
+            "entries with different position rules.",
+        },
+    },
+    "psms_1pct": {
+        "description": (
+            "`psms` with the producing search engine's acceptance rule applied once, so no caller "
+            "restates it: target, `q_value <= 0.01`, `q_value_notch <= 0.01` where there is one, "
+            "AND a notch that actually resolved (aging thread 008 -- worth 12 rows of 26,594 on "
+            "PXD036557 and not guessable). It is an ACCEPTANCE RULE, not a reproduction of the "
+            "producer's own count: exact on PXD036557 and six short of 183,029 on PXD032202, "
+            "where the `count_mismatch` finding says so. The producer's `results.txt` number, in "
+            "`metrics`, stays canonical."
+        ),
+        "columns": {},
+    },
+    "peptidoforms_1pct": {
+        "description": (
+            "`peptidoforms` with the acceptance rule applied: target, `best_q_value <= 0.01` and "
+            "`best_q_value_notch <= 0.01` where there is one. **No notch-resolution clause** -- "
+            "that is a PSM rule, and applying it here cost exactly 3 rows on each of aging's two "
+            "larger datasets and produced a `count_mismatch` against a dataset that matched the "
+            "producer perfectly (fixed in ingester 0.8.0)."
+        ),
+        "columns": {},
+    },
+    "protein_groups_1pct": {
+        "description": (
+            "`protein_groups` at 1% group-level FDR: anything not a decoy -- CONTAMINANTS ARE "
+            "INCLUDED, because the producer counts them and they are real measurements of real "
+            "molecules. Filter `target_decoy` yourself if you want them out. This is the table to "
+            "query for protein-level identification; `protein_index.n_datasets_1pct` is looser."
+        ),
+        "columns": {},
+    },
+    "ptm_sites_by_chemistry": {
+        "description": (
+            "`ptm_sites` regrouped so one chemistry reaching a dataset under two engine names "
+            "becomes one row ('Phosphorylation on S' and 'Phosphoserine on S' are the same thing). "
+            "The stored table is keyed on the engine's own name because that is the grain it was "
+            "measured at and the only one every site can be represented in; this view coarsens it "
+            "and reproduces the accession-keyed table exactly. **The key is still per residue and "
+            "position** -- grouping on `modification` alone merges chemistries that share an "
+            "accession (UNIMOD:35 is oxidation on M and hydroxylation on P and K)."
+        ),
+        "columns": {
+            "chemistry_key": "The UNIMOD accession, or the engine's name when there is none.",
+            "n_names": "How many engine names collapsed into this row. Greater than 1 is the case "
+            "this view exists for.",
+        },
+    },
+}
+
+
 def _quote(value: str) -> str:
     """A SQL string literal. Paths on Windows go in here, so the escaping is not decorative."""
     return "'" + str(value).replace("'", "''") + "'"

@@ -467,3 +467,150 @@ def test_the_entry_runs_the_module_not_a_script_on_the_path(catalog):
     entry = install_entry(catalog)
     assert entry["command"].endswith(("python", "python.exe", "pythonw.exe"))
     assert entry["args"][:2] == ["-m", "datarepo.cli"]
+
+
+# --- what the agents broke: the D15 bar, measured rather than designed -------------------------
+#
+# Every test below names a specific wrong answer two agents produced against 0.10.0 on aging's real
+# catalog. They are the regression suite for the bar, not for the code: each asserts that the SHAPE
+# of an answer makes a falsehood harder to state, which is what D15 asks for and what a row-level
+# assertion cannot check.
+
+
+def test_sql_names_the_empty_tables_a_query_touched(server):
+    """The worst one. `sql` had none of the guards `describe` and `search` carry.
+
+    A join over two empty tables returned `rows: []` with nothing in the envelope, and "organelles
+    do not age at measurably different rates" was one careless step away -- from the tool
+    `describe`'s own `next` block points at.
+    """
+    result = server.sql(
+        "SELECT a.feature_id FROM age_effects a "
+        "JOIN organelle_age_summaries o ON a.feature_id = o.compartment"
+    )
+    assert result["row_count"] == 0
+    assert set(result["empty_tables"]) == {"age_effects", "organelle_age_summaries"}
+    assert "not because the answer is negative" in result["empty_tables_mean"]
+    assert {t["table"] for t in result["tables_touched"]} == {
+        "age_effects",
+        "organelle_age_summaries",
+    }
+
+
+def test_tables_touched_sees_through_aliases_and_ctes(server):
+    """Parsed from DuckDB's own serialization, so a name in a string literal is not a table."""
+    touched = {
+        t["table"]
+        for t in server.sql("WITH t AS (SELECT * FROM psms) SELECT count(*) FROM t")[
+            "tables_touched"
+        ]
+    }
+    assert touched == {"psms"}
+    assert server.sql("SELECT 'age_effects' AS x")["tables_touched"] == []
+
+
+def test_a_populated_query_still_names_an_empty_table_it_joined(server):
+    """A LEFT JOIN onto an empty table returns rows, and the missing half must still be named."""
+    result = server.sql(
+        "SELECT p.protein_accession, l.compartment FROM proteins p "
+        "LEFT JOIN protein_localizations l ON l.protein_accession = p.protein_accession LIMIT 5"
+    )
+    assert result["row_count"] > 0
+    assert result["empty_tables"] == ["protein_localizations"]
+    assert "missing rather than negative" in result["empty_tables_mean"]
+
+
+def test_provenance_cannot_be_dictated_by_the_query(server):
+    """A bundle id that exists in no catalog was echoed back as the provenance of real rows."""
+    result = server.sql("SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) AS n FROM psms")
+    claimed = {b["bundle_id"] for b in result["provenance"]["bundles"]}
+    assert "deadbeefdeadbeef" not in claimed
+    assert claimed == {b["bundle_id"] for b in server.identity.bundles}
+    assert result["provenance"]["unrecognised_ids_in_result"] == ["deadbeefdeadbeef"]
+    assert "does not hold" in result["provenance"]["bundles_are"]
+
+
+def test_a_real_id_narrows_but_the_claim_says_only_what_it_knows(server):
+    """`SELECT 'PXD000001' AS dataset_id, count(*) FROM psms` counts THREE datasets.
+
+    Validation cannot catch this -- the id is real -- so the wording must not overstate, and
+    `tables_touched` must be there to check it against.
+    """
+    result = server.sql("SELECT 'PXD000001' AS dataset_id, count(*) AS n FROM psms")
+    assert [b["dataset_id"] for b in result["provenance"]["bundles"]] == ["PXD000001"]
+    assert "does not prove" in result["provenance"]["bundles_are"]
+    assert {t["table"] for t in result["tables_touched"]} == {"psms"}
+
+
+def test_search_provenance_covers_every_bundle_that_fed_a_visible_number(server):
+    """`n_datasets: 3` beside a two-bundle provenance block. No trickery needed to produce it."""
+    hits = server.search("P11111", kind="protein")
+    hit = next(h for h in hits["hits"]["protein"] if h["protein_accession"] == "P11111")
+    assert set(hit["dataset_ids"]) <= {
+        b["dataset_id"] for b in hits["provenance"]["bundles"]
+    }, "a dataset counted in the row is missing from the provenance"
+
+
+def test_a_column_that_is_null_on_every_row_says_so(server):
+    """`searched_but_empty` fires on `rows == 0`, so a 100%-NULL column was invisible to it."""
+    described = server.describe("samples", detail="detailed")
+    by_name = {c["column"]: c for c in described["columns"]}
+    assert by_name["organism"]["populated"] > 0
+    assert by_name["disease"]["populated"] == 0
+    assert "not because the answer is negative" in by_name["disease"]["all_null"]
+
+
+def test_the_concise_form_carries_the_all_null_warning_too(server):
+    """An agent that asked for `concise` did not ask to be misled."""
+    line = next(
+        line for line in server.describe("samples")["columns"] if line.startswith("disease ")
+    )
+    assert "NULL on all" in line
+
+
+def test_search_names_the_columns_it_matched_and_which_were_empty(server):
+    """`rows: 57, hits: 0` reads as a considered negative when the columns are all NULL."""
+    result = server.search("plasma", kind="sample")
+    source = next(s for s in result["searched"] if s["source"] == "samples")
+    assert "disease" in source["columns_searched"]
+    assert "disease" in source["columns_all_null"]
+    assert "missing data, not a negative answer" in source["columns_all_null_mean"]
+
+
+def test_a_protein_name_query_says_names_are_not_searchable(server):
+    """38,002 rows searched, 0 hits, no caveat -- while the gene was sitting right there."""
+    source = next(
+        s
+        for s in server.search("cytochrome c oxidase", kind="protein")["searched"]
+        if s["source"] == "protein_index"
+    )
+    assert "no protein name or description column" in source["note"]
+    assert source["columns_searched"] == ["protein_accession", "gene"]
+
+
+def test_the_derived_tables_are_documented_like_the_schema_ones(server):
+    """`describe('protein_index')` returned `one_row_is: null` and zero column meanings.
+
+    These are the tables `search` answers from. An undocumented column gets read as whatever its
+    name suggests, which is how `n_datasets_1pct` became "identified at 1% FDR".
+    """
+    described = server.describe("protein_index", detail="detailed")
+    assert "search's protein DATABASE" in described["one_row_is"]
+    means = {c["column"]: c.get("means") or "" for c in described["columns"]}
+    assert "NOT 'identified at 1% protein FDR'" in means["n_datasets_1pct"]
+    assert "different levels" in means["best_q_value"]
+
+
+def test_the_acceptance_views_state_the_rule_they_apply(server):
+    """The tool description promises the views apply the rule; the rule was printed nowhere."""
+    assert "q_value_notch" in server.describe("psms_1pct")["one_row_is"]
+    assert "No notch-resolution clause" in server.describe("peptidoforms_1pct")["one_row_is"]
+    assert "CONTAMINANTS ARE INCLUDED" in server.describe("protein_groups_1pct")["one_row_is"]
+
+
+def test_a_study_layer_with_no_delivery_is_reported_as_present_and_empty(server):
+    """`study_layers: []` read as "there is no study layer" and contradicted describe('tables')."""
+    layers = {entry["layer"]: entry for entry in server.describe()["study_layers"]}
+    assert layers["aging"]["tables_present"] == 8
+    assert layers["aging"]["delivery_loaded"] is False
+    assert layers["aging"]["rows"] == 0

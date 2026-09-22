@@ -7,7 +7,7 @@ dataset's results into an immutable Parquet bundle that conforms to `schema/data
 
 from __future__ import annotations
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 from ._tables import SCHEMA_VERSION, TABLE_CLASS, TABLES
 from .errors import (

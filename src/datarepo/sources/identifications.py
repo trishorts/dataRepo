@@ -209,6 +209,22 @@ def _source_db(accession: str, contaminant: bool) -> str:
     return "contaminants" if contaminant else "uniprot"
 
 
+def _entry_taxon(source_db: str, dataset_organism: str | None) -> str | None:
+    """The NCBITaxon term for one database entry, or None where we do not have one.
+
+    The dataset's organism is evidence about the **searched proteome** and about nothing else. An
+    entry from that proteome is that organism; a contaminant-panel entry is bovine, porcine, equine
+    or bacterial by design; a reversed decoy is no organism's protein at all. Asserting the
+    dataset's taxon for the latter two is what made every contaminant in aging's catalog read
+    `NCBITaxon:9606`.
+
+    No name-to-taxon mapping happens here, deliberately (D1): `organism_name` keeps the producer's
+    own species string, and a caller that needs the CURIE for a contaminant joins a reference
+    resource that somebody owns. Raised as G36.
+    """
+    return dataset_organism if source_db == "uniprot" else None
+
+
 def protein_rows(
     columns_list: Sequence[dict[str, list[Any]]], dataset_id: str, *, organism: str | None
 ) -> list[dict[str, Any]]:
@@ -216,6 +232,15 @@ def protein_rows(
 
     Contaminant entries are flagged from the target/decoy column and given their own `source_db`,
     so a query can exclude them without a name-prefix heuristic.
+
+    **The row's own organism wins over the dataset's.** It used to be the other way round -- the
+    dataset organism was written first and MetaMorpheus's per-accession `organism_name` consulted
+    only when that was missing, which for a manifest that names an organism is never. The result
+    was that all 339 contaminant entries in aging's catalog read `NCBITaxon:9606`, including
+    porcine trypsin, bovine albumin (identified at q = 0 in all three datasets), horse cytochrome c
+    and E. coli lacZ. An agent asked "is albumin detected?" got bovine P02769 back as human ALB, and
+    "no non-human proteins were identified" was flatly false. The dataset's organism is a default
+    for rows that carry none; it is not evidence about a row that carries its own.
     """
     out: dict[str, dict[str, Any]] = {}
     for columns in columns_list:
@@ -236,18 +261,18 @@ def protein_rows(
                 # MetaMorpheus writes `primary:TUBA1B, synonym:TUBA3`; the primary name is enough.
                 primary = gene.split(",")[0].replace("primary:", "").strip() or None
                 organism_name = (organism_parts[j] if j < len(organism_parts) else "").strip()
+                source_db = _source_db(acc, contaminant)
                 out[acc] = {
                     "protein_accession": acc,
                     "canonical_accession": acc.split("-")[0] if "-" in acc else acc,
                     "gene": primary,
-                    "organism": organism if organism else None,
+                    "organism": _entry_taxon(source_db, organism),
+                    "organism_name": organism_name or None,
                     "length": None,
-                    "source_db": _source_db(acc, contaminant),
+                    "source_db": source_db,
                     "uniprot_release": None,
                     "is_contaminant": contaminant,
                 }
-                if organism_name and not out[acc]["organism"]:
-                    out[acc]["organism"] = organism_name
     return [out[k] for k in sorted(out)]
 
 
@@ -271,14 +296,19 @@ def add_group_proteins(
             if acc in known:
                 continue
             known.add(acc)
+            source_db = _source_db(acc, contaminant)
             proteins.append(
                 {
                     "protein_accession": acc,
                     "canonical_accession": acc.split("-")[0] if "-" in acc else acc,
                     "gene": genes[j] if j < len(genes) else None,
-                    "organism": organism,
+                    # The group table carries no per-accession species name, so these rows get the
+                    # taxon where it is safe and a null `organism_name` either way -- never a
+                    # species guessed from the group's other members.
+                    "organism": _entry_taxon(source_db, organism),
+                    "organism_name": None,
                     "length": None,
-                    "source_db": _source_db(acc, contaminant),
+                    "source_db": source_db,
                     "uniprot_release": None,
                     "is_contaminant": contaminant,
                 }
@@ -561,17 +591,39 @@ def notch_ambiguous(raw: Any) -> bool | None:
     return None if not text else NOTCH_SEPARATOR in text
 
 
-def producer_counts(columns: dict[str, list[Any]], threshold: float = PRODUCER_THRESHOLD) -> int:
+def producer_counts(
+    columns: dict[str, list[Any]],
+    threshold: float = PRODUCER_THRESHOLD,
+    *,
+    require_resolved_notch: bool = True,
+) -> int:
     """Count target matches the way the producing search engine counts them.
 
     Applies MetaMorpheus's own acceptance rule -- target, `q_value <= threshold` **and**
-    `q_value_notch <= threshold`, **and** a notch that actually resolved -- so the bundle can be
-    compared with the producer's summary without the caller having to know the rule.
+    `q_value_notch <= threshold` -- plus, for PSMs only, a notch that actually resolved.
 
-    The notch clause is the one that is not guessable, and it is worth 12 PSMs out of 26,594 on
-    PXD036557. aging supplied it in thread 008 as the predicate behind `aging DEF-PSM-1PCT v1`: a
-    match whose notch never resolved is not counted even though both its q-values pass. It costs
-    nothing on peptidoforms, where no accepted row is ambiguous.
+    **The notch clause is a PSM rule and must not be carried to peptidoforms.** aging supplied it in
+    thread 008 as the predicate behind `aging:DEF-PSM-1PCT v1`, where it is worth 12 PSMs out of
+    26,594 on PXD036557. This function then applied it to both counts, and its own docstring
+    asserted that it "costs nothing on peptidoforms, where no accepted row is ambiguous" -- measured
+    on PXD036557, where it is 0, and never re-run. On the two larger datasets it costs exactly 3:
+
+        PXD032202   21,771 accepted   3 notch-ambiguous   producer's results.txt: 21,771
+        PXD027318   49,399 accepted   3 notch-ambiguous   producer's results.txt: 49,394
+
+    PXD032202 settles it. The producer's own peptide count agrees with the un-clause number exactly,
+    so `AllPeptides` carries no notch condition; with the clause we reported a mismatch of 3 against
+    a dataset that matched perfectly. The catalog's `peptidoforms_1pct` view never had the clause,
+    which is why the view has been right and this has been wrong -- and why a D10 guarantee that the
+    SQL and Python paths agree went unchecked for peptidoforms until an agent queried both.
+
+    Asked of aging as DATAREPO-27 (thread 033); `require_resolved_notch=False` is the default the
+    question is answered against.
+
+    Args:
+        require_resolved_notch: PSMs, yes. Peptidoforms, no. There is no third caller, and the
+            argument exists so that the difference between the two tables is stated rather than
+            implied by which function you happened to call.
     """
     n = len(columns.get("q_value", ()))
     qs = columns.get("q_value") or []
@@ -588,7 +640,7 @@ def producer_counts(columns: dict[str, list[Any]], threshold: float = PRODUCER_T
             continue
         if notch is not None and notch > threshold:
             continue
-        if notch_ambiguous(raw_notches[i]):
+        if require_resolved_notch and notch_ambiguous(raw_notches[i]):
             continue
         total += 1
     return total

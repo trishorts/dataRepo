@@ -230,6 +230,54 @@ def test_the_producer_counts_contaminant_groups_but_not_decoys():
     assert count == 3  # two targets at q <= 0.01 plus the contaminant; the decoy never counts
 
 
+def test_a_contaminant_keeps_its_own_species_and_is_not_claimed_for_the_dataset():
+    """The dataset's organism is evidence about the searched proteome and nothing else.
+
+    It used to be written to every row with the producer's own `organism_name` consulted only as a
+    fallback -- which, for a manifest that names an organism, is never. All 339 contaminant entries
+    in aging's catalog therefore read `NCBITaxon:9606`: porcine trypsin, bovine albumin (identified
+    at q = 0 in all three of their datasets), horse cytochrome c and E. coli lacZ. "No non-human
+    proteins were identified" was a flatly false answer the tools would have supported.
+    """
+    from datarepo.sources.identifications import protein_rows
+
+    columns = {
+        "accession": ["P11111", "P00761", "DECOY_P00722"],
+        "gene_name": ["primary:GENE1", "", ""],
+        "organism_name": ["Homo sapiens", "Sus scrofa", "Escherichia coli (strain K12)"],
+        "decoy_contam_target": ["T", "C", "D"],
+    }
+    by_acc = {r["protein_accession"]: r for r in protein_rows([columns], "PXD999999",
+                                                              organism="NCBITaxon:9606")}
+
+    # From the searched proteome: the dataset's taxon is exactly what it is.
+    assert by_acc["P11111"]["organism"] == "NCBITaxon:9606"
+    assert by_acc["P11111"]["organism_name"] == "Homo sapiens"
+
+    # From the contaminant panel: no taxon is asserted, and the species survives verbatim.
+    assert by_acc["P00761"]["organism"] is None
+    assert by_acc["P00761"]["organism_name"] == "Sus scrofa"
+    assert by_acc["P00761"]["is_contaminant"] is True
+
+    # A reversed sequence is no organism's protein at all.
+    assert by_acc["DECOY_P00722"]["organism"] is None
+    assert by_acc["DECOY_P00722"]["source_db"] == "decoy"
+
+
+def test_no_species_name_is_ever_parsed_into_a_taxon_here():
+    """Mapping `Bos taurus` -> NCBITaxon:9913 is a reference resource this project does not own."""
+    from datarepo.sources.identifications import protein_rows
+
+    rows_out = protein_rows(
+        [{"accession": ["P02769"], "gene_name": ["primary:ALB"],
+          "organism_name": ["Bos taurus"], "decoy_contam_target": ["C"]}],
+        "PXD999999",
+        organism="NCBITaxon:9606",
+    )
+    assert rows_out[0]["organism_name"] == "Bos taurus"
+    assert rows_out[0]["organism"] is None  # not 9913, and emphatically not 9606
+
+
 def test_the_group_count_can_be_retaken_from_the_rows_and_gives_the_same_answer():
     """After an exact-duplicate collapse the count has to describe the rows, not the file."""
     names = RunNameMap(("QE-002106_GM1_a", "QE-002107_GM1_b"))
