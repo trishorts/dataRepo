@@ -83,8 +83,105 @@ decisions:
       other than what was cited. aging v0.1 is pinned to PXD036557=84ca279df425c0a2 at
       F:/aging_data/repo/releases/v0.1/catalog.duckdb.
 
+  - id: D12
+    date: 2026-09-21
+    text: >-
+      FRAMEWORK step 3 is the next build, and it is a LOCAL stdio MCP server. It is the only one of
+      the four doors blocked by nobody: no host, no proxy, no NCEMS answer, no reply from aging.
+      Three tools ship first - `datarepo_describe`, `datarepo_search`, `datarepo_sql` - and a fourth
+      is added only where aging's benchmark shows the agent getting a specific answer wrong. The
+      eight curated tools of FRAMEWORK section 4 are NOT built up front: most are thin wrappers over
+      SQL we would write anyway, and several answer questions no measurement has asked yet. It runs
+      as `datarepo mcp --catalog <path>`, a subcommand of the CLI already in use, and
+      `datarepo mcp --install` writes the Claude Code config so no JSON is hand-edited; `datarepo
+      doctor` reports whether it is registered. The official `mcp` SDK is an optional `[mcp]` extra,
+      keeping the core at three dependencies as `[readers]` does. No R client in v1 - FRAMEWORK says
+      "Python (+R)" and nobody asked for R; that is mzLibR's business (D1 rule).
+
+  - id: D13
+    date: 2026-09-21
+    text: >-
+      An MCP answer carries its provenance or it is not an answer. The server is pointed at ONE
+      catalog file by explicit path - never auto-discovered - and every tool result carries the
+      `catalog_id` and the bundle ids it drew on, which `catalog_meta` and `catalog_bundles` already
+      record. Exploration is not restricted to release catalogs, because that would make new data
+      unqueryable until a release is cut; instead any answer can be pinned after the fact, since
+      D11 already makes a release name its exact bundles. The failure this forecloses is the one
+      this repo keeps writing threads about: the same question answered twice, differently, with
+      nothing in either result saying which data it saw.
+
+  - id: D14
+    date: 2026-09-21
+    text: >-
+      The SQL sandbox is built in two stages, because it does two different jobs. NOW, for the local
+      server: `enable_external_access=false` with a locked config, a 1,000-row / 50k-character cap
+      with a `truncated` flag, and a 30 s timeout via a watchdog thread calling `con.interrupt()`
+      (DuckDB 1.5 has no `statement_timeout` parameter). LATER, when D2's public no-login endpoint
+      exists: the sqlglot AST allow-list of FRAMEWORK section 4. Measured, not assumed -
+      `read_only=True` alone is NOT a sandbox: a read-only connection ran
+      `read_csv_auto` on a file outside the store and returned 212 rows, and ran
+      `SELECT count(*) FROM range(3e9)` to completion. Locally the allow-list is not a security
+      boundary (the agent already has the filesystem through Claude Code); it bounds blast radius.
+      Publicly it bounds an attacker. Different job, different time.
+
+  - id: D15
+    date: 2026-09-21
+    text: >-
+      Step 3's done bar is ZERO SILENTLY-WRONG ANSWERS, not a percentage. FRAMEWORK's "agent answers
+      >=X% of the question set" is the wrong measure here: SCHEMA_COVERAGE.md says 94 of aging's 168
+      questions wait on a producer, so a score mostly measures aging's data and would jump when they
+      deliver age effects with nothing about the server having changed. The bar: on an answerable
+      question, right; on an unanswerable one, "no data" rather than an invention. Either kind of
+      wrong is a failure. The percentage is reported, never targeted. The harness is ours so
+      iteration is fast; the QUESTIONS live in aging's master and are read, never copied (the G5
+      rule, D6), and the score goes to them in a thread rather than being claimed here.
+
+  - id: D16
+    date: 2026-09-21
+    text: >-
+      After step 3 comes the NO-SERVER half of steps 4-5, not the server. FRAMEWORK conflates "a
+      server" with "on the web": static dataset pages with Bioschemas JSON-LD, `llms.txt`, Croissant
+      and a Zenodo DOI on the release Parquet need no host, no proxy and no answer to N1/G9, and
+      FRAMEWORK section 5 already says the site must work when the API is down. dataRepo ships the
+      generator (`datarepo site <catalog> --out`); aging PUBLISHES the output, because D8 keeps
+      data-derived artefacts out of this repo. The REST API and the Docker Compose package are
+      DEFERRED pending two things: N1/G9 answered, and evidence of a human who wants REST - the
+      main users are agents (project goal) and MCP plus static pages plus bulk Parquet already serve
+      them. N1/G9 goes to the next NCEMS meeting regardless; it is now the long pole for D1.
+
+  - id: D17
+    date: 2026-09-21
+    text: >-
+      A dataset landing page carries a machine-written summary, auto-published with a visible
+      "generated" label, and it is GROUNDED BY CONSTRUCTION: the model may read only fields the
+      catalog holds plus aging's own manifest `reason`/`notes`, and nothing else - not PRIDE's
+      abstract, not the paper, not what a model believes about the accession. So it can be clumsy
+      and it cannot be false about biology, which is what makes auto-publishing acceptable under the
+      NCEMS credit line. FRAMEWORK section 5's "human reviews it in a PR" is rejected as unrunnable:
+      300 datasets means 300 reviews with no owner, and the honest prediction is the rule gets
+      quietly dropped and they ship unreviewed anyway. The site is a derived artefact like the
+      catalog - regenerating a summary moves no bundle id and no catalog id, because nothing about
+      it reaches a written row.
+
+  - id: D18
+    date: 2026-09-21
+    text: >-
+      Step 6 is auto-INGEST, never auto-RELEASE. D9 makes the manifest the contract, so the shape is
+      aging's pipeline appending to their manifest and calling `datarepo ingest` as each PXD
+      finishes - a push from them, not a watcher of ours, and a thread to aging rather than a
+      decision here. New data may appear in a working catalog; it never enters a release anyone has
+      cited, which is D11 and D13 holding one level further out.
+
 gaps:
-  - "G1 Framework: PROPOSED 2026-09-19 in design/FRAMEWORK.md v0 (Parquet files, DuckDB catalog, FastAPI + MCP over one code path, LinkML schema, QPX superset, USI per PSM). Steps 1 (ingest) and 2 (build) are BUILT and their contracts locked as D9 and D10; the rest (client/MCP, REST, deploy) is still a proposal the user has not reviewed. Next: /grill-me on steps 3-6, then record the locked choices as decisions."
+  - >-
+    G1 Framework. Steps 1 (ingest) and 2 (build) are BUILT and locked as D9/D10. Steps 3-6 were
+    GRILLED 2026-09-21 and their choices locked as D12-D18: step 3 is a local stdio MCP server with
+    three tools grown against aging's benchmark, answers carry their catalog_id, the sandbox is
+    staged, the done bar is zero silently-wrong answers, and the no-server half of 4-5 comes next.
+    Still open inside the framework: the REST API and the Docker Compose package are deferred
+    pending N1/G9 and evidence of a human who wants REST (D16), and FRAMEWORK.md itself still reads
+    as a v0 proposal in places - section 7 item 2 recommends "private until the first paper", which
+    D2 overrode on day one.
   - "G5 Step 0 question set: OWNED BY AGING (D6). READY 2026-09-19 (aging 003): aging/design/QUESTIONS.md v0.3, 168 questions, top 10 = K1 D2 O1 D1 T2 N1 M1 C1 G1 J16. Read it from trishorts/aging master; never copy it. MAPPED 2026-09-19 in design/SCHEMA_COVERAGE.md: 70 answerable at ingest, 94 waiting on a producer, 2 no home (J12, P2), 2 out of v1. Re-map when QUESTIONS.md or the schema changes."
   - "G11 Tables aging 003 routed to dataRepo. OWN: R2 release/changelog. STORE (aging-produced): R1 census, R3 dataset axes (+ enrichment, labelling), R8 reference panels, R9 clock model. STORE (MetaMorpheus-produced): R7 PTM stoichiometry, R16 glycopeptides (compositions, not structures, J9), R7b proteoform inference with confidence (no top-down, J16). All drafted in schema v0; producers' column names still to confirm."
   - "G10 Genericity (U5 in design/OPEN_QUESTIONS.md): proposal = generic core schema + a pluggable study layer (aging supplies age_effect, organelle_age_summary, sample age columns). Not yet confirmed."

@@ -6,9 +6,9 @@
 
 | | |
 |---|---|
-| Commits | 55 |
+| Commits | 57 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 11 |
+| Locked decisions | 18 |
 | Open gaps | 26 |
 | Gate items skipped | 2 |
 
@@ -317,12 +317,17 @@ and there is no generated-file drift.
 aging work in parallel and a reply may have landed; read it before starting anything below, because
 items 1 and 2 are the things they were asked.
 
-1. **The API layer is the biggest unstarted thing, and it needs the user, not aging.** `FRAMEWORK.md`
-   steps 3-6 - the Python client and MCP server, the REST API, the deploy package - are still a v0
-   proposal nobody has reviewed. Steps 1 and 2 are built and locked as D9/D10; **do not build on
-   3-6 as if they were decided.** This is a `/grill-me`, and the user is not a server or
-   infrastructure person: keep the choices few and give a recommendation each time. The locked
-   answers become D12+. The project's own goal says *API-accessible*, and none of it exists.
+1. **Build the local MCP server (FRAMEWORK step 3). It is decided, specified and blocked by
+   nobody.** Grilled 2026-09-21; the answers are **D12-D18** and FRAMEWORK.md now carries them
+   inline, so read the decisions rather than the proposal where the two differ. The build, in order:
+   `datarepo mcp --catalog <path>` as a CLI subcommand with a `--install` that writes the Claude
+   Code config (D12); three tools only - `describe`, `search`, `sql` - with a fourth added only
+   where aging's benchmark shows a specific wrong answer (D12); every result carrying its
+   `catalog_id` and bundle ids (D13); the cheap sandbox - `enable_external_access=false`, 1,000-row
+   / 50k-char caps, a 30 s `con.interrupt()` watchdog (D14, and note `read_only=True` alone is NOT
+   a sandbox: it will `read_csv_auto` anything on disk). Done means **zero silently-wrong answers**
+   on aging's questions, read from their master and never copied - not a percentage (D15). The
+   `mcp` SDK goes in as an optional `[mcp]` extra; no R client.
 2. **DATAREPO-20(c) - what is a feature's cross-dataset identity?** This is now the expensive one.
    20(a) is BUILT on its default in 0.7.0 (`datarepo study`, G30 tracks what is still ours to
    guess), which means `age_effect_meta` can be delivered and its join key is still undecided. A
@@ -345,8 +350,15 @@ items 1 and 2 are the things they were asked.
 6. **G17 / G18** - the `ptm_stoichiometry` corrections and the remaining `ptm_sites` hygiene. Still
    free while both tables are 0 rows. The count/intensity split is the one that must not be got
    wrong: the estimators differ 3x overall and 7x at 21-50 PSM sites, and must never be averaged.
-7. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
-8. **`/project advance`** - the phase field still says INCEPTION and the work is plainly BUILD. Left
+7. **Then the no-server half of steps 4-5** (D16): `datarepo site <catalog> --out` generating
+   dataset pages with Bioschemas JSON-LD, `llms.txt` and Croissant, plus a Zenodo DOI on the release
+   Parquet. Needs no host and no NCEMS answer; aging publishes the output because D8 keeps
+   data-derived artefacts out of this repo. Pages carry a machine-written summary, labelled, reading
+   ONLY catalog fields plus aging's manifest prose (D17). REST and Docker Compose stay deferred.
+   **N1/G9 - does NCEMS host web services at all - goes to the next meeting regardless; it is now
+   the long pole for D1.**
+8. **Pin the QPX version** (G13), then re-map `design/SCHEMA_COVERAGE.md`.
+9. **`/project advance`** - the phase field still says INCEPTION and the work is plainly BUILD. Left
    alone deliberately; advancing is a gated step, not a close-out edit.
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI

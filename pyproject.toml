@@ -4,7 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarepo"
-version = "0.3.1"
+# Read from src/datarepo/__init__.py rather than restated here. It was restated, and it was wrong
+# for four releases: pyproject said 0.3.1 while the package said 0.7.0, so `pip install datarepo`
+# and `datarepo --version` disagreed -- and `__version__` is in every `catalog_id`, so an operator
+# reconciling "what did I install" against a catalog got two different answers.
+dynamic = ["version"]
 description = "Ingest and serve the search + quant results of reanalyzed public proteomics datasets."
 readme = "README.md"
 license = "MIT"
@@ -24,6 +28,9 @@ readers = ["mzlib>=0.1.1"]
 
 [project.scripts]
 datarepo = "datarepo.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "datarepo.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -43,3 +43,18 @@ def test_the_example_bundle_validates_against_the_schema():
         "Bundle",
     )
     assert not report.results, [str(r) for r in report.results]
+
+
+def test_the_packaged_version_is_the_package_version():
+    # It was restated in pyproject.toml and drifted: the file said 0.3.1, the package said 0.7.0,
+    # and what was actually installed said 0.1.0 -- three answers to one question, for four
+    # releases, with nothing to catch it. `__version__` is in every catalog_id, so an operator
+    # reconciling "what did I install" against a catalog was reading two different numbers.
+    import importlib.metadata
+
+    import datarepo
+
+    assert importlib.metadata.version("datarepo") == datarepo.__version__, (
+        "the installed distribution's version differs from datarepo.__version__; "
+        "reinstall (`pip install -e .`) or check pyproject's dynamic version"
+    )

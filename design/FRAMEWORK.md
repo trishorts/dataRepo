@@ -1,5 +1,11 @@
 # dataRepo — proposed framework (v0, 2026-09-19)
 
+> **Status, 2026-09-21.** Steps 1 and 2 are built and their contracts locked as **D9** and **D10**.
+> Steps 3–6 were grilled on 2026-09-21 and their choices locked as **D12–D18**; where this document
+> and a decision disagree, **the decision wins** and the difference is called out below. What is
+> still genuinely undecided: the REST API and the Docker Compose package (D16 defers both pending
+> N1/G9 and evidence of a human who wants REST).
+
 **What it's for:** hold every result the `aging` pipeline produces, across dozens to hundreds of PRIDE
 reanalyses, in one place. People should be able to browse it and cite it. AI agents are the
 **primary** users and should be able to query it well.
@@ -116,6 +122,23 @@ The schema is written once in **LinkML** (`schema/datarepo.yaml`). Pydantic vali
 
 ## 4. The AI interface (MCP)
 
+> **D12 narrows this.** Three tools ship first — `datarepo_describe`, `datarepo_search`,
+> `datarepo_sql` — and a fourth is added only where aging's benchmark shows the agent getting a
+> specific answer wrong. The eight below are a menu to draw from, not a build list: most are thin
+> wrappers over SQL we would write anyway, and several answer questions no measurement has asked.
+> The server is local stdio first, run as `datarepo mcp --catalog <path>`.
+>
+> **D14 stages the sandbox.** The sqlglot allow-list described in `datarepo_sql` below is deferred
+> to when a public endpoint exists. What ships now is `enable_external_access=false` with a locked
+> config, the row/character caps and a 30 s `con.interrupt()` watchdog — DuckDB 1.5 has no
+> `statement_timeout`. This was measured, not assumed: `read_only=True` **alone is not a sandbox**,
+> and a read-only connection will happily `read_csv_auto` a file anywhere on disk.
+>
+> **D15 replaces the acceptance bar.** "Agent answers ≥X% of the question set" is the wrong measure
+> when `SCHEMA_COVERAGE.md` says 94 of 168 questions wait on a producer. The bar is **zero
+> silently-wrong answers**: right when the data can answer, "no data" when it cannot, and either
+> kind of wrong is a failure.
+
 One FastMCP server calls the same Python functions as REST. It follows the stateless 2026-07-28 MCP spec, so it runs on any ordinary web host.
 
 | Tool | Answers |
@@ -155,7 +178,13 @@ One FastMCP server calls the same Python functions as REST. It follows the state
   - an **RO-Crate**, which packages the provenance;
   - a **Zenodo DOI**.
 - **Optional:** a Hugging Face mirror. That gives anyone `hf://` access from DuckDB and a dataset viewer for free.
-- **LLM-written summaries.** Dataset summaries written by an LLM only ship after a human reviews them in a PR, as quantms does.
+- **LLM-written summaries.** ~~Only ship after a human reviews them in a PR.~~ **Superseded by
+  D17:** they auto-publish with a visible "generated" label, and are **grounded by construction** —
+  the model may read only fields the catalog holds plus aging's own manifest `reason`/`notes`, never
+  PRIDE's abstract, the paper, or what a model believes about the accession. So a summary can be
+  clumsy and cannot be false about biology. The review rule is rejected as unrunnable: 300 datasets
+  means 300 reviews with no owner, and the honest prediction is that it gets quietly dropped and
+  they ship unreviewed anyway.
 - **Back to the archives.** Deposit the reanalysis to PRIDE or MassIVE (aging G9, `massive-reanalysis-upload`) and cross-link it.
 
 ---
@@ -167,16 +196,24 @@ One FastMCP server calls the same Python functions as REST. It follows the state
 | 0 | **Question set** (50–100 questions) + LinkML schema v0 | Every question maps to tables/columns |
 | 1 | `datarepo ingest` for the 2 existing datasets → Parquet on F: | Counts reconcile with `results.txt`/provenance; round-trip tests; schema validation |
 | 2 | `datarepo build` → DuckDB catalog + indexes | Question-set queries run in SQL |
-| 3 | Python client + **local MCP (stdio)** in Claude Code | Agent answers ≥X% of question set; token budget per answer |
-| 4 | FastAPI REST + static site; Docker Compose | OpenAPI contract tests; `/health`; MCP handshake test in CI (quantms's broken endpoint is the warning) |
-| 5 | Deploy to a Linux host (G2); release v0.1 with DOI, Croissant, llms.txt | External agent (Claude.ai remote connector) answers question set |
-| 6 | Scale-out: ingest runs automatically as the Nextflow pipeline finishes each PXD | Idempotent re-ingest; release diff report |
+| 3 | **Local MCP (stdio)**, three tools (D12) | Zero silently-wrong answers on aging's set (D15); every answer carries its `catalog_id` (D13) |
+| 4a | Static site + `llms.txt` + Croissant + Zenodo DOI (D16) | Pages generated from a catalog, published by aging; site works with no API at all |
+| 4b | ~~FastAPI REST + Docker Compose~~ **deferred (D16)** | Pending N1/G9, and evidence of a human who wants REST |
+| 5 | Deploy to a Linux host (N1/G9); release v0.1 with DOI | External agent answers the question set |
+| 6 | Auto-**ingest** as the pipeline finishes each PXD — never auto-**release** (D18) | Idempotent re-ingest; no release moves without a pin (D11) |
 
-Steps 0–3 need **no server and no decisions from anyone else.**
+Steps 0–3 need **no server and no decisions from anyone else** — and step 4a turns out not to
+either, which is why it comes before the server (D16). No Python or R client is in v1: the main
+users are agents, and nobody has asked for either (D12).
 
 ---
 
-## 7. Decisions needed from you (for `/grill-me`)
+## 7. Decisions needed from you (for `/grill-me`) — ALL ANSWERED
+
+> All four were resolved on 2026-09-19. **Item 2 below is wrong and is kept only for the record:**
+> it recommended private-until-publication, and D2 locked public-from-day-one, no login, on the same
+> day. Read the decisions, not this list.
+
 
 1. **Hosting (G2).** Options: a lab Linux box, UW (CHTC/DoIT), NCEMS cyberinfrastructure, or the cloud. My recommendation is to start on a lab box or NCEMS behind a public URL, because Docker Compose moves easily between them.
 2. **Access (G3).** Public from day one, or private to the working group until publication? My recommendation: private until the first paper, with the design public-ready (auth only at the proxy).
