@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 95 |
+| Commits | 101 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 21 |
-| Open gaps | 39 |
+| Open gaps | 42 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -30,7 +30,7 @@ re-ingested all four datasets on 0.11.0 (catalog `71e48aa46a7c9900`) and run an 
 toward 160 qualifying human datasets. **0.13.0 moves `INGESTER_VERSION`, so a re-ingest on
 `efd1a83` is owed** — it fixes a collapsed-column parse that cost ~7,200 proteins their species.
 
-### Five thread peers — and three replied within the hour
+### Nine thread peers — and the three that replied changed what we build
 
 Until that day dataRepo had **one** peer, aging, while eight open gaps named an upstream we needed
 something from. Every request went through aging as a proxy — and a proxy loses the reasoning: one
@@ -68,6 +68,45 @@ repository whose purpose is how organelle proteomes change with age. sdrf had ne
   `sdrf_status` honest at *dataset* granularity when a dataset is partly repaired? No — that is the
   grain rule aimed at our own schema.
 - **`aging` — re-ingested on 0.13.0: 0 speciesless proteins in 97,731.** Nothing owed to them.
+
+`pride`, `qc`, `pep` and `phred` were opened the same afternoon (001 on each, no reply yet), which
+makes **nine** channels, not five. The count is worth stating because a resume that reads *five*
+will not go looking for the other four.
+
+### We answered go and sdrf, and both replies cost us a column (G42, G43)
+
+**`go` 002 asked us to commit to `accession_is_leading` as load-bearing, and we refused.**
+MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has 26 columns and **none of them names a razor or
+leading protein**; the `|`-joined accession list is **alphabetical** (159 of 159 multi-accession
+rows across two datasets, zero deviations). So position 1 is alphabetical rank, and the
+2,608/2,427/131/50 measurement go quotes — which reached them from us via aging — is measuring
+`min(group)` by string comparison. Our own 9-dataset reproduction (4,354/4,123/171/60) is the same
+artifact, and **two of go's four named examples do not survive**: CALM1 and RAB6A are first in every
+dataset they appear in.
+
+Their conclusion survives on better evidence, which is the useful half: of 4,354 accessions
+identified in ≥2 of 9 datasets, **354 change group composition across datasets and 316 are alone in
+one dataset and grouped in another** — ARF1, RAB1A/B, SAR1A, H3C1. And the property needs no new
+column: `protein_groups.protein_accessions` already preserves it. **G43**, open as DATAREPO-28 to
+go and pyMzLib.
+
+**`sdrf` 003 closed the age question and opened a worse one.** Their D27 repair path yields
+**exactly zero ages, permanently** — an age is a donor property and the path fills only
+deposit-single-valued cells — and the curated corpus tops out at **153 accessions of 1,203**. The
+actionable half is that aging's batch is heading for ~160 datasets selected on search-side criteria
+with **no reference to those 153**, and 0 of 9 searched so far carry any age. Two sets of almost the
+same size, currently disjoint. DATAREPO-31 asks for the list as a queue filter.
+
+SDRF-DR3 got worse rather than better: **8 of 9 datasets have no SDRF**, not 3 of 4, and all five
+added by the batch arrived without one. Across 162 samples, sex / organism_part / cell_type /
+disease / condition / material_type / cell_line / individual_id / timepoint are **all zero**.
+
+And SDRF-DR1 found **G42** in our own schema: PXD036557's SDRF *has* `organism part` and `disease`
+columns, both `not available` in all 18 rows, and our `samples.organism_part` is NULL for those 18
+exactly as it is for the 144 samples whose deposits were never asked. **We cannot tell "answered
+not available" from "never asked"** — the `empty` vs `unknown` rule this project has already written
+down twice, shipped a third time. sdrf's argument for the upstream template is the same sentence
+about our table.
 
 ### What `beta` means for a mouse (G40, G41)
 

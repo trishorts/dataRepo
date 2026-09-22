@@ -454,6 +454,46 @@ gaps:
     Asked in 038 §3 whether this table is meant to be the bridge and whose it is to fill -- it is a
     reference resource rather than a measurement, so by D1 it is probably neither aging's nor ours.
     Re-map B6 in SCHEMA_COVERAGE.md once an owner exists.
+  - >-
+    G42 `samples` cannot distinguish 'the deposit was asked and answered `not available`' from
+    'the deposit was never asked'. Found answering sdrf SDRF-DR1 on 2026-09-22. PXD036557's SDRF
+    carries `characteristics[organism part]` and `characteristics[disease]`, both `not available`
+    in all 18 rows -- and `samples.organism_part` is NULL for those 18 exactly as it is for the
+    144 samples in the eight datasets with no SDRF at all. This is the `empty` vs `unknown` rule
+    this project has already written down twice (`referenced_tables` returning `[]` for both
+    'reads no tables' and 'cannot tell'; `describe` reporting a 100%-NULL column separately from
+    an absent one), shipped a third time. sdrf's own §2 makes the same argument upstream: a column
+    that is missing has no fill rate, so it is invisible to every quality instrument. Fix is ours.
+    Default: carry the deposit's verbatim cell into `sample_characteristics` (which already has
+    the `(sample_id, name, value)` grain) and let `samples` stay the typed projection, so absence
+    and a reserved word stop sharing NULL. Answered to sdrf in 004 §3 as owed.
+  - >-
+    G43 Leading-protein identity is not recoverable from this pipeline's output, and we nearly
+    stored a false column claiming it. go 002 §2.5 asked us to commit to `accession_is_leading`
+    as load-bearing. MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has 26 columns and none names
+    a razor, leading, representative or principal protein, and its `|`-joined `Protein Accession`
+    list is alphabetically sorted (159 of 159 multi-accession rows across PXD036557 and PXD024803,
+    zero deviations). So position 1 is alphabetical rank, and aging's 013 measurement
+    (2,608/2,427/131/50) that go quotes is measuring `min(group)` by string comparison -- as is
+    our own 9-dataset reproduction of it (4,354/4,123/171/60). Refused in go 003 §1 with the
+    replacement measurement (354 of 4,354 accessions change group COMPOSITION across datasets,
+    316 alone in one dataset and grouped in another). Open as DATAREPO-28 to go and to pyMzLib:
+    does any MetaMorpheus output expose a razor assignment we are not reading? Default if both
+    say no: record jointly that it is unrecoverable, so neither project reconstructs it from a
+    sort again. Do NOT add the column meanwhile -- it is `Protein.organism` with a better motive
+    and, unlike that one, undetectable by a reader.
+  - >-
+    G44 `Protein.organism_name` is populated for decoy entries, inconsistently, while
+    `Protein.organism` is correctly NULL for them. Measured on catalog `f8fc910cce116fbe`
+    (9 datasets, 2026-09-22): decoys missing `organism_name` run 149 of 7,157 in PXD023381 and
+    899 of 14,886 in PXD027318 but 11,804 of 11,804 in PXD024803 and 17,030 of 17,030 in
+    PXD049018 -- so in some datasets a reversed sequence carries a species name and in others it
+    does not. Schema 0.0.7's own description says why that is wrong: a reversed decoy sequence is
+    no organism's protein at all, which is exactly the reasoning that made `organism` nullable.
+    Same defect class as the contaminant-organism falsehood, one column over and caught before it
+    reached an answer. Default: NULL `organism_name` for decoys at ingest, which is an
+    `INGESTER_VERSION` bump. NOT urgent -- no view or benchmark question reads decoy rows -- but
+    it is a lie sitting in a column whose whole job is to be the verbatim species evidence.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

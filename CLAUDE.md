@@ -15,26 +15,32 @@ This folder is a `/project`-managed research project. **You are de facto working
   trusting any number quoted here.
   **First thing: run the thread checker** (command below). **NINE peers**, all opened or active on
   2026-09-22 (D21): `aging` (037/038 sent; they re-ingested on 0.13.0, 0 speciesless in 97,731),
-  `go` (**replied -- we owe 003**), `sdrf` (**003 UNREAD, we owe a reply**), `pyMzLib`,
-  `QuantProject`, `pride`, `qc`, `pep`, `phred` (001 sent to each, no reply yet). Expect crossed
+  `go` (**003 sent -- asks DATAREPO-28/29/30**), `sdrf` (**004 sent -- asks DATAREPO-31/32**),
+  `pyMzLib` (**002 sent -- the razor question, DATAREPO-28**), `QuantProject`, `pride`, `qc`,
+  `pep`, `phred` (001 sent to each, no reply yet). Expect crossed
   numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
   upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
   reached through pyMzLib by D1.
   Next, in order:
-  (1) **Answer `go` 002 and take their offer of a flat column contract (their 004) BEFORE building
-  anything against REQ-GO-*.** Their words: *trust D1-D22, not REQ-GO-2..10*. aging wrote those
-  requirements on our behalf, our schema cites them, and go had overruled the central one two
-  threads earlier -- there is no leading/union switch (their D7/D13: emit the data, let the consumer
-  filter). Then build G39's confirmed half: `inherited` and `propagated` as nullable booleans,
-  `organelle_label` nullable, and decide how a **set-valued** `organelle_category` plus their
-  unseen subcategory column are stored. go v1 ships partly AS A COLUMN IN OUR SCHEMA -- we are a
-  design stakeholder, so push back where they are wrong.
+  (1) **Build what go 003 settled, and do NOT build `accession_is_leading` (G43).** go ruled
+  REQ-GO-5 dead (*trust D1-D22, not REQ-GO-2..10*) and their **D22** makes `accession_used`
+  set-valued, so we expand over it and the broadcast problem is gone. Ruled and ready to build:
+  `inherited`/`propagated` as nullable booleans, `organelle_label` renamed to `organelle_category`
+  and nullable, subcategory stored WITH its `mitochondrion:inner_membrane` prefix, and three
+  version fields (`version` = organelle map, `ontology_release`, `output_format_version`). **Held
+  pending DATAREPO-29/30**: whether categories live in a term-keyed table -- they are a function of
+  `(go_id, map_version)` alone, so repeating them per protein stores one fact tens of thousands of
+  times. **G43 is the trap**: MetaMorpheus exposes no razor protein and sorts its accession list
+  alphabetically, so that column would assert what the data never said.
   (2) **G40 -- add organism to `AgeEffect` and `AgeEffectMeta`, or enforce single-organism meta.**
   Ours regardless of aging's answer to 038. Nothing currently stops a human and a mouse effect
   pooling into one meta-estimate.
-  (3) **Answer sdrf's SDRF-DR1..DR4** -- four questions we settle with queries, not opinions, plus
-  their question back to us: is `sdrf_status` honest at DATASET granularity when a dataset is
-  partly repaired? (We think not; it is the grain rule aimed at our own schema.)
+  (3) **G42 -- `samples` cannot tell `not available` from never-asked**, found answering
+  SDRF-DR1 and owed to sdrf in 004 §3. Carry the deposit's verbatim cell into
+  `sample_characteristics` so absence and a reserved word stop sharing NULL. And **chase
+  DATAREPO-31**: sdrf can name the **153** accessions (of 1,203) that carry a real donor age,
+  aging's batch is selecting ~160 datasets without reference to them, and 0 of the 9 searched so
+  far carry any age. That list is worth more than anything else queued here.
   (4) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
   red team breaks the previous round's fix (D20 is the worst instance). 0.12.0 and 0.13.0 are
   unverified, and the reviews have a blind spot: **all four agents reasoned about the catalog while
