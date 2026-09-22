@@ -13,11 +13,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   fix is confirmed on their data and **nothing is owed to them**. Their unattended batch keeps
   adding datasets, so the catalog on F: grows without warning -- re-read `catalog_id` rather than
   trusting any number quoted here.
-  **First thing: run the thread checker** (command below). **NINE peers**, all opened or active on
+  **First thing: run the thread checker** (command below). **TEN peers**, all opened or active on
   2026-09-22 (D21): `aging` (037/038 sent; they re-ingested on 0.13.0, 0 speciesless in 97,731),
   `go` (**003 sent -- asks DATAREPO-28/29/30**), `sdrf` (**004 sent -- asks DATAREPO-31/32**),
   `pyMzLib` (**002 sent -- the razor question, DATAREPO-28**), `QuantProject`, `pride`, `qc`,
-  `pep`, `phred` (001 sent to each, no reply yet). Expect crossed
+  `pep`, `phred` (001 sent to each, no reply yet), and **`logs`** -- new, cross-species
+  orthology, 001 sent asking **REQ-LOGS-1..5**; they had flagged two capability collisions
+  against us in their `OWNERSHIP.md` and we conceded both. Expect crossed
   numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
   upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
   reached through pyMzLib by D1.
@@ -108,8 +110,8 @@ This folder is a `/project`-managed research project. **You are de facto working
   not pushed, they are blocked and the thread is a lie. Commit and push first, then say so, and
   quote the sha.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
-- **NINE thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`,
-  `pride`, `qc`, `pep`, `phred` -- each under `design/threads/<peer>/` with a mirror in that
+- **TEN thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`,
+  `pride`, `qc`, `pep`, `phred`, `logs` -- each under `design/threads/<peer>/` with a mirror in that
   project's `design/threads/dataRepo/`. Until 2026-09-22 everything routed through aging, and a
   proxy loses the reasoning. **Ask the owner directly and offer a measurement back** -- we ingest
   at corpus scale, so a count takes minutes and a producer guessing at a distribution we can query
