@@ -48,9 +48,10 @@ from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 #: `__version__` on purpose: a change to what `build` writes must re-id catalogs, and must NOT re-id
 #: bundles holding byte-identical rows from an unchanged ingest path. "2" added the study layer's
 #: tables; "3" fills them -- a study bundle's rows, their two provenance columns and
-#: `catalog_study_bundles`. Same principle as `manifest.CONTENT_FIELDS` one level down -- an id
-#: moves when its own content moves, and not otherwise.
-CATALOG_VERSION = "3"
+#: `catalog_study_bundles`; "4" adds `search_modifications_placed`. Same principle as
+#: `manifest.CONTENT_FIELDS` one level down -- an id moves when its own content moves, and not
+#: otherwise.
+CATALOG_VERSION = "4"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -74,7 +75,13 @@ CATALOG_TABLES = (
 )
 
 #: Derived cross-dataset tables. These are the reason the catalog exists.
-DERIVED_TABLES = ("dataset_overview", "protein_index", "protein_datasets", "peptide_index")
+DERIVED_TABLES = (
+    "dataset_overview",
+    "protein_index",
+    "protein_datasets",
+    "peptide_index",
+    "search_modifications_placed",
+)
 
 #: Views that apply the producing search engine's acceptance rule, so no caller has to restate it.
 #: The rule is target, `q_value` at or below 1% **and** `q_value_notch` at or below 1% where there
@@ -738,6 +745,46 @@ def _build_derived(con: Any) -> None:
         LEFT JOIN protein_datasets d
                ON d.dataset_id = p.dataset_id AND d.protein_accession = p.protein_accession
         GROUP BY p.protein_accession
+        """
+    )
+
+    # What the search actually PLACED, as against what it declared (aging 024 section 6).
+    #
+    # **Derived from the peptidoforms, not from `ptm_sites`, and the choice is the whole point.**
+    # `ptm_sites` is per RESOLVED PROTEIN POSITION, so it drops every placement without one: the
+    # 210 occupancy sites at pos0, the 264 with no determinate position, and -- before 0.8.0 -- the
+    # 1,367 protein-N-terminal sites. A placed view built on it would have reported that N-terminal
+    # acetylation was NEVER PLACED in any of the three datasets while 3,085 peptidoforms carried
+    # it. That is S39 reproduced in a new table, which is the failure this view exists to prevent:
+    # a view trusted about ABSENCE must draw from the table that loses nothing.
+    #
+    # **Grain: accession-or-mass, and it cannot name the chemistry.** A ProForma tag carries a
+    # UNIMOD accession or a mass, never an `IdWithMotif`, so `_declared` and `_placed` are NOT
+    # comparable row for row -- `_declared` names chemistries, this names accessions and masses.
+    # For a J8-style mass-silent check that is the right grain anyway, because the question is
+    # about masses. Do not resolve a position rule through an accession from here: one accession
+    # spans entries with different rules (UNIMOD:34 covers Anywhere, N-terminal and C-terminal
+    # across ~20 entries), which is how a probe on the accession reported 247 C-terminal
+    # peptidoforms where the true number is 0.
+    con.execute(
+        r"""
+        CREATE TABLE search_modifications_placed AS
+        SELECT
+            dataset_id,
+            bundle_id,
+            tag,
+            CASE WHEN tag LIKE 'UNIMOD:%' THEN tag END                        AS modification,
+            CASE WHEN regexp_matches(tag, '^[+-][0-9]')
+                 THEN try_cast(tag AS DOUBLE) END                             AS mass_shift,
+            CASE WHEN tag LIKE 'Info:%' THEN substr(tag, 6) END               AS unresolved_name,
+            count(*)                                                          AS n_placements,
+            count(DISTINCT peptidoform_id)                                    AS n_peptidoforms
+        FROM (
+            SELECT dataset_id, bundle_id, peptidoform_id,
+                   unnest(regexp_extract_all(peptidoform, '\[([^\]]*)\]', 1)) AS tag
+            FROM peptidoforms_1pct
+        )
+        GROUP BY dataset_id, bundle_id, tag
         """
     )
 

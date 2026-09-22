@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.5"
+SCHEMA_VERSION = "0.0.6"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -297,7 +297,7 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("definition_id", pa.string(), nullable=False),
         pa.field("source", pa.string(), nullable=False),
     ]),
-    "search_modifications": pa.schema([  # SearchModification
+    "search_modifications_declared": pa.schema([  # SearchModification
         pa.field("dataset_id", pa.string(), nullable=False),
         pa.field("modification", pa.string(), nullable=True),
         pa.field("name", pa.string(), nullable=False),
@@ -334,7 +334,7 @@ TABLE_CLASS: dict[str, str] = {
     "provenance_records": "ProvenanceRecord",
     "findings": "Finding",
     "metrics": "Metric",
-    "search_modifications": "SearchModification",
+    "search_modifications_declared": "SearchModification",
 }
 
 #: Study layers, keyed by layer name. A study layer adds tables keyed on core identifiers

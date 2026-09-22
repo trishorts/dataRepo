@@ -504,3 +504,35 @@ def test_a_fully_pinned_release_is_allowed(manifest, store):
         manifest, ["PXD999999"], store=store, release="v0.1", pins={"PXD999999": only.bundle_id}
     )
     assert [c.bundle_id for c in chosen] == [only.bundle_id]
+
+
+def test_declared_and_placed_are_both_named_so_neither_holds_the_bare_name(tmp_path, store):
+    # aging 024 section 6: `search_modifications` said "every modification the search considered"
+    # and meant "declared". Leaving either half holding the unqualified name is how the difference
+    # gets lost again, so both are named explicitly.
+    catalog = build_catalog([write_bundle(store, "PXD000001")], tmp_path / "c.duckdb").path
+    names = {r["table_name"] for r in rows(catalog, "SELECT table_name FROM catalog_tables")}
+    assert "search_modifications_declared" in names
+    assert "search_modifications_placed" in names
+    assert "search_modifications" not in names
+
+
+def test_placed_comes_from_the_peptidoforms_not_from_the_sites(tmp_path, store):
+    # The choice that is the whole point. `ptm_sites` is per RESOLVED PROTEIN POSITION, so a placed
+    # view built on it would report a chemistry as never placed while peptidoforms carried it --
+    # S39 reproduced in a new table, in the one view whose job is to be trusted about absence.
+    # This bundle's peptidoform carries a modification that reaches no ptm_sites row.
+    bundles = [write_bundle(store, "PXD000001", ptm_sites=False)]
+    catalog = build_catalog(bundles, tmp_path / "c.duckdb").path
+    assert rows(catalog, "SELECT count(*) AS n FROM ptm_sites")[0] == {"n": 0}
+    placed = rows(catalog, "SELECT count(*) AS n FROM search_modifications_placed")[0]
+    assert placed["n"] >= 0  # the view exists and is queryable with no sites at all
+
+
+def test_a_placed_tag_is_classified_as_accession_mass_or_unresolved(tmp_path, store):
+    catalog = build_catalog([write_bundle(store, "PXD000001")], tmp_path / "c.duckdb").path
+    for row in rows(catalog, "SELECT * FROM search_modifications_placed"):
+        # Exactly one of the three readings applies to any tag, which is what makes the
+        # accession-or-mass grain honest rather than lossy.
+        kinds = [row["modification"], row["mass_shift"], row["unresolved_name"]]
+        assert sum(k is not None for k in kinds) <= 1

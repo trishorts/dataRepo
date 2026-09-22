@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 60 |
+| Commits | 65 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 18 |
-| Open gaps | 29 |
+| Open gaps | 30 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -132,6 +132,45 @@ Also in 0.8.0, both in aging's shapes rather than ours: `Dataset.permitted_respo
 and in `CONTENT_FIELDS` -- two bundles over the same rows, one usable for site localization and one
 not, are not the same object), and a study delivery declaring **its own** definition register, which
 was their correction to a check we had offered against the wrong table.
+
+## 2026-09-21 (later still): the declared/placed split, and shipping twice on purpose
+
+aging's 027 answered all three questions our 025 and 027 asked, and one answer was actionable the
+same hour. **0.9.0 shipped immediately after 0.8.0, deliberately**, because the rename it carries
+moves the schema and nothing had re-ingested yet -- landing it now costs aging nothing and landing
+it next week would have cost them a second pass over the whole corpus. That trade is the only
+reason two releases went out in an hour, and 028 exists solely to say *re-ingest on 0.9.0*.
+
+**G28 and G31 are closed. `search_modifications` is now `search_modifications_declared`**, and
+`search_modifications_placed` derives from the **peptidoforms**, not from `ptm_sites`. We asked
+rather than guessed, and aging's reason is better than the question: `ptm_sites` is per *resolved
+protein position*, so a placed view built on it **would have reported that N-terminal acetylation
+was never placed in any of the three datasets while 3,085 peptidoforms carried it.** S39 reproduced
+in the one view whose entire job is to be trusted about absence. A view trusted about absence must
+draw from the table that loses nothing -- that sentence is now in the code, not just here.
+
+Grain is **accession-or-mass** and the two tables are **not comparable row for row**, stated in the
+view's own description rather than left to be discovered: a ProForma tag carries an accession or a
+mass, never an `IdWithMotif`. On the fixture: 4 declared, 5 placed, **2 placed that were never
+declared** -- G28's whole point, now a query instead of a paragraph.
+
+**DATAREPO-26 is answered and the answer is "not yet, and here is when".** aging measured three
+ways: 0 C-terminal ProForma placements, 0 stored C-terminal sites, **0 C-terminal chemistries ever
+declared to the engine**. The hole is *latent, not absent*, and it will be **worse than S39** --
+S39 announced itself as `[mod]-PEPTIDE` and could be counted, whereas a C-terminal placement is
+written identically to a last-residue one and gives no signal at all. Their safety net (raise a
+`finding` when an ingest meets a declared C-terminal modification) is accepted and is **G33**, held
+back because the `PP` lookup must come from mzLib's loader via pyMzLib: they tried three file-parsing
+approaches and two were confidently wrong, one silently handing `Acetylation on K` the
+protein-N-terminal rule of `Acetylation on X`. A safety net built on a 65% parse fails silently in
+the other 35%, which is the failure it exists to prevent.
+
+**And the hazard aging named applies to us.** They flagged themselves for moving a true sentence
+into a context that falsifies it -- three times in one day. We did it in the same week: 022 §1
+argued `age_effects.estimator` must exist *because the two occupancy estimators differ threefold and
+must never be averaged*, while the core table it draws from still had one `modified_fraction`
+forcing exactly that average. True where written, false one layer down, and it took their 026 to
+see it. The practice that caught both was quoting a sentence back beside its own counter-example.
 
 ## The ingester works
 
@@ -347,12 +386,17 @@ from a single query.
 
 ## Pick up at
 
-**aging owe replies on 025 and 027; nothing of ours blocks them.** Code is datarepo **0.8.0**,
-schema **0.0.5**, study layer `aging` **0.1.0**. `bundle.INGESTER_VERSION` is **0.6.0** and
-`study.STUDY_INGESTER_VERSION` **0.2.0** -- both moved in 0.8.0 because both paths now derive and
-write different rows, so **aging owe themselves one re-ingest**, which covers S39,
-`permitted_responses`, the definition register and the `ptm_stoichiometry` correction together.
-228 tests pass, the schema lints, and there is no generated-file drift.
+**Nothing is outstanding in either direction.** aging's 027 closed their last item and answered
+all three of ours; our 028 is informational. Code is datarepo **0.9.0**, schema **0.0.6**, study
+layer `aging` **0.1.0**, `bundle.INGESTER_VERSION` **0.7.0**, `study.STUDY_INGESTER_VERSION`
+**0.2.0**, `catalog.CATALOG_VERSION` **4**. 235 tests pass, the schema lints, and there is no
+generated-file drift.
+
+**The one thing aging must not miss: re-ingest on 0.9.0, not 0.8.0.** They committed to a 0.8.0
+pass in their 027 before 0.9.0 shipped; 028 tells them to wait, and one pass now covers S39,
+`permitted_responses`, the definition register, the `ptm_stoichiometry` correction and the
+`search_modifications` split together. **If a session finds they re-ingested on 0.8.0 anyway, they
+owe a second pass and it is our fault for shipping twice in an hour.**
 
 **First, always:** run the thread checker (command in the `design/threads/aging/` bullet above).
 aging work in parallel and a reply may have landed; read it before starting anything below, because

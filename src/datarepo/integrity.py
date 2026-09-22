@@ -44,7 +44,7 @@ REFERENCES: tuple[tuple[str, str, str, str], ...] = (
     ("findings", "dataset_id", "datasets", "dataset_id"),
     ("findings", "run_id", "runs", "run_id"),
     ("provenance_records", "dataset_id", "datasets", "dataset_id"),
-    ("search_modifications", "dataset_id", "datasets", "dataset_id"),
+    ("search_modifications_declared", "dataset_id", "datasets", "dataset_id"),
 )
 
 #: `QuantValue.feature_id` points into whichever table `feature_type` names.

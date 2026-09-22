@@ -227,13 +227,26 @@ gaps:
     `definitions` - because a foreign key written now would freeze a guess with the authority of a
     constraint.
   - >-
-    G31 `search_modifications` is not yet split into _declared and _placed (aging 024 section 6,
-    was part of G28). The rename is agreed by both sides; what is NOT settled is which table the
-    "placed" view derives from. `ptm_sites` is per resolved protein position, while aging's own
-    measurement came from peptidoform ProForma, and the two differ for any placement with no
-    resolved position. A "what was actually placed" view exists precisely to be trusted about
-    absence, so picking the narrower source silently would reproduce S39's shape in a new table.
-    Asked in 025 section 3 and repeated in 027.
+    G31 CLOSED 2026-09-21 in datarepo 0.9.0 / schema 0.0.6, and G28 with it. `search_modifications`
+    is now `search_modifications_declared`, and `search_modifications_placed` is derived from the
+    PEPTIDOFORMS rather than from ptm_sites - aging 027 section 4 answered the question we asked.
+    Their reason is the one that matters and is recorded in the code: ptm_sites is per resolved
+    protein position, so a placed view built on it would have reported N-terminal acetylation as
+    never placed in any of the three datasets while 3,085 peptidoforms carried it. That is S39
+    reproduced in the one view whose job is to be trusted about absence. Grain is accession-or-mass
+    and the two tables are NOT comparable row for row, which is stated in the view's own
+    description rather than left to be discovered.
+  - >-
+    G33 The C-terminal safety net is accepted and not built (DATAREPO-26, aging 027 section 2).
+    They measured it three ways: 0 C-terminal ProForma placements, 0 stored C-terminal sites, 0
+    C-terminal chemistries ever declared. The hole is LATENT, not absent, and will be worse than
+    S39 when it appears - a C-terminal placement is written identically to a last-residue one, so
+    there is no signal at all. Their recommendation, accepted: raise a finding when an ingest meets
+    a declared modification whose PP is C-terminal. NOT built because the PP lookup must come from
+    mzLib's loader through pyMzLib rather than a file parse - aging tried three parsing approaches
+    and two were confidently wrong, one silently giving `Acetylation on K` the protein-N-terminal
+    rule of `Acetylation on X`. A safety net built on a 65% parse fails silently in the 35%. Rides
+    with the REQ-PYMZ owed for G26.
   - >-
     G32 The `age_effect_meta.feature_id` referential check is now BUILDABLE and is not built.
     DATAREPO-20(c) is answered (aging 024 section 1): a feature's cross-dataset identity is the

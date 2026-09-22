@@ -106,7 +106,8 @@ def _task_files(work_root: Path, search_provenance: dict[str, Any]) -> list[Path
 
     A MetaMorpheus `tasks/` folder also holds the shipped templates for tasks that did not run
     (`GlycoSearchTask.toml`, `XLSearchTask.toml`). Reading those would put modifications into
-    `search_modifications` that this search never considered, which is the opposite of the point.
+    `search_modifications_declared` that this search never declared, which is the opposite of
+    the point.
     """
     out = []
     for entry in search_provenance.get("inputs") or []:
@@ -464,7 +465,7 @@ def ingest_dataset(
     writer.add("proteins", proteins)
     writer.add("ptm_sites", ptm_sites)
     writer.add("quant_values", quant_values)
-    writer.add("search_modifications", search_modifications)
+    writer.add("search_modifications_declared", search_modifications)
     writer.add("metrics", metrics)
     writer.add("provenance_records", provenance_rows)
     writer.add("findings", findings)
