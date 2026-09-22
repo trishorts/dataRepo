@@ -415,6 +415,37 @@ gaps:
     aspects live, and two version strings (`go_release` and the category-map version) for one
     `AnnotationSource.version`. Asked as go 001; their v1 has no code yet, which is the cheap
     moment. DO NOT ingest a go file before this is settled.
+  - >-
+    G40 NOTHING STOPS A HUMAN AND A MOUSE AGE EFFECT BEING POOLED. `AgeEffect` has 29 columns and
+    `AgeEffectMeta` 22, and **organism is in neither** -- while `age_effect_meta` exists precisely
+    to pool across datasets, stratified on `tissue`, `acquisition` and `quant_method`. Two effects
+    for one feature from different animals would pool into a meta-estimate with `n_datasets = 2`
+    and nothing recording the difference. Same shape as the contaminant-organism defect of
+    2026-09-22: a column that permits something wrong with nothing saying so -- except this one
+    reaches a meta-analysis rather than a query. Raised 2026-09-22 by the user asking whether ages
+    in years suit mouse and rat; the storage unit turned out fine (`age_raw` is verbatim and
+    required, and sdrf's SdrfAge now carries `Cell`), and the defect was one layer down.
+    TWO HALVES. **Ours:** add organism to both tables, or state and enforce that a meta row is
+    single-organism by construction. We prefer the column -- `tissue` is already there for the same
+    reason and organism is coarser and more consequential. Fix regardless of aging's answer.
+    **Theirs (asked as thread 038):** `aging:DEF-AGE-EFFECT v1` defines `beta` on
+    `age_decades = (age_years - 50) / 10`, and **50 is a human lifespan constant** -- a 24-month
+    mouse gives `age_decades = -4.8` and a 'change per decade' for an animal that lives two years.
+    Either the definition is declared human-only or the centring becomes per-organism. Our default
+    if unanswered when rodents arrive: **refuse the row** (`age_effect_refusals` exists) rather
+    than write a beta we cannot explain. NOT URGENT -- the corpus is human and aging are 2 of 160
+    qualifying human datasets in -- but the cheapest moment to decide what beta means for a mouse
+    is before a mouse beta exists, which is the `ptm_stoichiometry`-corrected-at-0-rows argument.
+  - >-
+    G41 `age_mappings` was designed for the cross-species problem and is wired to nothing. The
+    table carries `organism`, `age_from`, `age_to`, `age_unit`, `life_stage`,
+    `human_equivalent_years` -- exactly what G40 needs -- and holds 0 rows, is referenced by no
+    view, and is mentioned in no thread before 038. Meanwhile aging's benchmark B6 ('for mouse
+    datasets, which ages in months correspond to which human life stage?') is one of only two
+    questions `SCHEMA_COVERAGE.md` maps to NO HOME. It has a home; the wire was never connected.
+    Asked in 038 §3 whether this table is meant to be the bridge and whose it is to fill -- it is a
+    reference resource rather than a measurement, so by D1 it is probably neither aging's nor ours.
+    Re-map B6 in SCHEMA_COVERAGE.md once an owner exists.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
