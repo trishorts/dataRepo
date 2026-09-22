@@ -1331,3 +1331,63 @@ direct. Relaying it would have been a proxy, the same thing all three projects h
 about.
 
 Eleven peers now, and every one of them owes us.
+
+## 2026-09-22 - Fourteenth: gamma-actin had POTE-E's numbering, and the comment said it would
+
+aging 042 arrived as an unfilled template on our side and an uncommitted draft on theirs, so we read
+it without acting. Their serving catalog is rebuilt (`7b9de8696589c948`, ten datasets), which closes
+G45, and they asked for `organism` on `age_effect_refusals`. Then 043 landed, and it was a real
+defect found from outside. `ptm_site_rows` paired MetaMorpheus's `Start and End Residues In Full
+Sequence` with `Accession` by index, falling back to `starts[0]`. MetaMorpheus writes that column
+de-duplicated, one span per distinct position, and once per occurrence when a peptide repeats in a
+protein. aging measured 2,266 misplaced sites and 2,166 missing ones on their catalog. None were at
+ambiguity level 1, which is why the level filter had hidden it and why release v0.1 is clean. The
+comment above the bad line had predicted exactly this failure ("relaxing that filter without this
+pairing would put wrong positions in the repository") while describing the file wrongly as "one span
+per accession". This is the second collapsed-column bug after 0.13.0's `Organism Name`.
+
+We verified at the source before building: the line was in our code, and the file de-duplicated
+spans in 126 of 229 multi-protein PSMs in one search. The fix follows aging's reference design, and
+MetaMorpheus's own occupancy code does the same thing: find the peptide in each member protein of the
+searched database and write a site per occurrence. pyMzLib has no protein-database reader, so
+`sources/protein_db.py` reads UniProt XML and FASTA (accession and sequence only) from the search
+provenance's `inputs`. Each file is sha256-checked against what the search recorded, and a mismatch
+stops the ingest. The databases are hashed into the bundle id under `protein_database:<name>` and
+never copied. The role carries the file name because `bundle_id` sorts sources by (role, path), and
+a path is site-specific. The parse costs 15 s with lxml and 47 s without, so there is no cache. The
+test fixture now carries two small databases cut from the real ones, marked `-text` in
+`.gitattributes` so their hashes survive a Windows checkout; a fresh clone confirmed it. One test
+that matters is for the class, not the reproduction: equal span and accession counts can still be
+misaligned, because two proteins, one sharing a span and one repeating the peptide, also give two
+spans. `Previous Residue` is collapsed too, measured at 3,737 of 3,949 multi-protein PSMs, so the
+initiator-Met test now reads the residue from each protein's own sequence.
+
+Unplaceable pairs go to an `unplaced_ptm_sites` finding and are not guessed. All of them (7,510 on
+the corpus, classified in three datasets) are level 4/5 PSMs ambiguous between peptide sequences,
+where the protein carries a different candidate than the stored first one. The old code gave those
+pairs another peptide's position.
+
+The user then asked whether anyone could reproduce the numbers, and the honest answer was not yet.
+The corpus check was a scratchpad script, nothing inside the ingest verified positions, the docs did
+not say that the contaminant database lives in the MetaMorpheus install, and the two parsers were
+not tested to agree. All four were fixed before commit. Every ingest now checks its own residues
+(`site_residue_check` in bundle.json, plus a `ptm_site_residue_mismatch` finding).
+`tools/verify_ptm_sites.py` re-checks any bundle from its Parquet, and `--db` covers old bundles. It
+fails aging's current PXD036557 (29 wrong, 4 beyond length) and passes the new one. docs/ingest.md
+has a "Reproducing a bundle" section. Corpus result on a scratch store: wrong residues went from
+1,674 to 0, and positions beyond the protein from 344 to 1.
+
+That one site is the corpus's first C-terminal modification, `KPVADYFL-[UNIMOD:34]` in PXD050351.
+The ProForma parse leaves `-` in `base_sequence`, and the site is written at the protein's length +
+1. It was already present in 0.9.0, and aging's DATAREPO-26 answer had called this hole latent. The
+new self-check is what surfaced it. It is logged as G51 and asked as DATAREPO-33, with no C-terminal
+site type shipped ahead of aging's ruling. We also asked, without claiming anything, why PXD050351
+("...in mice") is filed as human.
+
+Shipped as 0.15.0 (`666b6fb`, INGESTER 0.10.0, study layer 0.3.0, STUDY_INGESTER 0.4.0, plus G44)
+and announced in 044 after the push. Two tooling traps: PowerShell 5.1 splits a here-string commit
+message on its double quotes (use `git commit -F <file>`), and `<<<` is a parse error that runs
+nothing. A pyMzLib bridge exit with empty stderr turned out to be contention with a concurrent ingest,
+not a defect. logs 010 offers a G48 hypothesis: mzLib's reader copies `genes[0]` to every accession
+when the Gene cell is short, which would explain the stored `ERVK-6`. Their first rodent dataset is
+about a day out.

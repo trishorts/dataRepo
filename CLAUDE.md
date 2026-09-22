@@ -7,31 +7,32 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
 - **Pick up at:** ingest, build, the study layer and the MCP server (FRAMEWORK step 3) are all
-  done. Code is datarepo **0.14.0**, core schema **0.0.7**, aging study layer **0.2.0**,
-  `bundle.INGESTER_VERSION` **0.9.0**, `study.STUDY_INGESTER_VERSION` **0.3.0**,
-  `catalog.CATALOG_VERSION` **4**. **0.14.0 (`4a108d6`) shipped G40**: `age_effects.organism` and
-  `age_effects.age_centre_years` required, and `age_effect_meta.organism` required and FIRST in the
-  key. Beta is **per decade within one organism** (aging 040 corrected their own 039). 0.14.0 re-ids
-  no search bundle, so **aging owe no re-ingest**.
-  **First thing: run the thread checker** (command below). **ELEVEN peers and all of them owe us;
-  we owe nothing** (as of the 2026-09-22 close). Most likely to land first: **`ptmQtl` 002** (asked
-  REQ-PTMQTL-1..5 in our 001), **`logs` 010** (answered REQ-DATAREPO-4..7 in 009) and **`aging` 042**
-  (041 told them G40 shipped and that their serving catalog is stale).
+  done. Code is datarepo **0.15.0** (`666b6fb`), core schema **0.0.7**, aging study layer **0.3.0**,
+  `bundle.INGESTER_VERSION` **0.10.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
+  `catalog.CATALOG_VERSION` **4**. **0.15.0 fixed DATAREPO-32**: `ptm_sites` is placed by aligning
+  each peptide to the searched sequences (`sources/protein_db.py`), not by pairing MetaMorpheus's
+  de-duplicated span column. On the corpus, wrong residues went from 1,674 to 0. It re-ids every
+  bundle, so **aging owe a re-ingest**. Also G44 and `age_effect_refusals.organism`.
+  **First thing: run the thread checker** (command below). **We owe nothing due**; logs 010 is read
+  and needs no reply. Most likely to land: **`aging` 045** (re-ingest, their probe re-run,
+  DATAREPO-33 C-terminal typing, the contaminant DB archive, PXD050351's organism) and **`ptmQtl`
+  002**. When aging re-ingest, run `python tools/verify_ptm_sites.py F:/aging_data/repo/store`: it
+  should pass everywhere except the one G51 site in PXD050351.
   Next, in order (the detail is in RESUME's "Pick up at"):
-  (1) **Read ptmQtl 002.** Our 001 claimed two defects in our own shapes: `ptm_stoichiometry` is
-  per SAMPLE GROUP, the wrong grain for a trait regression (G17 / REQ-PTMQTL-1), and **no table has
-  a PAIR grain** for co-occurrence (REQ-PTMQTL-5). Tracked as **G49**. Build nothing until they
-  describe one real row. ptmQtl has **no git remote**, so its mirrors are committed locally only.
-  (2) **G48**: explain the stored `ERVK-6` for `P63135` before any fix. **Never back-fill
-  `Protein.gene` from logs' output.**
-  (3) **Chase DATAREPO-31** (sdrf's 153 age-bearing accessions). Two consumers now need it: 0 of
-  162 samples carry any trait.
+  (1) **Read ptmQtl 002** if it lands. G49: `ptm_stoichiometry` is per SAMPLE GROUP, and no table
+  has a PAIR grain. Build nothing until they describe one real row. ptmQtl has **no git remote**.
+  (2) **G48**: explain the stored `ERVK-6` for `P63135` before any fix. Start from **logs 010 §3's
+  hypothesis** that mzLib's reader copies `genes[0]` to every accession when the Gene cell is short.
+  **Never back-fill `Protein.gene` from logs' output.**
+  (2b) **G51 / DATAREPO-33**: wait for aging's C-terminal ruling. Do not ship a C-terminal
+  `site_type` first.
+  (3) **Chase DATAREPO-31** (sdrf's 153 age-bearing accessions). 0 of 180 samples carry any trait.
   (4) **Build what go 003 settled, and do NOT build `accession_is_leading` (G43)**; the term-keyed
   categories table is held pending DATAREPO-29/30.
-  (5) **G42** verbatim SDRF cells into `sample_characteristics`. (6) **G44** rides the next
-  `INGESTER_VERSION` bump. (7) **G35: do NOT claim D15's bar**; point a re-run at
-  `F:/aging_data/<run>/<PXD>/04_search/`. (8) G32, G46, `datarepo site` (D16), G33/G26/G36, QPX pin
-  (G13). **N1/G9 goes to the next NCEMS meeting regardless.** **D1-D21 locked.**
+  (5) **G42** verbatim SDRF cells into `sample_characteristics`. (6) **G35: do NOT claim D15's
+  bar**; point a re-run at `F:/aging_data/<run>/<PXD>/04_search/`. (7) G32, G46, `datarepo site`
+  (D16), G33/G26/G36, QPX pin (G13). **N1/G9 goes to the next NCEMS meeting regardless.**
+  **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -218,6 +219,9 @@ This folder is a `/project`-managed research project. **You are de facto working
   repeating the peptide, also give two spans. Where a fact per accession is needed, derive it from
   the thing itself (sites now come from the searched sequence) or return null. `_per_accession`'s
   broadcast/zip/null rule is safe only for a column that collapses and never repeats.
+- **Commit with `git commit -F <file>` (or from Bash), never a PowerShell here-string that contains
+  a double quote.** PowerShell 5.1 splits the message at each `"` into pathspecs, the commit fails,
+  and a chained `git push` then pushes nothing while looking successful. It happened at 0.15.0.
 - **Never `git add -A` in this repo.** It swept the unfinished DRAFT of thread 036 -- the one
   carrying the false MetaMorpheus claim -- into a release commit and pushed it. Threads are never
   edited after posting, and that one had not been posted (it was never in aging's repo, so no peer

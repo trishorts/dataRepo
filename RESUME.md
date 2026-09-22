@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 124 |
+| Commits | 131 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 23 |
-| Open gaps | 47 |
+| Open gaps | 49 |
 | Gate items skipped | 3 |
 
 <!-- END GENERATED -->
@@ -21,6 +21,25 @@ Build an AI-ready, API-accessible repository for the results of the `aging` pipe
 reanalyses. The results cover search, quant, provenance, design and organelle annotation. Humans can
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
+
+## Latest (2026-09-22, fourteenth session): 0.15.0 places PTM sites by sequence
+
+**`datarepo` 0.15.0 (`666b6fb`, pushed), `INGESTER_VERSION` 0.10.0, aging study layer 0.3.0,
+`STUDY_INGESTER_VERSION` 0.4.0, core schema 0.0.7, `CATALOG_VERSION` 4.** aging owe a re-ingest.
+
+aging 043 found that `ptm_sites` misplaced every shared peptide's sites. MetaMorpheus de-duplicates
+`Start and End Residues In Full Sequence` and repeats it per occurrence, and we had paired it with
+`Accession` by index, so gamma-actin carried POTE-E's numbering. Sites are now placed by finding
+each peptide in the searched protein sequences (`src/datarepo/sources/protein_db.py`,
+sha256-checked against the search provenance). On all ten datasets, wrong residues went from
+**1,674 to 0** and positions beyond the protein from **344 to 1**. That one site is G51, the first
+C-terminal modification, which predates this change.
+
+**How the numbers are made reproducible:** every ingest checks its own site residues
+(`bundle.json` → `protein_databases.site_residue_check`). `tools/verify_ptm_sites.py <store>
+[--db ...]` re-checks any bundle independently. `docs/ingest.md` "Reproducing a bundle" lists the
+byte-identical inputs, which now include **both** searched databases, one of them inside the
+MetaMorpheus install. Detail is in the CHANGELOG 0.15.0 entry and the journal.
 
 ## Where it stands (2026-09-22, twelfth session)
 
@@ -613,16 +632,27 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**Eleven peers, and every one of them owes us. We owe nothing.** On 2026-09-22 (the thirteenth
-session) we opened `ptmQtl` (001), answered `aging` 039/040 (041) and `logs` 004-008 (009), and
-shipped **0.14.0** (`4a108d6`: G40, organism on age effects and first in the meta key). All of it is
-pushed. Code is datarepo **0.14.0**, core schema **0.0.7**, aging study layer **0.2.0**,
-`bundle.INGESTER_VERSION` **0.9.0**, `study.STUDY_INGESTER_VERSION` **0.3.0**,
-`catalog.CATALOG_VERSION` **4**. 0.14.0 re-ids no search bundle, so aging owe no re-ingest for it.
+**We owe nothing that is due. logs 010 is read and needs no reply. Every other peer owes us.** On
+2026-09-22 (the fourteenth session) we shipped **0.15.0** (`666b6fb`: DATAREPO-32, G44, and
+`age_effect_refusals.organism`) and answered aging 042/043 in **044**. All of it is pushed. Code is
+datarepo **0.15.0**, core schema **0.0.7**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION`
+**0.10.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **4**. **0.15.0
+re-ids every bundle, so aging owe a re-ingest.**
 
-**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). Three replies
-are most likely: `ptmQtl` 002 (REQ-PTMQTL-1..5), `logs` 010 (they reply within the hour) and `aging`
-042.
+**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). The most likely
+replies:
+- **`aging` 045**: their re-ingest on `666b6fb`, their `site_positions.py` re-run, DATAREPO-33
+  (C-terminal site typing), archiving the contaminant database, and PXD050351's organism.
+- **`ptmQtl` 002**: REQ-PTMQTL-1..5.
+
+**In flight:**
+- **aging's re-ingest.** When it lands, run `python tools/verify_ptm_sites.py
+  F:/aging_data/repo/store`. It should say `ok` for every dataset except PXD050351, which should show
+  only the one G51 site beyond length.
+- **aging's serving catalog** (`F:/aging_data/repo/catalog.duckdb`, `7b9de8696589c948`) is stale
+  again the moment they re-ingest. Check `describe`'s `catalog_id` before trusting an MCP answer.
+- **The first rodent datasets** are about a day out (logs 010). Watch whether their provenance
+  names a mouse or rat proteome in `inputs`: the ingest reads whatever the provenance lists.
 
 **Do not trust a catalog number quoted anywhere in this file.** aging's batch grows the store without
 warning, and the catalog they *serve* (and that the `datarepo` MCP server reads) is still the old
@@ -647,8 +677,16 @@ datarepo build E:/CodeReview/aging/instance/manifest.yaml $(ls F:/aging_data/rep
 
 2. **Close G48 -- `Protein.gene` is a stored value we cannot reproduce.** Tracing `P63135` through
    `_per_accession` gives `None` for PXD032040 (its first claiming row is ragged, `n_acc=9,
-   n_gene=8`); **the catalog stores `ERVK-6`**. Explain it before writing any fix. logs 004 asked us
-   not to race it and **never to back-fill `Protein.gene` from their output**. Promised in 009.
+   n_gene=8`); **the catalog stores `ERVK-6`**. Explain it before writing any fix. **Start from logs
+   010 §3's hypothesis**: mzLib's `SpectrumMatchFromTsv` (line 111 at master) copies `genes[0]` to
+   every accession when the Gene cell is short, so pyMzLib may hand us an already-broadcast value.
+   Test it by reading PXD032040's raw `AllPSMs.psmtsv` row beside what `read_psmtsv` returns for
+   it. logs 004 asked us not to race it and **never to back-fill `Protein.gene` from their
+   output**.
+
+2b. **G51 / DATAREPO-33 -- the C-terminal site.** Wait for aging's ruling. Then, on the next
+   `INGESTER_VERSION` bump, strip the terminal `-` from `base_sequence` (`src/datarepo/proforma.py`)
+   and type or hold the site as ruled. Do not ship a C-terminal `site_type` before they rule.
 
 3. **Chase DATAREPO-31 with `sdrf`: the 153 accessions carrying a real donor age.** It is now owed
    to two consumers: aging's batch, and ptmQtl, whose first question cannot be asked of a corpus in
@@ -664,8 +702,7 @@ datarepo build E:/CodeReview/aging/instance/manifest.yaml $(ls F:/aging_data/rep
 5. **G42 -- `samples` cannot tell `not available` from never-asked.** Carry the deposit's verbatim
    cell into `sample_characteristics`. Owed to sdrf in our 004 §3.
 
-6. **G44 (decoy `organism_name`) rides the NEXT `INGESTER_VERSION` bump**, not one of its own. We
-   told aging so in 041 §2.
+6. ~~G44 (decoy `organism_name`)~~ **DONE in 0.15.0** (rode the DATAREPO-32 bump as promised).
 
 7. **G35: do NOT claim D15's bar.** 0.12.0-0.14.0 are unverified. A re-run must point at least one
    agent at `F:/aging_data/<run>/<PXD>/04_search/`.
