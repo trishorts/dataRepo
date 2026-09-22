@@ -8,6 +8,7 @@
     datarepo build <manifest.yaml> <PXD...>      load bundles into one DuckDB catalog
     datarepo catalog <catalog.duckdb>            what is in a catalog, and did it check out?
     datarepo query <catalog.duckdb> <sql>        run one read-only query against a catalog
+    datarepo mcp --catalog <catalog.duckdb>      serve one catalog to an agent over stdio
 
 Exit codes are meant to be usable from the pipeline that calls this: 0 success, 1 a refusal or
 failure the operator must act on, 2 bad usage.
@@ -301,6 +302,51 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    from .mcp import TOOL_SPECS, CatalogServer, install, installed_entries, serve  # noqa: PLC0415
+
+    config = Path(args.config) if args.config else None
+    if args.list:
+        entries = installed_entries(config)
+        if not entries:
+            print("no datarepo MCP server is registered")
+            return 0
+        for name, entry in sorted(entries.items()):
+            print(f"{name}  {entry.get('command')} {' '.join(entry.get('args') or [])}")
+        return 0
+
+    if not args.catalog:
+        print("datarepo mcp: --catalog is required (D13: one catalog, by explicit path)", file=sys.stderr)
+        return 2
+
+    if args.install:
+        result = install(args.catalog, name=args.name, config=config, force=args.force)
+        print(f"{result['action']}  {result['name']} in {result['config']}")
+        print(f"  command  {result['entry']['command']} {' '.join(result['entry']['args'])}")
+        print(f"  tools    {', '.join(spec['name'] for spec in TOOL_SPECS)}")
+        if result["action"] != "unchanged":
+            print("  restart Claude Code to pick it up")
+        return 0
+
+    if args.check:
+        # Open the catalog and answer one question through the tools, without the SDK. This is what
+        # tells an operator the failure is the SDK or the config rather than the catalog.
+        with CatalogServer(args.catalog) as server:
+            overview = server.describe()
+            print(f"catalog  {server.box.path}")
+            print(f"  id       {server.identity.catalog_id}")
+            print(f"  built    {server.identity.built_utc} by {server.identity.builder} "
+                  f"{server.identity.builder_version}")
+            for row in overview["datasets"]:
+                print(f"  dataset  {row['dataset_id']:<12} {row['n_psms_1pct']:>9,} PSMs at 1%")
+            print(f"  tools    {', '.join(spec['name'] for spec in TOOL_SPECS)}")
+            print(f"  empty    {len(overview['tables_empty'])} table(s) present with no rows")
+        return 0
+
+    serve(args.catalog, name=args.name)
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"datarepo {__version__}  schema {SCHEMA_VERSION}")
     ok = True
@@ -328,6 +374,28 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - the message is the point
         print(f"  pymzlib          UNAVAILABLE: {exc}")
         ok = False
+
+    # The MCP half. Neither line can make `doctor` fail: ingest does not need the SDK, and a
+    # machine that ingests but does not serve is a normal machine (D8 -- aging hosts, we ship).
+    try:
+        import mcp  # noqa: PLC0415
+
+        print(f"  mcp SDK          {getattr(mcp, '__version__', 'installed')}")
+    except ImportError:
+        print("  mcp SDK          not installed (`pip install 'datarepo[mcp]'` to serve a catalog)")
+    from .mcp import claude_config_path, installed_entries  # noqa: PLC0415
+
+    entries = installed_entries()
+    if entries:
+        for name, entry in sorted(entries.items()):
+            args_ = entry.get("args") or []
+            catalog = args_[args_.index("--catalog") + 1] if "--catalog" in args_ else "?"
+            served = Path(catalog).is_file()
+            print(f"  mcp registered   {name} -> {catalog}{'' if served else '  (MISSING)'}")
+    else:
+        print(f"  mcp registered   no (`datarepo mcp --catalog <path> --install`)")
+        print(f"                   config would be {claude_config_path()}")
+
     print("ready" if ok else "not ready to ingest")
     return 0 if ok else 1
 
@@ -408,6 +476,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=("table", "tsv", "json"), default="table")
     p.add_argument("--limit", type=int, default=50, help="row cap; 0 for no cap")
     p.set_defaults(func=cmd_query)
+
+    p = sub.add_parser("mcp", help="serve one catalog to an agent over stdio (MCP)")
+    p.add_argument("--catalog", help="the catalog .duckdb file to serve; never auto-discovered")
+    p.add_argument("--install", action="store_true", help="register it with Claude Code and exit")
+    p.add_argument("--list", action="store_true", help="show the datarepo servers already registered")
+    p.add_argument("--check", action="store_true", help="open the catalog and report, without serving")
+    p.add_argument("--name", default="datarepo", help="server name, for registering several catalogs")
+    p.add_argument("--config", help="MCP config to write; default is the Claude Code user config")
+    p.add_argument("--force", action="store_true", help="repoint an entry of that name at this catalog")
+    p.set_defaults(func=cmd_mcp)
 
     p = sub.add_parser("doctor", help="check this machine can ingest")
     p.set_defaults(func=cmd_doctor)

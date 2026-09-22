@@ -53,8 +53,9 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       # `.[readers]` pulls pyMzLib from PyPI, where it is the `mzlib` distribution. Its wheels are
       # per-platform and carry the mzLib bridge, so the end-to-end ingest tests run here rather
-      # than skipping, and nothing has to set PYMZLIB_BRIDGE.
-      - run: pip install -e .[readers] -r requirements-dev.txt
+      # than skipping, and nothing has to set PYMZLIB_BRIDGE. `.[mcp]` pulls the MCP SDK, so
+      # `datarepo mcp` is exercised here rather than only by hand.
+      - run: pip install -e .[readers,mcp] -r requirements-dev.txt
 
       - name: Generated Arrow schemas are up to date
         run: python tools/build_tables.py --check
@@ -80,3 +81,11 @@ jobs:
           datarepo catalog "$RUNNER_TEMP/catalog.duckdb"
           datarepo query "$RUNNER_TEMP/catalog.duckdb" \
             "SELECT dataset_id, n_runs, n_psms_1pct FROM dataset_overview"
+
+      # The MCP server opens that same catalog and answers through the tools an agent would
+      # call. `--check` does it without the transport, so a failure here is the catalog or the
+      # tools, never the stdio plumbing.
+      - name: The MCP server serves the catalog it was built from
+        run: |
+          datarepo mcp --catalog "$RUNNER_TEMP/catalog.duckdb" --check
+          datarepo mcp --list

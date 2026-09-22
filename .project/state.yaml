@@ -174,14 +174,18 @@ decisions:
 
 gaps:
   - >-
-    G1 Framework. Steps 1 (ingest) and 2 (build) are BUILT and locked as D9/D10. Steps 3-6 were
-    GRILLED 2026-09-21 and their choices locked as D12-D18: step 3 is a local stdio MCP server with
-    three tools grown against aging's benchmark, answers carry their catalog_id, the sandbox is
-    staged, the done bar is zero silently-wrong answers, and the no-server half of 4-5 comes next.
-    Still open inside the framework: the REST API and the Docker Compose package are deferred
-    pending N1/G9 and evidence of a human who wants REST (D16), and FRAMEWORK.md itself still reads
-    as a v0 proposal in places - section 7 item 2 recommends "private until the first paper", which
-    D2 overrode on day one.
+    G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
+    Step 3 shipped in datarepo 0.10.0 on 2026-09-22: `datarepo mcp --catalog <path>` with
+    `--install`/`--check`/`--list`, three tools (`datarepo_describe`, `datarepo_search`,
+    `datarepo_sql`), every result carrying its `catalog_id` and the bundles it drew on, and D14's
+    stage-one sandbox with each of its assumptions turned into a test. Proven end to end over real
+    stdio against the live three-dataset catalog with the mcp 2.2.0 SDK. What step 3 has NOT had is
+    aging's benchmark run against it (G35), so D15's bar is a design property rather than a
+    measurement. Steps 4-6 were GRILLED 2026-09-21 and locked as D16-D18; the no-server half of 4-5
+    (`datarepo site`) is next. Still open inside the framework: the REST API and the Docker Compose
+    package are deferred pending N1/G9 and evidence of a human who wants REST (D16), and
+    FRAMEWORK.md itself still reads as a v0 proposal in places - section 7 item 2 recommends
+    "private until the first paper", which D2 overrode on day one.
   - "G5 Step 0 question set: OWNED BY AGING (D6). READY 2026-09-19 (aging 003): aging/design/QUESTIONS.md v0.3, 168 questions, top 10 = K1 D2 O1 D1 T2 N1 M1 C1 G1 J16. Read it from trishorts/aging master; never copy it. MAPPED 2026-09-19 in design/SCHEMA_COVERAGE.md: 70 answerable at ingest, 94 waiting on a producer, 2 no home (J12, P2), 2 out of v1. Re-map when QUESTIONS.md or the schema changes."
   - "G11 Tables aging 003 routed to dataRepo. OWN: R2 release/changelog. STORE (aging-produced): R1 census, R3 dataset axes (+ enrichment, labelling), R8 reference panels, R9 clock model. STORE (MetaMorpheus-produced): R7 PTM stoichiometry, R16 glycopeptides (compositions, not structures, J9), R7b proteoform inference with confidence (no top-down, J16). All drafted in schema v0; producers' column names still to confirm."
   - "G10 Genericity (U5 in design/OPEN_QUESTIONS.md): proposal = generic core schema + a pluggable study layer (aging supplies age_effect, organelle_age_summary, sample age columns). Not yet confirmed."
@@ -261,6 +265,28 @@ gaps:
     does not parse the mod file's PP line, so `_site_type` classifies N-terminal placements only and
     a C-terminal one stays `residue`. Guessing would move existing ids on no evidence. aging has the
     corpus; asked in 025 section 3.
+  - >-
+    G34 `catalog_id` hashes `__version__`, so a release that cannot touch a catalog still re-ids
+    every catalog. 0.10.0 is the first clean instance: it adds an MCP server and changes nothing
+    `build` writes, and every catalog built from the same bundles gets a new id. This is the G29
+    shape one level out - one version doing two jobs - and it is the mirror of the decision that
+    kept `__version__` OUT of the bundle hash. It is NOT obviously a defect: a catalog is derived
+    and disposable (D10), so the cost is a rebuild rather than a broken citation, and hashing the
+    builder's version is a conservative over-approximation that cannot be wrong in the dangerous
+    direction. But it means `catalog_id` stability says less than it looks like it says, and that
+    should be aging's call rather than ours because they are the ones citing it. Options: (a) leave
+    it and document what the id does and does not promise; (b) drop `__version__` and let
+    `CATALOG_VERSION` carry the builder, which needs a CATALOG_VERSION bump of its own and makes
+    every future `build` change a deliberate decision, exactly as `INGESTER_VERSION` does. Asked as
+    U10 with (a) as the default. Do not change it without a thread.
+  - >-
+    G35 The benchmark has not been run against the MCP server. D15's bar - zero silently-wrong
+    answers, right when the data can answer and 'no data' when it cannot - is asserted by 84 tests
+    on our own fixtures and by one end-to-end pass against the live three-dataset catalog, neither
+    of which is aging's question set. The harness is ours and iteration is fast; the QUESTIONS are
+    aging's master and are read, never copied (G5/D6), and the score goes to them in a thread
+    rather than being claimed here. Asked as thread 031. Until it runs, 'zero silently-wrong
+    answers' is a design property we built for, not a measurement we have.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

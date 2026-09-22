@@ -26,6 +26,11 @@ dependencies = [
 # the wheel is ~62 MB and `build`, `catalog` and `query` never read a producer file.
 readers = ["mzlib>=0.1.1"]
 
+# The MCP SDK, for `datarepo mcp` (D12). Optional for the same reason `readers` is: `ingest`,
+# `build` and `query` never touch it, and the core stays at three dependencies. `serve()` accepts
+# both the 1.x `FastMCP` and the 2.x `MCPServer` it was renamed to, so this is not pinned.
+mcp = ["mcp>=1.2"]
+
 [project.scripts]
 datarepo = "datarepo.cli:main"
 
