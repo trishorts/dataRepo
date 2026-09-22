@@ -478,7 +478,12 @@ gaps:
     Also: go v1 ships in three layers and the third is one column in OUR schema -- we are a design
     stakeholder, not only a consumer.
   - >-
-    G40 NOTHING STOPS A HUMAN AND A MOUSE AGE EFFECT BEING POOLED. `AgeEffect` has 29 columns and
+    G40 CLOSED 2026-09-22 in datarepo 0.14.0 (commit 4a108d6, aging study layer 0.2.0,
+    STUDY_INGESTER_VERSION 0.3.0), on aging's rulings in their 039/040: `age_effects.organism` and
+    `age_effects.age_centre_years` required, `age_effect_meta.organism` required and FIRST in the
+    key, beta documented per decade within one organism (DEF-AGE-EFFECT v1.1 / -META v1.2).
+    `age_effect_refusals` got no organism column; offered to aging in 041 section 1. Original text:
+    NOTHING STOPS A HUMAN AND A MOUSE AGE EFFECT BEING POOLED. `AgeEffect` has 29 columns and
     `AgeEffectMeta` 22, and **organism is in neither** -- while `age_effect_meta` exists precisely
     to pool across datasets, stratified on `tissue`, `acquisition` and `quant_method`. Two effects
     for one feature from different animals would pool into a meta-estimate with `n_datasets = 2`
@@ -499,7 +504,10 @@ gaps:
     qualifying human datasets in -- but the cheapest moment to decide what beta means for a mouse
     is before a mouse beta exists, which is the `ptm_stoichiometry`-corrected-at-0-rows argument.
   - >-
-    G41 `age_mappings` was designed for the cross-species problem and is wired to nothing. The
+    G41 OWNER SETTLED 2026-09-22 by aging 039: `age_mappings` is aging's (their R4, stage 7), an
+    analysis choice and not sample metadata, and they will publish no single scalar conversion.
+    Schema text updated in 0.14.0. Still open: the table has no definition and B6 is not re-mapped.
+    Original text: `age_mappings` was designed for the cross-species problem and is wired to nothing. The
     table carries `organism`, `age_from`, `age_to`, `age_unit`, `life_stage`,
     `human_equivalent_years` -- exactly what G40 needs -- and holds 0 rows, is referenced by no
     view, and is mentioned in no thread before 038. Meanwhile aging's benchmark B6 ('for mouse
@@ -549,7 +557,10 @@ gaps:
     `INGESTER_VERSION` bump. NOT urgent -- no view or benchmark question reads decoy rows -- but
     it is a lie sitting in a column whose whole job is to be the verbatim species evidence.
   - >-
-    G45 aging's serving catalog is stale and they have not been told. Measured 2026-09-22:
+    G45 TOLD in thread 041 section 2 (2026-09-22); the rebuild is aging's. Still stale at close-out:
+    the `datarepo` MCP server registered in both folders reads this file, so answers from it are
+    pre-0.13.0 data until they rebuild. Original text: aging's serving catalog is stale and they
+    have not been told. Measured 2026-09-22:
     `F:/aging_data/repo/catalog.duckdb` holds 4 datasets on builder 0.11.0, built 07:20, while the
     store holds 9 bundles ingested 09:12-09:21 on 0.13.0 with entirely different ids
     (PXD023381 is `64ea541b11d57f4d` in the catalog and `1600ae76b313a561` in the store). So
@@ -608,6 +619,20 @@ gaps:
     PXD036557 -- never saw this variant. Fix is probably first-non-null-wins rather than
     first-row-wins, but DO NOT write it until the ERVK-6 discrepancy is explained: a fix built on a
     mechanism we could not reproduce is the weakest evidence there is.
+  - >-
+    G49 ptmQtl (new consumer, 2026-09-22, our 001) cannot run on the corpus, and two of our shapes
+    may be wrong for it. Measured on catalog f8fc910cce116fbe: 0 of 162 samples carry ANY trait
+    (sex, part, cell type, disease, condition, individual, timepoint, age), 8 of 9 datasets have no
+    SDRF, and 9 of 9 have no design file, so FlashLFQ values are un-normalized per-run. (a)
+    `ptm_stoichiometry` is per SAMPLE GROUP (pooled covering PSMs), which gives a regression on a
+    continuous trait one point per group -- asked as REQ-PTMQTL-1; a per-sample occupancy is a
+    different measurement and QuantProject's to define. (b) No table has a PAIR grain for a
+    PTM-PTM co-occurrence result, and `ptm_site_id` is dataset-scoped, so there is no cross-dataset
+    site key for `age_effect_meta` either (REQ-PTMQTL-5). Also flagged to them: the site-level
+    quantity is QuantProject's DEF-OCC-*, not theirs to redefine (REQ-PTMQTL-2); artefact vs
+    biological modification classification has no owner (REQ-PTMQTL-3). Context: unenriched
+    corpus, 1,396 level-1 phospho residue sites in total; 309 peptidoforms carry two or more
+    non-artefact mods. Default: build nothing until ptmQtl describe one real row of each result.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

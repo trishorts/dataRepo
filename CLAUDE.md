@@ -6,57 +6,32 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest, build, the study layer and **FRAMEWORK step 3, the MCP server**, are all
-  done. Code is datarepo **0.13.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.9.0**,
-  `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**. **aging have already
-  re-ingested on 0.13.0** (their 037): 0 speciesless proteins in 97,731, so the collapsed-column
-  fix is confirmed on their data and **nothing is owed to them**. Their unattended batch keeps
-  adding datasets, so the catalog on F: grows without warning -- re-read `catalog_id` rather than
-  trusting any number quoted here.
-  **First thing: run the thread checker** (command below). **TEN peers**, all opened or active on
-  2026-09-22 (D21): `aging` (037/038 sent; they re-ingested on 0.13.0, 0 speciesless in 97,731),
-  `go` (**003 sent -- asks DATAREPO-28/29/30**), `sdrf` (**004 sent -- asks DATAREPO-31/32**),
-  `pyMzLib` (**002 sent -- the razor question, DATAREPO-28**), `QuantProject`, `pride`, `qc`,
-  `pep`, `phred` (001 sent to each, no reply yet), and **`logs`** -- new, cross-species
-  orthology; 001/003 sent and **their 004 and 005 are UNREAD -- we owe 006**, asking REQ-DATAREPO-4/5/6. Their 002 produced G46, G47 and a rewrite of G36,
-  and our 003 answered REQ-DATAREPO-1/2/3: the corpus is **100% UniProt XML, one sha256 across all
-  nine**, 100% UniProt accessions with **zero RefSeq**, and bundles retain database name + checksum.
-  That disproved their guess about our disagreeing gene names and surfaced **G48**. Expect crossed
-  numbers -- 037 and sdrf 002 both crossed. **MetaMorpheus is NOT /project-managed** (it is the
-  upstream source clone), so the collapsed-column documentation note still has no route; mzLib is
-  reached through pyMzLib by D1.
-  Next, in order:
-  (1) **Build what go 003 settled, and do NOT build `accession_is_leading` (G43).** go ruled
-  REQ-GO-5 dead (*trust D1-D22, not REQ-GO-2..10*) and their **D22** makes `accession_used`
-  set-valued, so we expand over it and the broadcast problem is gone. Ruled and ready to build:
-  `inherited`/`propagated` as nullable booleans, `organelle_label` renamed to `organelle_category`
-  and nullable, subcategory stored WITH its `mitochondrion:inner_membrane` prefix, and three
-  version fields (`version` = organelle map, `ontology_release`, `output_format_version`). **Held
-  pending DATAREPO-29/30**: whether categories live in a term-keyed table -- they are a function of
-  `(go_id, map_version)` alone, so repeating them per protein stores one fact tens of thousands of
-  times. **G43 is the trap**: MetaMorpheus exposes no razor protein and sorts its accession list
-  alphabetically, so that column would assert what the data never said.
-  (2) **G40 -- add organism to `AgeEffect` and `AgeEffectMeta`, or enforce single-organism meta.**
-  Ours regardless of aging's answer to 038. Nothing currently stops a human and a mouse effect
-  pooling into one meta-estimate.
-  (3) **G42 -- `samples` cannot tell `not available` from never-asked**, found answering
-  SDRF-DR1 and owed to sdrf in 004 §3. Carry the deposit's verbatim cell into
-  `sample_characteristics` so absence and a reserved word stop sharing NULL. And **chase
-  DATAREPO-31**: sdrf can name the **153** accessions (of 1,203) that carry a real donor age,
-  aging's batch is selecting ~160 datasets without reference to them, and 0 of the 9 searched so
-  far carry any age. That list is worth more than anything else queued here.
-  (4) **G35: do NOT claim D15's bar.** Measured twice; each round the benchmark improves while the
-  red team breaks the previous round's fix (D20 is the worst instance). 0.12.0 and 0.13.0 are
-  unverified, and the reviews have a blind spot: **all four agents reasoned about the catalog while
-  the collapsed-column defect lived upstream in a producer file none could read.** A re-run should
-  point at least one agent at `F:/aging_data/<run>/<PXD>/04_search/`.
-  (5) **G32**, `age_effect_meta.feature_id` via the membership-join view plus `n_source_groups`,
-  whose description must carry the 1.02-1.05x inflation and the perfect-correlation clause IN THE
-  COLUMN'S OWN TEXT.
-  (6) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
-  producer -- never one written against a shape neither side has queried.
-  (7) **`datarepo site` (D16)**; then **G33/G26/G36** (one `REQ-PYMZ` shape, asked as pyMzLib 001);
-  then QPX pin (G13). **N1/G9 goes to the next NCEMS meeting regardless.** **D1-D21 locked.**
+- **Pick up at:** ingest, build, the study layer and the MCP server (FRAMEWORK step 3) are all
+  done. Code is datarepo **0.14.0**, core schema **0.0.7**, aging study layer **0.2.0**,
+  `bundle.INGESTER_VERSION` **0.9.0**, `study.STUDY_INGESTER_VERSION` **0.3.0**,
+  `catalog.CATALOG_VERSION` **4**. **0.14.0 (`4a108d6`) shipped G40**: `age_effects.organism` and
+  `age_effects.age_centre_years` required, and `age_effect_meta.organism` required and FIRST in the
+  key. Beta is **per decade within one organism** (aging 040 corrected their own 039). 0.14.0 re-ids
+  no search bundle, so **aging owe no re-ingest**.
+  **First thing: run the thread checker** (command below). **ELEVEN peers and all of them owe us;
+  we owe nothing** (as of the 2026-09-22 close). Most likely to land first: **`ptmQtl` 002** (asked
+  REQ-PTMQTL-1..5 in our 001), **`logs` 010** (answered REQ-DATAREPO-4..7 in 009) and **`aging` 042**
+  (041 told them G40 shipped and that their serving catalog is stale).
+  Next, in order (the detail is in RESUME's "Pick up at"):
+  (1) **Read ptmQtl 002.** Our 001 claimed two defects in our own shapes: `ptm_stoichiometry` is
+  per SAMPLE GROUP, the wrong grain for a trait regression (G17 / REQ-PTMQTL-1), and **no table has
+  a PAIR grain** for co-occurrence (REQ-PTMQTL-5). Tracked as **G49**. Build nothing until they
+  describe one real row. ptmQtl has **no git remote**, so its mirrors are committed locally only.
+  (2) **G48**: explain the stored `ERVK-6` for `P63135` before any fix. **Never back-fill
+  `Protein.gene` from logs' output.**
+  (3) **Chase DATAREPO-31** (sdrf's 153 age-bearing accessions). Two consumers now need it: 0 of
+  162 samples carry any trait.
+  (4) **Build what go 003 settled, and do NOT build `accession_is_leading` (G43)**; the term-keyed
+  categories table is held pending DATAREPO-29/30.
+  (5) **G42** verbatim SDRF cells into `sample_characteristics`. (6) **G44** rides the next
+  `INGESTER_VERSION` bump. (7) **G35: do NOT claim D15's bar**; point a re-run at
+  `F:/aging_data/<run>/<PXD>/04_search/`. (8) G32, G46, `datarepo site` (D16), G33/G26/G36, QPX pin
+  (G13). **N1/G9 goes to the next NCEMS meeting regardless.** **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -112,8 +87,8 @@ This folder is a `/project`-managed research project. **You are de facto working
   not pushed, they are blocked and the thread is a lie. Commit and push first, then say so, and
   quote the sha.
 - **Thread messages are never edited after posting.** Put a message in both `aging/design/threads/dataRepo/` and `design/threads/aging/`, commit each copy alone in its own repo, and push aging.
-- **TEN thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`,
-  `pride`, `qc`, `pep`, `phred`, `logs` -- each under `design/threads/<peer>/` with a mirror in that
+- **ELEVEN thread peers now, not one** (D21): `aging`, `go`, `sdrf`, `pyMzLib`, `QuantProject`,
+  `pride`, `qc`, `pep`, `phred`, `logs`, `ptmQtl` -- each under `design/threads/<peer>/` with a mirror in that
   project's `design/threads/dataRepo/`. Until 2026-09-22 everything routed through aging, and a
   proxy loses the reasoning. **Ask the owner directly and offer a measurement back** -- we ingest
   at corpus scale, so a count takes minutes and a producer guessing at a distribution we can query
@@ -155,6 +130,20 @@ This folder is a `/project`-managed research project. **You are de facto working
   The check is one line (`a == sorted(a)`); the column would have been `Protein.organism` again,
   except undetectable -- a human accession on bovine albumin eventually looks odd, alphabetical
   order never does. G43, open as DATAREPO-28 to go and pyMzLib.
+- **The `datarepo` MCP server in this folder reads aging's SERVING catalog, which can be stale.**
+  At the 2026-09-22 close, `F:/aging_data/repo/catalog.duckdb` was still the 4-dataset 0.11.0 build
+  while the store held 9 bundles on 0.13.0 (G45). So an answer from the MCP tools describes data
+  that no longer exists. Check `catalog_id` and `built_by` in any `describe` answer. For
+  measurements, build a scratch catalog from the store and **name the PXDs**, because a bare
+  `datarepo build <manifest>` refuses on the first manifest dataset with no bundle:
+  `datarepo build E:/CodeReview/aging/instance/manifest.yaml $(ls F:/aging_data/repo/store) --store F:/aging_data/repo/store --latest --out <scratch>/cat.duckdb`.
+  Never overwrite aging's serving file yourself.
+- **UniProt XML's Ensembl cross-references include ALT-haplotype and patch genes.** Counting
+  distinct ENSG per accession in the search XML gives **87.59%** single-gene. The primary-assembly
+  truth is ~99.6%: `P43628` (KIR) carries 24 ENSGs and 1 GeneID. NCBI `GeneID` gives 0.47%
+  multi-gene and keeps the genuine cases (the histones). logs hit the same trap in Ensembl's own
+  dumps (their 007). Any per-gene count over that field needs GeneID or a primary-assembly
+  restriction.
 - **Findings come from trying to FILL a thing, not from reviewing it.** Everything found on
   2026-09-22: the razor artifact came from going to write the column; G42 from checking a mapping we
   expected to survive; G44 and aging's stale catalog from building a catalog for an unrelated

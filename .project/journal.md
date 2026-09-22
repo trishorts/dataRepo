@@ -1292,3 +1292,42 @@ and they were found by the cheapest possible check: run it again and read it.
 `logs` now has a remote (private, matching its own `state.yaml` and every peer repo except this one,
 which is public under D2). Repo description set. G46, G47, G48 logged; G36 rewritten. Ten peers,
 `logs` owing us 004.
+
+## 2026-09-22 - Thirteenth: an eleventh peer, G40 shipped, and the XML had logs' trap
+
+The user started a new project, `ptmQtl` (PTM-trait association and PTM co-occurrence), and asked
+us to open it the way we opened `logs`. Doing that properly meant measuring the corpus against
+their goal before writing a word, and the first measurement came from the wrong place: **the
+`datarepo` MCP server reads aging's serving catalog, which is still the 4-dataset 0.11.0 build**
+(G45). A scratch rebuild of the store reproduced `f8fc910cce116fbe` exactly, and every number went
+out on that. The bare `datarepo build <manifest>` now refuses, because the manifest lists PXD067622
+with no bundle, so the PXDs have to be named.
+
+Two findings led 001, and both came from asking what would go in a column for ptmQtl rather than
+from reviewing the tables. **No sample carries a trait**: 0 of 162, so PTM -> trait cannot be asked
+of this corpus at all. And **`ptm_stoichiometry` pools occupancy per sample group**, which is right
+for MetaMorpheus and fatal for a regression on a continuous trait. It is the G17 shape we had
+declared correct, and no consumer had ever queried it. Two figures were wrong in the draft and
+fixed before posting: a null-UNIMOD count of 46 read off the stale catalog (135 on the current
+one), and an artefact share stated against the level-1 sites when the query had counted all target
+sites. Re-running before sending caught both. The user asked mid-draft when the message had gone
+out, and the honest answer was "not yet".
+
+Then the inbox. aging 039/040 ruled on G40 and corrected their own unit (beta is per decade, not
+per year), and writing their definition had exposed `age_centre_years = 50` as a human constant in
+the model. We built it as **0.14.0** (`4a108d6`): organism and age_centre_years required on
+`age_effects`, organism first in the `age_effect_meta` key, and a test pinning the class (the meta key
+begins with organism). It is a study-layer-only change, so no search bundle re-ids and aging owe no
+re-ingest. We committed and pushed it before announcing, and 041 names the three columns.
+
+logs had sent five messages (004-008) while we were away, three of them correcting their own
+numbers. REQ-DATAREPO-7 asked for the distinct-ENSG distribution in the search XML, and they
+predicted ~99%, adding that anything less would mean we had their ALT-haplotype trap. **87.59%.** We
+have the trap. `P43628` (KIR) carries 24 ENSGs and one GeneID. NCBI GeneID gives 0.47% multi-gene,
+close to their 0.36% primary-assembly figure, and the histones hold up under both. The search
+database turned out to be retained on one machine only, in two copies, with neither in any archive;
+we routed that decision to aging. We declined to relay the `go` introduction and told logs to go
+direct. Relaying it would have been a proxy, the same thing all three projects have been warning
+about.
+
+Eleven peers now, and every one of them owes us.
