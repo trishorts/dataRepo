@@ -2,14 +2,14 @@
 
 <!-- BEGIN GENERATED -- render_resume.py owns this block; edit state.yaml, not here -->
 
-**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-21
+**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-22
 
 | | |
 |---|---|
-| Commits | 70 |
+| Commits | 78 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 18 |
-| Open gaps | 30 |
+| Locked decisions | 19 |
+| Open gaps | 34 |
 | Gate items skipped | 2 |
 
 <!-- END GENERATED -->
@@ -22,11 +22,59 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Where it stands (2026-09-21, seventh session)
+## Where it stands (2026-09-22, eighth session)
 
-The framework's section 7 decisions are **locked** (grill-me). Everything else in `design/FRAMEWORK.md` v0 is still a proposal.
+**FRAMEWORK steps 1, 2 and 3 are built.** `datarepo` **0.11.0**, schema **0.0.7**,
+`INGESTER_VERSION` **0.8.0**, `CATALOG_VERSION` **4**, `STUDY_INGESTER_VERSION` **0.2.0**.
+aging must re-ingest on 0.11.0: the ingester bump re-ids every bundle.
 
-**Locked:** D1 hosting (prototype local; NCEMS runs production) · D2 public from day one, no login · D3 CC BY 4.0 data, MIT code · D4 QPX-compatible superset · D5 human and rodent, DDA and DIA, LFQ and TMT (the table shape now, the ingesters when aging produces the data) · D6 aging owns the benchmark questions; dataRepo stays generic · D7 every open question goes in `design/OPEN_QUESTIONS.md` · **D8 this repo is code only; aging hosts the data instance** (bundles, releases, DOIs, the deployed service) · **D9 the ingest contract** (manifest-driven, content-addressed bundles, schema-generated columns, pyMzLib for producer formats, mandatory reconciliation and integrity checks) · **D10 the catalog contract** (manifest-driven again, derived and content-addressed, materialised tables, the producer's acceptance rule applied once as views, checks re-run before anything is served) · **D11 a release pins its bundles and the tool enforces it** (`build --release` requires a `--bundle` pin for every dataset and refuses `--latest`).
+**Locked:** D1 hosting - D11 release pinning as before, plus **D12-D18** (the MCP server's shape,
+grilled 2026-09-21) and **D19**, decided by measurement on 2026-09-22: **no fourth tool**, because
+a guard belongs on the path that cannot be avoided. See `.project/journal.md` for the reasoning.
+
+### The MCP server is built, and its done-bar is not met
+
+`datarepo mcp --catalog <path>` serves one catalog over stdio with three tools -- `describe`,
+`search`, `sql` -- each result carrying its `catalog_id` and the bundles it drew on (D13), inside
+D14's measured sandbox. Registered in both `E:/CodeReview/dataRepo` and `E:/CodeReview/aging`.
+Reference: `docs/mcp.md`.
+
+**D15's bar was measured on 2026-09-22 and FAILED.** Two agents were given the 0.10.0 server with
+its source withheld -- one answering aging's top 10 plus seven simpler questions, one trying to
+break it. Result: **5 answered, 5 correct 'no data', 7 near-misses, 0 outright wrong.** The agent
+never emitted a falsehood, but seven questions had a live path to one and it avoided them only by
+reading `describe` carefully first.
+
+Six of the seven were **one placement error**: every 'this table is empty, do not answer from it'
+guard lived in `describe` and `search`, the two tools an agent may skip, and `datarepo_sql` -- the
+tool that answers everything else -- had none of them. 0.11.0 moved the guards into `sql`'s
+envelope (`tables_touched`, `empty_tables`), validated provenance against `catalog_bundles` instead
+of trusting a column's name, added per-column non-null counts, and documented the derived layer.
+**All seven are fixed with a test each, and that is the weakest kind of evidence there is** -- each
+test was written against the failure that prompted it. A second pair of fresh agents is running.
+The measurement that counts is aging's (D6): they were asked for wrong answers, not a percentage.
+
+**What held under attack:** the sandbox, completely. ATTACH, `read_csv_auto`, `glob`,
+multi-statement, CREATE, COPY TO and INSTALL all refused; the watchdog fired and the connection
+survived; both caps flagged. No row of non-catalog data reached a result. The risk was entirely in
+the derived layer -- the part with no documentation.
+
+### Two ingest defects, found by agents pointed at the server
+
+**The peptidoform count.** `producer_counts` applied aging's PSM notch-resolution clause to
+peptidoforms, where MetaMorpheus does not. Its docstring said the clause 'costs nothing on
+peptidoforms' -- measured on the one dataset where it is 0, never re-run, and worth exactly 3 on
+each of the other two. PXD032202 therefore carried a `count_mismatch` finding **against a producer
+number it matched perfectly**, and the SQL view and the Python counter disagreed for three
+releases, which D10 says is impossible. The test asserting agreement checked PSMs only.
+
+**Contaminant species.** All 339 contaminant proteins read `NCBITaxon:9606` -- porcine trypsin,
+bovine albumin identified at q = 0 in all three datasets, horse cytochrome c, E. coli lacZ. The
+producer had been supplying the right species per accession all along. `Protein.organism` is now
+the taxon of the database an entry came from (NULL for contaminants and decoys) and
+`Protein.organism_name` carries the producer's string verbatim; no name-to-taxon mapping happens
+here (G36). The cause is the lesson: **`organism` was `required: true`, and a required column with
+no true value gets a false one.**
 
 ## 2026-09-20: the site key, and the study layer
 

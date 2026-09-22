@@ -172,6 +172,22 @@ decisions:
       decision here. New data may appear in a working catalog; it never enters a release anyone has
       cited, which is D11 and D13 holding one level further out.
 
+  - id: D19
+    date: 2026-09-22
+    text: >-
+      FRAMEWORK step 3 is BUILT (0.10.0) and MEASURED (0.11.0), and the measurement decided two
+      things D12 had left open. FIRST: there is NO FOURTH TOOL. The benchmark run found 7 of 17
+      questions with a live path to a confident falsehood, and six of the seven reduced to one
+      cause -- every 'this table is empty, do not answer from it' guard lived in `describe` and
+      `search`, the two tools an agent may skip, and was absent from `datarepo_sql`, the tool that
+      answers everything else and the one `describe`'s own next-step block points at. The fix is a
+      field in tool 3's envelope (`tables_touched`, `empty_tables`), not a tool 4, and the
+      reasoning generalises: **a tool has to be chosen, an envelope field cannot be skipped.** A
+      guard belongs on the path that cannot be avoided, not on the path where it is easiest to
+      write. SECOND: D15's bar is a property of OUTPUT SHAPE, not of row correctness -- every fix
+      in 0.11.0 changes what a result SAYS about itself rather than what it contains, and the
+      tests assert shape. A fourth tool is still possible under D12 if aging's own run shows a
+      specific wrong answer an envelope cannot fix; nothing so far has.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -280,13 +296,36 @@ gaps:
     every future `build` change a deliberate decision, exactly as `INGESTER_VERSION` does. Asked as
     U10 with (a) as the default. Do not change it without a thread.
   - >-
-    G35 The benchmark has not been run against the MCP server. D15's bar - zero silently-wrong
-    answers, right when the data can answer and 'no data' when it cannot - is asserted by 84 tests
-    on our own fixtures and by one end-to-end pass against the live three-dataset catalog, neither
-    of which is aging's question set. The harness is ours and iteration is fast; the QUESTIONS are
-    aging's master and are read, never copied (G5/D6), and the score goes to them in a thread
-    rather than being claimed here. Asked as thread 031. Until it runs, 'zero silently-wrong
-    answers' is a design property we built for, not a measurement we have.
+    G35 D15's bar was MEASURED on 2026-09-22 and FAILED, then fixed in 0.11.0 and is NOT yet
+    re-verified. Two agents were given the 0.10.0 server with its source code withheld -- one
+    answering aging's top 10 plus seven simpler questions, one trying to break it. Result: 5
+    answered, 5 correctly refused as 'no data', **7 near-misses**, 0 outright wrong. The agent
+    never emitted a falsehood but avoided seven only by reading `describe` carefully first. All
+    seven are fixed and each has a test named for the wrong answer it prevents -- which is the
+    weakest kind of evidence there is, because every one of those tests was written against the
+    failure that prompted it. A second pair of agents is running against 0.11.0. **The measurement
+    that counts is aging's** (D6/G5): 032 section 3 asked them for the answers that came out
+    confidently wrong rather than for a percentage, and 034 repeated it. Until their run, the bar
+    is not claimed.
+  - >-
+    G36 Nobody owns the species-name to NCBITaxon map. MetaMorpheus names a contaminant entry's
+    species per accession -- `Bos taurus`, `Sus scrofa`, `Equus caballus`, `Escherichia coli
+    (strain K12)` -- and schema 0.0.7 stores it verbatim in `Protein.organism_name` while
+    `Protein.organism` holds the taxon only for entries from the searched proteome and NULL for
+    contaminants and decoys. Deliberately no mapping happens in dataRepo: a name-to-CURIE table is
+    a reference resource this project does not own (D1), and inventing a partial one is how the
+    original defect happened in reverse. Candidate `REQ-PYMZ` -- UniProt FASTA headers carry `OX=`,
+    so pyMzLib's loader may be able to hand us the taxon rather than the name, which would be the
+    same shape as G26's argument for asking the loader instead of parsing resources. It gets
+    urgent when aging's queue reaches mouse or rat (their 031 section 3): a human contaminant
+    panel in a rodent dataset would previously have been labelled with the rodent's taxon, which
+    INVERTS the species signal rather than flattening it.
+  - >-
+    DATAREPO-27 Does `aging:DEF-PEPTIDE-1PCT` carry a notch condition? Asked in thread 033 and
+    implemented on our default (it does not) in 0.11.0. `producer_counts` had applied the PSM
+    notch-resolution clause from aging 008 to peptidoforms as well; PXD032202's producer count of
+    21,771 equals the un-clause number exactly, so the clause does not belong there. If the
+    definition means something else, aging says so before re-ingesting.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

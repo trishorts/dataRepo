@@ -609,3 +609,101 @@ corrected it, and the pyMzLib project confirms wheels for win-x64, linux-x64, os
 that carry the bridge -- `pip install mzlib` works anywhere, and our own CI already installed it and
 ran the parser tests rather than skipping them. **The comment had outlived the condition it
 described**, which is the documentation version of the grain lesson.
+
+## 2026-09-22 - Eighth session: the MCP server shipped, and two agents took it apart
+
+Three releases. **0.10.0** built FRAMEWORK step 3 -- `datarepo mcp`, three tools, D14's sandbox.
+**0.11.0** fixed what two agents found when we pointed them at it. In between, the most useful
+hour of the day: not writing the server, but **handing it to somebody who had not written it.**
+
+### The thing worth remembering about the whole day
+
+We shipped 0.10.0 with a paragraph in thread 032 saying D15's bar was "a design property we built
+for, not a measurement we have". That hedge was written to be honest about an absence. Six hours
+later it was a measurement, and **it said no**: 7 of 17 benchmark questions had a live path to a
+confident falsehood. The hedge was right and it was also not enough -- we had built every guard we
+could think of and still shipped something that would have lied to a careful reader about seven
+questions. **The gap between "we designed for X" and "X holds" is not closed by designing harder.**
+It is closed by giving the thing to someone who will use it wrong.
+
+The cheapest instrument we have found for that is a subagent with the source code taken away. It
+cost two tool calls to set up.
+
+### The guard was on the wrong tools, and that is a shape, not a bug
+
+Six of the seven near-misses were one thing. Every "this table is empty, do not answer from it"
+guard lived in `describe` and `search`. **`datarepo_sql` had none of them** -- and `sql` is the tool
+that answers everything else, the one `describe`'s own "what to do next" block points at. A join
+over two empty tables returned `rows: []` and an envelope that said nothing, and "organelles do not
+age at measurably different rates" was one careless step away.
+
+We had written the guards. We had written good ones -- the agent called the text "genuinely the best
+I have seen in a data-access layer". We had put them where they were easy to write instead of where
+they could not be avoided. The benchmark agent's own sentence is the rule worth keeping:
+**a fourth tool would have to be chosen, and an envelope field cannot be skipped.** That settled
+D12's open question in the direction of not building anything, which is the best kind of answer.
+
+### Two ingest defects, and both were a measurement that stopped being true
+
+The agents were pointed at the server and found the **ingester**, which nobody was looking at.
+
+**The notch clause.** aging's 008 gave us a rule scoped to PSMs. We applied it to peptidoforms too,
+and wrote in the docstring that it "costs nothing on peptidoforms, where no accepted row is
+ambiguous". That was measured on PXD036557, where it is 0, and never re-run. On both larger
+datasets it costs exactly 3 -- so PXD032202 carried a `count_mismatch` finding against a producer
+number **it matched perfectly**, and PXD027318's finding stated a difference of 2 where the real one
+is 5, in the wrong direction. The SQL view never had the clause, so the two implementations of one
+rule disagreed for three releases, which D10 says is impossible. The test asserting it checked PSMs
+only.
+
+This is the same hazard as the `range(3e9)` probe we found the same day: **a measurement embedded in
+a comment, generalised past its evidence, with nothing that re-runs it.** aging's qualifier from
+their 031 is the sharp version -- the re-labelling is silent *because the number stays
+valid-looking*. 21,768 is not an implausible peptide count. Nothing about it invites a second look.
+
+**The contaminant species.** All 339 contaminant proteins read `NCBITaxon:9606` -- porcine trypsin,
+bovine albumin at q = 0 in all three datasets, horse cytochrome c, E. coli lacZ. MetaMorpheus had
+been handing us the right species per accession the whole time and we overwrote it with the
+dataset's organism, consulting the truth only as a fallback that could never fire. "No non-human
+proteins were identified" was a falsehood the tools fully supported.
+
+The cause is worth more than the fix. **`Protein.organism` was `required: true`.** A required column
+with no true value gets a false one -- there is nowhere else for it to go. We have now made the
+same discovery twice from opposite directions: `age_effect_refusals` exists because we gave a
+refused fit nowhere to write a null beta, and this exists because we gave a contaminant nowhere to
+write an unknown taxon. **Requiredness is a claim that a true value always exists.** It is worth
+asking that question explicitly every time, because the failure is not a crash, it is a lie.
+
+### What the sandbox taught, which is the opposite lesson
+
+It held under everything: ATTACH, `read_csv_auto`, `glob`, multi-statement, CREATE, COPY TO,
+INSTALL, the watchdog, both caps. Not one row of non-catalog data reached a result. The red team's
+summary is the useful part -- **"the remaining risk concentrates not in SQL and not in the sandbox,
+but in the derived layer"**: `protein_index`, `proteins`, the `_1pct` views. The tables `search`
+answers from, the ones an agent is steered to first, and the only ones with no column documentation
+at all, because they exist in no LinkML file and the generator could not see them.
+
+We built a generator specifically to stop descriptions drifting from columns, and then left the
+three most-used tables outside it. The fix was to put their prose beside the SQL that builds them
+with a test that fails on an undocumented one -- the `manifest.CONTENT_FIELDS` shape again, which
+is now the third place that pattern has earned its keep.
+
+### Told to aging while it was still broken
+
+Thread 033 went out **before** the fix was committed, which is the opposite of the rule we adopted
+the day before. It was right: they had started an unattended 60-dataset batch that morning, both
+defects needed an `INGESTER_VERSION` bump, and every dataset finished on 0.7.0 would need doing
+again. An hour of our tidiness would have cost them an hour of compute. **The commit-then-announce
+rule protects a claim of completion; it does not apply to a warning.** 033 said what was wrong, gave
+them the pause-or-continue decision explicitly, and made no claim to have fixed anything. 034
+carried the sha.
+
+### What is not done, and is not being claimed
+
+D15's bar is still unverified. Every near-miss has a test named for the wrong answer it prevents,
+and **a fix tested against the failure that prompted it is the weakest evidence there is.** A second
+pair of agents is running against 0.11.0 as this is written -- fresh, no knowledge that anything was
+fixed, and explicitly asked whether the added envelope fields helped or are ballast an agent will
+learn to skip. The measurement that actually counts is aging's, and 032 asked them for wrong
+answers rather than a score.
+

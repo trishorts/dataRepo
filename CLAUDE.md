@@ -6,36 +6,41 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest, build, the study layer **and its delivery path** are done. Code is
-  datarepo **0.9.0**, schema **0.0.6**, `bundle.INGESTER_VERSION` **0.7.0**,
+- **Pick up at:** ingest, build, the study layer and **FRAMEWORK step 3, the MCP server**, are all
+  done. Code is datarepo **0.11.0**, schema **0.0.7**, `bundle.INGESTER_VERSION` **0.8.0**,
   `study.STUDY_INGESTER_VERSION` **0.2.0**, `catalog.CATALOG_VERSION` **4**; aging's v0.1 stays as
-  released and is not being re-cut. **Nothing is outstanding in either direction** -- aging's 029
-  was answered by our 030, and they are running the 0.9.0 re-ingest. **First thing: run the thread
-  checker** (command below); aging move fast and answered three of our messages in one day.
+  released and is not being re-cut. **aging owes us three things** (threads 033/034): whether the
+  peptide rule really carries no notch condition (DATAREPO-27 -- we implemented our default),
+  whether they paused their unattended 60-dataset batch, and the benchmark run. **They must
+  re-ingest on 0.11.0** -- `INGESTER_VERSION` 0.8.0 re-ids every bundle. **First thing: run the
+  thread checker** (command below); aging move fast and answered three of our messages in one day.
   Next, in order:
-  (1) **Build the local MCP server -- FRAMEWORK step 3, decided as D12-D18 and blocked by nobody.**
-  `datarepo mcp --catalog <path>` as a CLI subcommand with a `--install` that writes the Claude Code
-  config; three tools only (`describe`, `search`, `sql`), a fourth added only where aging's
-  benchmark shows a specific wrong answer; every result carrying its `catalog_id`; the cheap sandbox
-  (`enable_external_access=false`, 1,000-row/50k-char caps, a 30 s `con.interrupt()` watchdog --
-  and note **`read_only=True` alone is NOT a sandbox**, it will `read_csv_auto` anything on disk).
-  Done means **zero silently-wrong answers** on aging's questions, read from their master and never
-  copied -- not a percentage.
-  (2) **`ptm_stoichiometry` has the right shape (G17) and no producer.** aging measured the R7 join
-  at 92.51% on three datasets and think the population belongs in our ingester. Shape first, then a
+  (1) **Verify D15, which is MEASURED and FAILED and then fixed but NOT re-verified (G35).** On
+  2026-09-22 two agents were given the 0.10.0 server with its source withheld: 5 answered, 5
+  correct 'no data', **7 near-misses**, 0 outright wrong. All seven are fixed in 0.11.0 with a test
+  each -- and a fix tested against the failure that prompted it is the weakest evidence there is.
+  Re-run with FRESH agents (the setup is two Agent calls plus
+  `scratchpad/ask.py`, which drives the real server over real stdio). Ask them explicitly whether
+  the added envelope fields help or are ballast. **The measurement that counts is aging's** (D6):
+  ask for the answers that came out confidently wrong, never a percentage.
+  (2) **G32**, `age_effect_meta.feature_id`, now fully specified and the cheapest it will ever be:
+  aging's 031 delivered `DEF-AGE-EFFECT-META v1.1` with the membership-join rule (identity is the
+  UniProt accession, joined through membership in `protein_accessions`, never the id string; for
+  `ptm_site` it is (accession, residue, position, chemistry) off `ptm_sites_by_chemistry`, not the
+  UNIMOD column) **and a new column `n_source_groups`** whose description must carry the
+  1.02-1.05x inflation and the perfect-correlation-by-construction clause IN THE COLUMN'S OWN TEXT.
+  A re-ingest is already owed, so this lands in the same bump instead of forcing a second.
+  (3) **`ptm_stoichiometry` has the right shape (G17) and no producer.** Shape first, then a
   producer -- do not write one against a shape neither side has queried.
-  (3) **G32**, the `age_effect_meta.feature_id` check, now buildable: DATAREPO-20(c) is answered --
-  identity is the **UniProt accession** and the join goes through **membership in
-  `protein_accessions`**, never the id string. Land it with the membership-join view, not as a bare
-  constraint.
-  (4) **Then the no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` generating dataset pages
-  with Bioschemas JSON-LD, `llms.txt` and Croissant, published by aging (D8). REST and Compose stay
+  (4) **The no-server half of FRAMEWORK 4-5 (D16)**: `datarepo site` generating dataset pages with
+  Bioschemas JSON-LD, `llms.txt` and Croissant, published by aging (D8). REST and Compose stay
   deferred. **N1/G9 -- does NCEMS host web services at all -- goes to the next meeting regardless;
   it is the long pole for D1.**
-  (5) **G33** the C-terminal safety net and **G26** the modification registry, both waiting on the
-  same `REQ-PYMZ`: ask mzLib's loader through pyMzLib rather than parsing its resource files. aging
-  tried three parses and two were confidently wrong.
-  (6) QPX pin (G13). **D1-D18 locked.**
+  (5) **G33** the C-terminal safety net, **G26** the modification registry and **G36** the
+  species-name-to-taxon map, all three the same `REQ-PYMZ` shape: ask mzLib's loader through
+  pyMzLib rather than parsing its resource files. aging tried three parses and two were
+  confidently wrong. G36 gets urgent when their queue reaches mouse or rat.
+  (6) QPX pin (G13). **D1-D19 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -99,6 +104,35 @@ This folder is a `/project`-managed research project. **You are de facto working
   aging had planned their own 007 and ours took it, which the checker resolved to `next=008`.
   Its DIVERGED check normalizes line endings, so CRLF/LF differences between the two copies are fine.
 
+- **A required column with no true value gets a false one.** `Protein.organism` was
+  `required: true`, so all 339 contaminant entries read `NCBITaxon:9606` -- porcine trypsin, bovine
+  albumin at q=0 in all three datasets, E. coli lacZ -- and "no non-human proteins were identified"
+  became a falsehood the tools fully supported. We have now found this twice from opposite
+  directions: `age_effect_refusals` exists because a refused fit had nowhere to write a null beta.
+  **`required: true` is a claim that a true value always exists.** Ask it explicitly, because the
+  failure is not a crash, it is a lie.
+- **A measurement written into a comment must be re-run, or it becomes a belief.** Two on one day.
+  `producer_counts` carried "it costs nothing on peptidoforms" -- true on the one dataset it was
+  measured on, worth exactly 3 rows on each of the other two, which made a `count_mismatch` finding
+  fire against a dataset that matched its producer perfectly. And D14's timeout probe,
+  `SELECT count(*) FROM range(3e9)`, is answered from metadata in half a second by DuckDB 1.5 --
+  the test still passed and had stopped testing anything. aging's qualifier (their 031) is the
+  sharp form: **the re-labelling is silent because the number stays valid-looking.**
+- **Put a guard on the path that cannot be avoided, not where it is easiest to write.** Every
+  "this table is empty, do not answer from it" guard lived in `describe` and `search`; `datarepo_sql`
+  had none, and `sql` answers everything else. That single placement error was six of seven
+  near-misses in the first benchmark run. The rule it produced is D19: **a tool has to be chosen,
+  an envelope field cannot be skipped.**
+- **Commit-then-announce protects a claim of completion; it does not apply to a warning.** Thread
+  033 went out with the defects undiagnosed-in-code and unfixed, because aging had started an
+  unattended 60-dataset batch that morning and both fixes needed an `INGESTER_VERSION` bump. An
+  hour of our tidiness would have cost them an hour of compute. Say what is wrong, hand them the
+  decision, claim nothing fixed, and send the sha separately.
+- **Hand the thing to someone who did not build it.** The cheapest instrument in this project is a
+  subagent given the tools and denied the source (`scratchpad/ask.py` drives the real server over
+  real stdio). Two of them found seven near-misses, two ingest defects nobody was looking at, and
+  settled D12's fourth-tool question -- in about an hour. **Designing harder does not close the gap
+  between "we built for X" and "X holds".**
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**
