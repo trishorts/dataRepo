@@ -520,3 +520,75 @@ def test_the_best_ambiguity_level_is_the_lowest_one_seen():
     assert _better_level(None, "3") == "3"
     assert _better_level("2A", None) == "2A"
     assert _better_level("2D", "unknown-level") == "2D"
+
+
+def test_a_collapsed_producer_column_is_broadcast_not_zipped():
+    """MetaMorpheus writes ONE organism when every protein on the row shares it.
+
+    `Accession = P60709|P63261` beside `Organism Name = Homo sapiens` is two proteins and one
+    species, not a missing one. Zipping positionally gave the first accession its species and the
+    rest an empty string -- 2,678 uniprot proteins, 4,523 decoys and 9 contaminants on aging's
+    four-dataset catalog, in the release whose whole point was handling species correctly. It was
+    nearly reported upstream as a MetaMorpheus defect before anyone read their file.
+    """
+    from datarepo.sources.identifications import protein_rows
+
+    rows_out = protein_rows(
+        [{
+            "accession": ["P60709|P63261"],
+            "gene_name": ["primary:ACTB|primary:ACTG1"],
+            "organism_name": ["Homo sapiens"],          # collapsed: one for two
+            "decoy_contam_target": ["T"],
+        }],
+        "PXD999999",
+        organism="NCBITaxon:9606",
+    )
+    by_acc = {r["protein_accession"]: r for r in rows_out}
+    assert by_acc["P60709"]["organism_name"] == "Homo sapiens"
+    assert by_acc["P63261"]["organism_name"] == "Homo sapiens", "the second accession lost it"
+    # The gene column was NOT collapsed here, so it still zips positionally.
+    assert by_acc["P60709"]["gene"] == "ACTB"
+    assert by_acc["P63261"]["gene"] == "ACTG1"
+
+
+def test_an_unalignable_column_gives_null_rather_than_the_wrong_value():
+    """Three accessions and two genes: the alignment is unknown and a guess would be a claim.
+
+    A null reads as "not recorded". A gene symbol on the wrong protein reads as a fact, and is the
+    kind of thing that gets quoted back as evidence.
+    """
+    from datarepo.sources.identifications import protein_rows
+
+    rows_out = protein_rows(
+        [{
+            "accession": ["P11111|P22222|P33333"],
+            "gene_name": ["primary:GENE1|primary:GENE2"],   # two for three -- unalignable
+            "organism_name": ["Homo sapiens"],
+            "decoy_contam_target": ["T"],
+        }],
+        "PXD999999",
+        organism="NCBITaxon:9606",
+    )
+    by_acc = {r["protein_accession"]: r for r in rows_out}
+    assert [by_acc[a]["gene"] for a in ("P11111", "P22222", "P33333")] == [None, None, None]
+    # The organism WAS alignable (one value, broadcast), so it survives.
+    assert all(by_acc[a]["organism_name"] == "Homo sapiens" for a in by_acc)
+
+
+def test_the_collapsed_case_reaches_contaminants_too():
+    """The seven contaminants that looked speciesless were this bug, not a producer gap."""
+    from datarepo.sources.identifications import protein_rows
+
+    rows_out = protein_rows(
+        [{
+            "accession": ["P02769|A2I7N2"],
+            "gene_name": ["primary:ALB|primary:SERPINA3-6"],
+            "organism_name": ["Bos taurus"],
+            "decoy_contam_target": ["C"],
+        }],
+        "PXD999999",
+        organism="NCBITaxon:9606",
+    )
+    by_acc = {r["protein_accession"]: r for r in rows_out}
+    assert by_acc["A2I7N2"]["organism_name"] == "Bos taurus"
+    assert by_acc["A2I7N2"]["organism"] is None  # still no taxon: contaminant panel

@@ -96,6 +96,40 @@ def _residue_starts(value: Any) -> list[int]:
     return [int(m.group(1)) for m in _RANGE.finditer("" if value is None else str(value))]
 
 
+def _per_accession(value: Any, count: int) -> list[str | None]:
+    """One value per accession from a `|`-joined producer cell, or None where it cannot be aligned.
+
+    **MetaMorpheus collapses a column to a single entry when every protein on the row shares it**,
+    while `Accession` keeps them all:
+
+        Accession     = P60709|P63261
+        Organism Name = Homo sapiens          <- one entry for two proteins, not a missing one
+
+    Zipping those positionally gives the first accession its species and every later one an empty
+    string. That is not hypothetical: it cost **2,678 uniprot proteins, 4,523 decoys and 9
+    contaminants** their species on aging's four-dataset catalog, in the release whose whole point
+    was to handle species correctly -- and it was nearly reported upstream as a MetaMorpheus defect
+    before anyone read their file. `Gene Name` collapses the same way, more rarely (62 rows in
+    60,000 against 2,062 for organism).
+
+    Three cases, and the third is the one worth arguing about:
+
+    * **counts match** -- zip positionally, which is what the producer means.
+    * **one entry, many accessions** -- broadcast it. The producer collapsed it *because* they
+      agree.
+    * **anything else** (`3 accessions, 2 genes`) -- **None for all of them.** The alignment is
+      genuinely unknown, and a positional guess would put a real gene symbol on the wrong protein.
+      A null reads as "not recorded"; a wrong gene reads as a fact. Where a guess and a null are
+      the choice, the null is the only one that cannot be quoted back as evidence.
+    """
+    parts = [p.strip() for p in str(value or "").split("|")]
+    if len(parts) == count:
+        return [p or None for p in parts]
+    if len(parts) == 1:
+        return [parts[0] or None] * count
+    return [None] * count
+
+
 def _accessions(value: Any) -> list[str]:
     text = "" if value is None else str(value)
     return [a.strip() for a in text.split("|") if a.strip()]
@@ -252,15 +286,16 @@ def protein_rows(
         status = columns.get("decoy_contam_target") or [""] * n
         for i in range(n):
             contaminant = _target_decoy(status[i]) == "contaminant"
-            gene_parts = str(genes[i] or "").split("|")
-            organism_parts = str(organisms[i] or "").split("|")
-            for j, acc in enumerate(_accessions(accessions[i])):
+            row_accessions = _accessions(accessions[i])
+            gene_parts = _per_accession(genes[i], len(row_accessions))
+            organism_parts = _per_accession(organisms[i], len(row_accessions))
+            for j, acc in enumerate(row_accessions):
                 if acc in out:
                     continue
-                gene = gene_parts[j] if j < len(gene_parts) else ""
                 # MetaMorpheus writes `primary:TUBA1B, synonym:TUBA3`; the primary name is enough.
+                gene = gene_parts[j] or ""
                 primary = gene.split(",")[0].replace("primary:", "").strip() or None
-                organism_name = (organism_parts[j] if j < len(organism_parts) else "").strip()
+                organism_name = (organism_parts[j] or "").strip()
                 source_db = _source_db(acc, contaminant)
                 out[acc] = {
                     "protein_accession": acc,
@@ -290,9 +325,14 @@ def add_group_proteins(
     """
     known = {row["protein_accession"] for row in proteins}
     for group in protein_groups:
-        genes = list(group.get("genes") or [])
+        accessions = list(group.get("protein_accessions") or [])
+        # Same alignment hazard as `protein_rows`: a group's gene list can be shorter than its
+        # accession list when the producer collapsed it, and a positional read then puts one
+        # protein's gene symbol on another.
+        genes = _per_accession("|".join(str(g or "") for g in (group.get("genes") or [])),
+                               len(accessions))
         contaminant = group.get("target_decoy") == "contaminant"
-        for j, acc in enumerate(group.get("protein_accessions") or []):
+        for j, acc in enumerate(accessions):
             if acc in known:
                 continue
             known.add(acc)
@@ -301,7 +341,7 @@ def add_group_proteins(
                 {
                     "protein_accession": acc,
                     "canonical_accession": acc.split("-")[0] if "-" in acc else acc,
-                    "gene": genes[j] if j < len(genes) else None,
+                    "gene": genes[j],
                     # The group table carries no per-accession species name, so these rows get the
                     # taxon where it is safe and a null `organism_name` either way -- never a
                     # species guessed from the group's other members.
