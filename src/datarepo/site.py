@@ -1118,11 +1118,11 @@ def build_site(
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
     result.files = sorted(files)
-    (out / SITE_MARKER).write_text(
-        json.dumps({"catalog_id": meta["catalog_id"], "generator": f"datarepo {__version__}",
-                    "files": result.files}, indent=1) + "\n",
-        encoding="utf-8",
-    )
+    with open(out / SITE_MARKER, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(
+            json.dumps({"catalog_id": meta["catalog_id"], "generator": f"datarepo {__version__}",
+                        "files": result.files}, indent=1) + "\n"
+        )
     return result
 
 
