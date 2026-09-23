@@ -283,6 +283,32 @@ decisions:
       them had no owner. REVERSES our logs 013 answer (option b, now a). The full split, the seams
       and the sign-off table are in design/CHARTER.md; it is not in force until all eight parties
       (aging, go, logs, ptmQtl, phred, sdrf, QuantProject, pyMzLib) sign their rows.
+
+  - id: D25
+    date: 2026-09-23
+    text: >-
+      The public site (FRAMEWORK step 4a, D16/D17) is BUILT (`datarepo site`, 0.17.0) and PUBLISHED as a
+      preview on an orphan `gh-pages` branch of the PUBLIC `trishorts/aging-pipeline`, at
+      https://trishorts.github.io/aging-pipeline/ (user decision). Why there: the user wanted it "under
+      the umbrella of the aging project", `trishorts/aging` is PRIVATE, and free Pages needs a public
+      repo; a new repo was the rejected alternative (one more thing to track). Why now, before the
+      re-ingest: D2 (public from day one), with a `--notice` banner on every page and on llms.txt saying
+      the numbers will change -- removed after aging's re-ingest and rebuild. The front page's
+      overview is aging's text (`--about`, drafted from aging-pipeline's README, handed over in thread
+      051), not dataRepo's. Regenerating after each ingest is asked of aging as DATAREPO-38; the default
+      is that we regenerate by hand when they say a rebuild is done.
+
+  - id: D26
+    date: 2026-09-23
+    text: >-
+      A reader change whose output is PROVEN identical does not bump INGESTER_VERSION. 0.17.2 reads a
+      `.psmtsv` over 512 MiB in limit/offset windows (DATAREPO-37). The hash rule exists so that
+      different rows never share a bundle id; here the rows are the same by measurement (PXD067622,
+      966,134 records, all 73 columns identical windowed vs whole; fixture forced into 7-record
+      windows identical) and every file that ingested before takes the unchanged single-read path.
+      Bumping would have re-identified every bundle in the middle of aging's re-ingest for zero
+      change in any row. The test stays one sentence -- does this change what the rows say -- and
+      "proven not" is an answer, "probably not" is not.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -293,7 +319,7 @@ gaps:
     stdio against the live three-dataset catalog with the mcp 2.2.0 SDK. What step 3 has NOT had is
     aging's benchmark run against it (G35), so D15's bar is a design property rather than a
     measurement. Steps 4-6 were GRILLED 2026-09-21 and locked as D16-D18; the no-server half of 4-5
-    (`datarepo site`) is next. Still open inside the framework: the REST API and the Docker Compose
+    (`datarepo site`) was BUILT in 0.17.0 and is LIVE as a preview (D25). Still open inside the framework: the REST API and the Docker Compose
     package are deferred pending N1/G9 and evidence of a human who wants REST (D16), and
     FRAMEWORK.md itself still reads as a v0 proposal in places - section 7 item 2 recommends
     "private until the first paper", which D2 overrode on day one.
@@ -710,6 +736,24 @@ gaps:
     phred's declared boundary partner (FLR : Q_loc :: FDR : PEP) and is NOT a party to the charter.
     The user listed eight parties without it. Default: ask the user before writing to it; the charter
     records it as open (section 7).
+  - >-
+    G57 PROMISED to aging in thread 052: raise the bridge's payload limit with pyMzLib on our own
+    channel. `read_records` returns a whole read as one JSON document, and past ~2 GB .NET throws
+    "Insufficient memory" (PXD032044, 1.83 GB; 1.24 GB reads). Ask for a bridge that refuses a payload
+    it cannot serialise with a clear message, or streams. Offer the measurements: parse of all
+    1,798,356 records succeeds for a one-row window (~50 s); the whole read fails. We worked around it
+    in 0.17.2 (windows), so it is a courtesy report, not a blocker.
+  - >-
+    G58 The public site's upkeep (D25). OPEN on aging's DATAREPO-38 (thread 051): adopt the about
+    text (suggested `instance/site_about.md`) and regenerate after each catalog rebuild. After aging's
+    re-ingest: regenerate WITHOUT `--notice`, from a catalog built by the same datarepo install
+    (`catalog_id` hashes `__version__`, so a site and a serving catalog from different builders cite
+    different ids). The live site is catalog `f656bfc22cf1f675`, a scratch build from 0.15.0 code.
+    No downloads and no croissant.json until a bundle store is served somewhere (`--data-url`).
+  - >-
+    G59 Not verified: a complete `datarepo ingest` of PXD032044 end to end on 0.17.2. The reader was
+    verified (1,798,356 records, 9 windows, 494 s); nothing after it was run at 1.8M PSMs. aging will
+    hit it first -- if it fails after the reader, the error names the stage.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
@@ -748,6 +792,14 @@ skip_log:
       made it a skip is what made it safe to build: a study bundle is a separate object, so if aging
       wants another hand-over only the reader changes, and no search bundle id moved. What is still
       unsettled is tracked as G30, and the build is re-stated to aging in thread 023.
+
+  - date: 2026-09-23
+    item: "Visual QA of the overview deck (presentations/dataRepo_overview_2026-09-23.pptx)"
+    reason: >-
+      No renderer on this machine: PowerPoint's COM server refused to start (CO_E_SERVER_EXEC_FAILURE)
+      and LibreOffice is not installed. Done instead: the pptx skill's validator (PASS), a text dump of
+      every slide, and a per-box text-fit estimate (one title shortened). Open it in PowerPoint once
+      before presenting.
 
 repos:
   - name: mzLib

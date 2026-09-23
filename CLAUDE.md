@@ -6,36 +6,54 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.16.0** (`c619612`), core schema **0.0.8**, aging study layer
-  **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
-  `catalog.CATALOG_VERSION` **4**. 0.16.0 closed G51 (C-terminal sites, as aging ruled in 045) and
-  added the four capture `Enrichment` values (DATAREPO-34), `peptidoforms.engine_full_sequences`,
-  and three shape-only tables: `organelle_term_categories` (go), `trait_effects` and `ptm_pairs`
-  (ptmQtl). It re-ids every bundle, so **aging owe a re-ingest**, timed with their manifest
-  correction for seven capture enrichments. Their serving catalog is stale again (G45 reopened).
-  mzLib PRs **D #1346** (psmtsv ProForma) and **E #1345** (peaks reader) are open from `trishorts`.
-  **First thing: run the thread checker**, then merge each reply to the **responsibilities charter**
-  (`design/CHARTER.md`, D24: dataRepo never defines but does run) into it and fill in §8 (G55). It
-  went to all eight parties on 2026-09-23. **We owe nothing.** Also waiting on: aging (re-ingest),
-  ptmQtl (P5/P6), logs (L1/L2, now under option (a)), go (DATAREPO-35), pyMzLib (PR review).
-  Ask the user whether the `localization` project joins the charter (G56) before writing to it.
-  When aging re-ingest, run `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should now
-  pass on **every** bundle.
+- **Pick up at:** code is datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, aging study
+  layer **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
+  `catalog.CATALOG_VERSION` **4**. The **public site is LIVE** as a preview at
+  https://trishorts.github.io/aging-pipeline/ (D25): `datarepo site`, served from an orphan
+  `gh-pages` branch of the public `aging-pipeline` repo (`aging` is private). 0.17.2 fixed
+  DATAREPO-37: `.psmtsv` files over 512 MiB are read in windows (no INGESTER bump, D26). aging are
+  **mid-re-ingest on `c619612`**. Their serving catalog is stale (G45).
+  **First thing: run the thread checker.** Then: **G57**, the pyMzLib payload-limit report promised
+  to aging in 052. After that, merge each **charter** reply into `design/CHARTER.md` (D24) and fill in
+  §8 (G55). Also waiting on: aging (DATAREPO-38, the re-ingest), ptmQtl (P5/P6), logs (L1/L2),
+  go (DATAREPO-35), pyMzLib (PR review; mzLib PRs **D #1346** and **E #1345**).
+  **When the re-ingest lands:** run `python tools/verify_ptm_sites.py F:/aging_data/repo/store` (it
+  should pass on **every** bundle), then regenerate the site **without** `--notice` (G58; the
+  recipe is in thread 051). Ask the user whether `localization` joins the charter (G56) before
+  writing to it.
   Next, in order:
-  (1) **G52**: when `pro_forma` reaches pip, DIFF mzLib's string against `proforma.py` on the corpus
-  before switching. They differ in 3 ways, and the string is the peptidoform id.
+  (1) **G52**: when `pro_forma` reaches pip, DIFF mzLib's string against `proforma.py` on the
+  corpus before switching. They differ in 3 ways, and the string is the peptidoform id.
   (2) Build the **go reader** (G53) and the **logs gene table** (G54) only from a real delivered file.
   (3) **G48**: explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. **Never back-fill
   `Protein.gene`.**
   (4) G42 verbatim SDRF cells, stored as a pointer to aging's kept SDRF (sdrf 005 §2). (5) G35: do
-  NOT claim D15's bar. (6) G32, G46, `datarepo site` (D16), G33/G26/G36, QPX pin (G13). **N1/G9
-  goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43, settled by
-  go D25). **D1-D21 locked.**
+  NOT claim D15's bar. (6) G32, G46, G33/G26/G36, QPX pin (G13). **N1/G9 goes to the next NCEMS
+  meeting regardless.** Do NOT build `accession_is_leading` (G43, settled by go D25). **D1-D21
+  locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
 
 ## Things that will bite you here
+
+- **Validating is not loading.** Croissant's per-table FileSet form PASSED `mlcroissant validate` and
+  then loaded **zero records** from an HTTP-served store, with no error: a loader cannot list a web
+  directory. Test a published format by consuming it (`mlcroissant` `Dataset(...).records(...)`,
+  with `mlcroissant[parquet]`, since without pyarrow it also fails), not by validating it. Same shape
+  as "reviewing asks is it right, filling asks what goes here".
+- **The public site lives in another repo.** `datarepo site` output is served from the orphan
+  `gh-pages` branch of `trishorts/aging-pipeline` (D25). Regenerate by pointing `--out` at a clone of
+  that branch: the generator deletes only files its `.datarepo-site.json` marker lists, so `.git` and
+  `.nojekyll` survive. That clone is the ONE place `git add -A` is right. **Read the generated page
+  before pushing**: that is how "11.8K" for 117,699 was caught.
+- **The Bash tool eats backslashes in heredocs here.** `\\n` inside a `<<'EOF'` Python heredoc came
+  out as a real newline three times in one session, breaking the files it patched. Write patch
+  scripts with the Write tool and run them. Also: bash here cannot write to `C:/...` paths; use
+  `/c/...`.
+- **A windowed pyMzLib read re-parses the whole file per window** (~55 s for 1.8 GB). Windows are
+  512 MiB of source (1.24 GB is known to read whole, 1.83 GB not). A proven-identical reader change
+  does not bump `INGESTER_VERSION` (D26); a probably-identical one does.
 
 - **After editing `.project/state.yaml`, parse it:** `python -c "import yaml;yaml.safe_load(open('.project/state.yaml',encoding='utf-8'))"`. A broken file makes render_resume silently count 0 gaps. It happened on 2026-09-19.
 - **Anything that reaches a written row is an input to the bundle hash — and nothing else is.** Both

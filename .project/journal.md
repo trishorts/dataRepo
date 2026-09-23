@@ -1440,3 +1440,44 @@ their rows, with the rule that a seam refused must name who owns it instead. It 
 morning's logs 013 (option b becomes a). The same session fixed CI, red since at least 09-22: fixture
 files checked out CRLF on Windows, so the example bundle's source hashes were Windows-only. Making the
 test print a diff found it in one run. `tests/data/** -text` now.
+
+## 2026-09-23 - Sixteenth: the public site went live, and a 1.8 GB file stopped being a wall
+
+The user asked to work on the public website. It was already decided (D16/D17) and unbuilt, so this
+session built `datarepo site <catalog> --out <dir>` (0.17.0, `3bf057a`): index, one Bioschemas page
+per dataset with its open findings placed before its counts, a template summary grounded by
+construction, `llms.txt`, `datasets.json`, and `croissant.json`/`sitemap.xml` only when the
+addresses they need exist. The user then asked for it on GitHub Pages "under the umbrella of the
+aging project"; `aging` is private, so it went on an orphan `gh-pages` branch of the public
+`aging-pipeline` (D25), with a preview banner because the store is still 0.15.0 bundles awaiting the
+re-ingest. Live at https://trishorts.github.io/aging-pipeline/, verified page by page. Mid-build the
+user added a project overview (aging's text, drafted from their README and handed over in thread 051
+as DATAREPO-38), figures of merit, and colour (0.17.1, `276235e`).
+
+Filling it found four things review would not have. Croissant's per-table FileSet form PASSED
+`mlcroissant validate` and then loaded ZERO records from an HTTP-served store with no error, because
+a loader cannot list a web directory; the per-file form was loaded end to end instead. A figure-of-
+merit tile showed 117,699 PTM sites as "11.8K" (divided by 10,000, not 1,000) -- caught by reading
+the generated page before publishing. The spectra tile claimed "files that passed QC", which aging's
+DEF-MS2 does not say. And PXD050351, titled "in mice", is filed human -- PRIDE confirms a human cell
+line, so the record is right and the summary now says "(Homo sapiens)" rather than anything about
+what was searched.
+
+The preview catalog could not be built with 0.16.0: the store's bundles are schema 0.0.7 and the
+builder refuses them. It was built with the 0.15.0 code from a temporary worktree, which is the
+recipe for measuring an un-re-ingested store.
+
+aging's 049 (DATAREPO-37) reported PXD032044's 1.83 GB AllPSMs.psmtsv failing with "Insufficient
+memory" on a 512 GB machine. Their hypothesis was measured, not assumed: the bridge parsed all
+1,798,356 records to answer a one-row window, so the limit is the size of the one JSON answer.
+0.17.2 (`91fbdd9`) reads files over 512 MiB in windows and halves a window that still fails.
+Windowed equals whole on PXD067622 (966,134 records, 73 columns), and PXD032044 reads in 9 windows
+and 494 s. INGESTER_VERSION was deliberately not bumped (D26): the rows are proven identical, and a
+bump would have re-identified every bundle in the middle of aging's re-ingest. The first draft of
+the real-data test did not split the fixture at all (60 rows under a 1,000-record floor), which the
+test now asserts against. Answered in thread 052, which also promises a pyMzLib report (G57).
+
+The user also asked for a short deck for biologists: `presentations/dataRepo_overview_2026-09-23.pptx`,
+10 slides, including one on the define/run/store/consume rule and one per partner project (go, logs,
+ptmQtl, phred, sdrf, QuantProject, pyMzLib, and pride/qc/pep/localization). It was validated but not
+rendered: this machine has no working renderer (skip logged).

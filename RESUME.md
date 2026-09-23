@@ -6,11 +6,11 @@
 
 | | |
 |---|---|
-| Commits | 162 |
+| Commits | 171 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 24 |
-| Open gaps | 54 |
-| Gate items skipped | 3 |
+| Locked decisions | 26 |
+| Open gaps | 57 |
+| Gate items skipped | 4 |
 
 **Worktrees** -- details in `code/PINNED.md`
 
@@ -29,7 +29,24 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-23, fifteenth session): 0.16.0, and a responsibilities charter for eight projects
+## Latest (2026-09-23, sixteenth session): the public site is live, and large files read
+
+**`datarepo` 0.17.2 (`91fbdd9`, pushed).** No bundle or catalog-format id moved since 0.16.0:
+`INGESTER_VERSION` 0.11.0, schema 0.0.8 and `CATALOG_VERSION` 4 are unchanged.
+
+- **Public site LIVE as a preview:** https://trishorts.github.io/aging-pipeline/ (D25). It is built
+  by `datarepo site` (docs/site.md) and served from an orphan `gh-pages` branch of the public
+  `trishorts/aging-pipeline`, because `aging` is private. It was built from the scratch catalog
+  `f656bfc22cf1f675` (0.15.0 code, since the store is still schema 0.0.7) and carries a "Preview"
+  banner on every page. Front page: aging's overview (`--about`), six figures of merit, colour.
+  aging were asked to own the text and the regenerate step (thread 051, DATAREPO-38, G58).
+- **DATAREPO-37 fixed (0.17.2):** `read_psmtsv` reads files over 512 MiB in windows. PXD032044 (1.83
+  GB, 1,798,356 records) reads in 9 windows and 494 s. Windowed equals whole on PXD067622. No
+  `INGESTER_VERSION` bump, on purpose (D26). Answered in thread 052.
+- **Deck for biologists:** `presentations/dataRepo_overview_2026-09-23.pptx` (10 slides, validated,
+  not rendered; its builder is `presentations/build_overview_deck.js`).
+
+## 2026-09-23 (fifteenth session): 0.16.0, and a responsibilities charter for eight projects
 
 **`datarepo` 0.16.0 (`c619612`, pushed), core schema 0.0.8, `INGESTER_VERSION` 0.11.0, aging study
 layer 0.3.0, `STUDY_INGESTER_VERSION` 0.4.0, `CATALOG_VERSION` 4.** It re-ids every bundle, so aging
@@ -664,8 +681,8 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**We owe nothing. All eight charter messages and seven earlier replies are posted and pushed.**
-Code is datarepo **0.16.0** (`c619612`), core schema **0.0.8**, `INGESTER_VERSION` **0.11.0**.
+**We owe nothing, except G57: the pyMzLib payload-limit report promised to aging in 052.** Code is
+datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, `INGESTER_VERSION` **0.11.0**.
 
 **First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). Then merge every charter
 reply into `design/CHARTER.md`: fill in the §8 sign-off row, bump the version, and turn any seam a
@@ -681,9 +698,15 @@ must not be left.**
   `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should pass on **every** bundle,
   with no exceptions left. Their serving catalog `72449bdd25c36df2` is stale for six datasets (G45).
 - **Still open from earlier today:** ptmQtl P5/P6, logs L1/L2, go DATAREPO-35 (a first real TSV).
+- **aging's DATAREPO-38** (thread 051): owning the site's about text and regenerate step. **When the
+  re-ingest lands, regenerate the site without `--notice`** (G58; the command is in thread 051).
+- **PXD032044's first real ingest on 0.17.2** (G59). The reader is verified; the rest of the ingest
+  at 1.8M PSMs has not been run.
 
 ### The next action
 
+0. **G57:** post the payload-limit report to pyMzLib (next thread number from the checker), with
+   052's measurements. It was promised to aging.
 1. **Merge charter replies** as above. The first real work D24 creates is a **runner**: dataRepo
    calling logs's resolver and ptmQtl's engine through pyMzLib, once their verbs exist (seam S9).
    Do not build one until a verb exists. Design it with pyMzLib (DATAREPO-40).
@@ -695,13 +718,17 @@ must not be left.**
 5. **G48:** explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. Never back-fill
    `Protein.gene`.
 6. G42 (store a pointer to aging's kept SDRF, sdrf 005 §2), G35 (do NOT claim D15's bar), G32, G46,
-   `datarepo site` (D16, the next thing that is ours alone), G33/G26/G36, the QPX pin (G13).
+   G33/G26/G36, the QPX pin (G13). (`datarepo site` is DONE: D25.)
    **N1/G9 goes to the next NCEMS meeting regardless.**
 7. **`/project advance`**: the phase still says INCEPTION and the work is plainly BUILD. It is a
    gated step, not a close-out edit.
 
 **Do not trust a catalog number quoted anywhere in this file.** For a measurement, build a scratch
-catalog from the store and name the PXDs:
+catalog from the store and name the PXDs. Name only PXDs that are in BOTH the manifest and the store
+(the command below refuses on the first one that is not), and if the store's bundles are on an older
+schema than the code, build with that release's code from a temporary worktree
+(`git worktree add --detach <scratch>/wt <sha>`, then
+`PYTHONPATH=<scratch>/wt/src python -m datarepo.cli build ...`):
 
 ```
 datarepo build E:/CodeReview/aging/instance/manifest.yaml $(ls F:/aging_data/repo/store) --store F:/aging_data/repo/store --latest --out <scratch>/cat.duckdb
