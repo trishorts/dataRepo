@@ -125,7 +125,9 @@ def test_a_study_bundle_lives_beside_the_datasets_and_not_among_them(tmp_path, s
     assert result.bundle_path.parent.name == AGING
     # and a dataset directory is never mistaken for one
     write_bundle(store, DATASET)
-    assert [p.name for p in sorted(store.iterdir()) if p.is_dir()] == [STUDY_DIR, DATASET]
+    # Sorted by name, not by Path: WindowsPath compares case-folded, so `_study` sorts before
+    # `PXD...` on Windows and after it on Linux, and CI failed on the order rather than the layout.
+    assert sorted(p.name for p in store.iterdir() if p.is_dir()) == sorted([STUDY_DIR, DATASET])
 
 
 # --- content addressing -----------------------------------------------------------------------

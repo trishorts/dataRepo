@@ -27,9 +27,18 @@ def test_the_arrow_schemas_match_the_linkml_schema():
 def test_the_committed_example_bundle_is_what_the_ingester_writes():
     import build_example_bundle
 
+    import difflib
+
     current = (ROOT / "examples" / "ingested_bundle.yaml").read_text(encoding="utf-8")
-    assert current == build_example_bundle.render(build_example_bundle.export()), (
-        "examples/ingested_bundle.yaml is stale; run python tools/build_example_bundle.py"
+    rendered = build_example_bundle.render(build_example_bundle.export())
+    # The diff is printed because this has failed on Linux CI only, and pytest's elided
+    # comparison of two long strings says nothing about which line differs.
+    diff = "".join(list(difflib.unified_diff(
+        current.splitlines(keepends=True), rendered.splitlines(keepends=True),
+        "committed", "rendered", n=1,
+    ))[:60])
+    assert current == rendered, (
+        "examples/ingested_bundle.yaml is stale; run python tools/build_example_bundle.py\n" + diff
     )
 
 
