@@ -9,6 +9,7 @@
     datarepo catalog <catalog.duckdb>            what is in a catalog, and did it check out?
     datarepo query <catalog.duckdb> <sql>        run one read-only query against a catalog
     datarepo mcp --catalog <catalog.duckdb>      serve one catalog to an agent over stdio
+    datarepo site <catalog.duckdb> --out <dir>   write the public static site for one catalog
 
 Exit codes are meant to be usable from the pipeline that calls this: 0 success, 1 a refusal or
 failure the operator must act on, 2 bad usage.
@@ -302,6 +303,25 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_site(args: argparse.Namespace) -> int:
+    from .site import build_site  # noqa: PLC0415
+
+    result = build_site(
+        Path(args.catalog), Path(args.out), title=args.title, base_url=args.base_url,
+        data_url=args.data_url, notice=args.notice,
+        about=Path(args.about).read_text(encoding="utf-8") if args.about else None,
+    )
+    print(f"site     {result.out}")
+    print(f"  catalog  {result.catalog_id}")
+    pages = sum(1 for name in result.files if name.startswith("datasets/"))
+    print(f"  wrote    {len(result.files)} files, {pages} dataset pages")
+    for name, reason in sorted(result.skipped.items()):
+        print(f"  skipped  {name}: {reason}")
+    for warning in result.warnings:
+        print(f"  WARN     {warning}")
+    return 0
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     from .mcp import TOOL_SPECS, CatalogServer, install, installed_entries, serve  # noqa: PLC0415
 
@@ -486,6 +506,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", help="MCP config to write; default is the Claude Code user config")
     p.add_argument("--force", action="store_true", help="repoint an entry of that name at this catalog")
     p.set_defaults(func=cmd_mcp)
+
+    p = sub.add_parser("site", help="write the public static site for one catalog")
+    p.add_argument("catalog", help="the catalog .duckdb file")
+    p.add_argument("--out", required=True, help="an empty directory, or a site written before")
+    p.add_argument("--title", help="the site's name; default from the catalog's instance")
+    p.add_argument("--base-url", help="where the site will be served, for absolute links and the sitemap")
+    p.add_argument("--data-url", help="where the bundle store is served; enables downloads and croissant.json")
+    p.add_argument("--notice", help="a banner for the top of every page and of llms.txt")
+    p.add_argument("--about", help="a Markdown file: the front page's overview of the project")
+    p.set_defaults(func=cmd_site)
 
     p = sub.add_parser("doctor", help="check this machine can ingest")
     p.set_defaults(func=cmd_doctor)

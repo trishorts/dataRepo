@@ -89,3 +89,12 @@ jobs:
         run: |
           datarepo mcp --catalog "$RUNNER_TEMP/catalog.duckdb" --check
           datarepo mcp --list
+
+      # The public site (D16) is written from that same catalog, and must need nothing else.
+      - name: The static site is written from the catalog
+        run: |
+          datarepo site "$RUNNER_TEMP/catalog.duckdb" --out "$RUNNER_TEMP/site" \
+            --base-url https://example.org/ --data-url https://example.org/store
+          test -f "$RUNNER_TEMP/site/datasets/PXD999999.html"
+          test -f "$RUNNER_TEMP/site/llms.txt"
+          test -f "$RUNNER_TEMP/site/croissant.json"
