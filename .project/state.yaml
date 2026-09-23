@@ -557,7 +557,9 @@ gaps:
     `INGESTER_VERSION` bump. NOT urgent -- no view or benchmark question reads decoy rows -- but
     it is a lie sitting in a column whose whole job is to be the verbatim species evidence.
   - >-
-    G45 CLOSED 2026-09-22: aging 042 rebuilt the serving catalog (`7b9de8696589c948`, 0.14.0, 10 datasets, 185 checks), confirmed from the MCP server. It goes stale again at their 0.15.0 re-ingest. Previously: TOLD in thread 041 section 2 (2026-09-22); the rebuild is aging's. Still stale at close-out:
+    G45 REOPENED 2026-09-23: serving catalog `72449bdd25c36df2` (0.15.0, built 09-22 20:21 UTC) is behind the store for SIX datasets
+    (PXD023381/024803/028852/049018/050351/067622 re-searched and re-ingested after it; AllPeptides sha drift verified on PXD050351).
+    TOLD in aging 047 s3; the rebuild is aging's, after their 0.16.0 re-ingest. History: CLOSED 2026-09-22: aging 042 rebuilt the serving catalog (`7b9de8696589c948`, 0.14.0, 10 datasets, 185 checks), confirmed from the MCP server. It goes stale again at their 0.15.0 re-ingest. Previously: TOLD in thread 041 section 2 (2026-09-22); the rebuild is aging's. Still stale at close-out:
     the `datarepo` MCP server registered in both folders reads this file, so answers from it are
     pre-0.13.0 data until they rebuild. Original text: aging's serving catalog is stale and they
     have not been told. Measured 2026-09-22:
@@ -633,8 +635,14 @@ gaps:
     biological modification classification has no owner (REQ-PTMQTL-3). Context: unenriched
     corpus, 1,396 level-1 phospho residue sites in total; 309 peptidoforms carry two or more
     non-artefact mods. Default: build nothing until ptmQtl describe one real row of each result.
+    UPDATE 2026-09-23: ptmQtl 002 described both rows; shapes built in schema 0.0.8 (`c619612`) as
+    `trait_effects` and `ptm_pairs` (shape only, no producer yet); `age_effects` NOT renamed (aging's study
+    layer, different producer). P4 answered: 4,534 fittable (1,702 whole-proteome) on 72449bdd25c36df2.
+    OPEN: DATAREPO-P5 (pair scope) and P6 (pair ordering), ptmQtl 003.
   - >-
-    G50 `ptm_sites` misplaced a shared peptide's sites (aging 043, DATAREPO-32). FIXED in 0.15.0
+    G50 CLOSED 2026-09-23: aging 045 verified from outside -- 97,047 of 97,047 recomputed sites present, 24
+    unsupported all explained (23 keratin-4 contaminant sequence, 1 = G51). Original text:
+    `ptm_sites` misplaced a shared peptide's sites (aging 043, DATAREPO-32). FIXED in 0.15.0
     (2026-09-22), OPEN until aging re-ingest and re-run their `site_positions.py` probe. Cause:
     `ptm_site_rows` paired `Start and End Residues In Full Sequence` with `Accession` by index
     (fallback `starts[0]`), and MetaMorpheus de-duplicates that column and repeats it per
@@ -643,7 +651,10 @@ gaps:
     comes from the sequence too. Unplaceable pairs go to an `unplaced_ptm_sites` finding; on
     PXD036557 all were level 4/5 PSMs whose protein carries a different candidate peptide.
   - >-
-    G51 The first real C-TERMINAL modification is in the corpus, and we store it wrongly. Found
+    G51 CLOSED 2026-09-23 in 0.16.0 (`c619612`): aging ruled DATAREPO-33 (045 s2) and it is implemented -- `-` is the
+    terminus marker, site keyed on the last residue, `protein_c_term`/`peptide_c_term` against the searched
+    sequence; PXD050351 scratch re-ingest gives `P60510:L307:...@protein_c_term`, site check clean. Original text:
+    The first real C-TERMINAL modification is in the corpus, and we store it wrongly. Found
     2026-09-22 by 0.15.0's own site self-check. PXD050351 `KPVADYFL-[UNIMOD:34]` (Leucine methyl
     ester, P60510, level 1, q=0.008): the ProForma parse leaves `-` in `base_sequence` (3 PSMs, 2
     peptidoforms: also `RTPDYFL-[UNIMOD:34]`), and `ptm_sites` gets residue `-` at position 308 of
@@ -652,6 +663,25 @@ gaps:
     (it is their DATAREPO-26/G33 ruling on how to type a C-terminal site), fix with the next
     INGESTER_VERSION bump -- strip the terminal `-` from base_sequence and give the site a
     C-terminal site type -- and do NOT ship a C-terminal site type before they rule.
+  - >-
+    G52 mzLib PR D (smith-chem-wisc/mzLib#1346, opened 2026-09-23) computes psmtsv ProForma, but its
+    string is NOT byte-identical to `proforma.py`: Calcium on D -> UNIMOD:951 (ours: mass tag); mods mzLib
+    does not load stay named `[Common Artifact:...]` (ours resolve from the MetaMorpheus install, e.g.
+    UNIMOD:34); unresolved -> `[Category:Name on X]` (ours `[Info:...]`). The string is our peptidoform id,
+    so adopting upstream re-ids peptidoforms and loses resolution. Default: when `pro_forma` reaches pip,
+    DIFF the two on the corpus and report on pyMzLib thread before switching (G14 path). Told pyMzLib 005,
+    ptmQtl 003 (join on `engine_full_sequences` meanwhile).
+  - >-
+    G53 go reader not built. `organelle_term_categories` + reworked `protein_localizations` are shapes in
+    0.0.8; the ingest cross-check (refuse a file whose categories disagree with the term table from its own
+    header; recompute go D26's five header counts) is COMMITTED TO in go 005 and lives in the reader. go's
+    D22 columns (n_members, n_with, accession_used, propagated) and annotation_status are deliberately not
+    added until a real file shows them populated. Waiting on DATAREPO-35 (first real go TSV).
+  - >-
+    G54 logs gene-resolution table (logs 011/012): we chose option (b) -- logs runs mzLib's
+    EnsemblGeneResolver per (search_database_sha256, gene_set_release) and delivers; we ingest. Shape and key
+    accepted as given. Asked for the human table for 760984e8... now, DATAREPO-L1 (outcome column name;
+    decoys) and L2 (contaminant DB a second delivery?). Nothing is ever back-filled into Protein.gene (G48).
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

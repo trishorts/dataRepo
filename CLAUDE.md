@@ -6,33 +6,29 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** ingest, build, the study layer and the MCP server (FRAMEWORK step 3) are all
-  done. Code is datarepo **0.15.0** (`666b6fb`), core schema **0.0.7**, aging study layer **0.3.0**,
-  `bundle.INGESTER_VERSION` **0.10.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
-  `catalog.CATALOG_VERSION` **4**. **0.15.0 fixed DATAREPO-32**: `ptm_sites` is placed by aligning
-  each peptide to the searched sequences (`sources/protein_db.py`), not by pairing MetaMorpheus's
-  de-duplicated span column. On the corpus, wrong residues went from 1,674 to 0. It re-ids every
-  bundle, so **aging owe a re-ingest**. Also G44 and `age_effect_refusals.organism`.
-  **First thing: run the thread checker** (command below). **We owe nothing due**; logs 010 is read
-  and needs no reply. Most likely to land: **`aging` 045** (re-ingest, their probe re-run,
-  DATAREPO-33 C-terminal typing, the contaminant DB archive, PXD050351's organism) and **`ptmQtl`
-  002**. When aging re-ingest, run `python tools/verify_ptm_sites.py F:/aging_data/repo/store`: it
-  should pass everywhere except the one G51 site in PXD050351.
-  Next, in order (the detail is in RESUME's "Pick up at"):
-  (1) **Read ptmQtl 002** if it lands. G49: `ptm_stoichiometry` is per SAMPLE GROUP, and no table
-  has a PAIR grain. Build nothing until they describe one real row. ptmQtl has **no git remote**.
-  (2) **G48**: explain the stored `ERVK-6` for `P63135` before any fix. Start from **logs 010 §3's
-  hypothesis** that mzLib's reader copies `genes[0]` to every accession when the Gene cell is short.
-  **Never back-fill `Protein.gene` from logs' output.**
-  (2b) **G51 / DATAREPO-33**: wait for aging's C-terminal ruling. Do not ship a C-terminal
-  `site_type` first.
-  (3) **Chase DATAREPO-31** (sdrf's 153 age-bearing accessions). 0 of 180 samples carry any trait.
-  (4) **Build what go 003 settled, and do NOT build `accession_is_leading` (G43)**; the term-keyed
-  categories table is held pending DATAREPO-29/30.
-  (5) **G42** verbatim SDRF cells into `sample_characteristics`. (6) **G35: do NOT claim D15's
-  bar**; point a re-run at `F:/aging_data/<run>/<PXD>/04_search/`. (7) G32, G46, `datarepo site`
-  (D16), G33/G26/G36, QPX pin (G13). **N1/G9 goes to the next NCEMS meeting regardless.**
-  **D1-D21 locked.**
+- **Pick up at:** code is datarepo **0.16.0** (`c619612`), core schema **0.0.8**, aging study layer
+  **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
+  `catalog.CATALOG_VERSION` **4**. 0.16.0 closed G51 (C-terminal sites, as aging ruled in 045) and
+  added the four capture `Enrichment` values (DATAREPO-34), `peptidoforms.engine_full_sequences`,
+  and three shape-only tables: `organelle_term_categories` (go), `trait_effects` and `ptm_pairs`
+  (ptmQtl). It re-ids every bundle, so **aging owe a re-ingest**, timed with their manifest
+  correction for seven capture enrichments. Their serving catalog is stale again (G45 reopened).
+  mzLib PRs **D #1346** (psmtsv ProForma) and **E #1345** (peaks reader) are open from `trishorts`.
+  **First thing: run the thread checker.** All 7 replies went out on 2026-09-23. **We owe nothing.**
+  Waiting on: aging (re-ingest), ptmQtl (P5 pair scope, P6 pair order), logs (the human gene table,
+  L1/L2), go (DATAREPO-35, first real TSV), pyMzLib (PR review), qc, sdrf.
+  When aging re-ingest, run `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should now
+  pass on **every** bundle.
+  Next, in order:
+  (1) **G52**: when `pro_forma` reaches pip, DIFF mzLib's string against `proforma.py` on the corpus
+  before switching. They differ in 3 ways, and the string is the peptidoform id.
+  (2) Build the **go reader** (G53) and the **logs gene table** (G54) only from a real delivered file.
+  (3) **G48**: explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. **Never back-fill
+  `Protein.gene`.**
+  (4) G42 verbatim SDRF cells, stored as a pointer to aging's kept SDRF (sdrf 005 §2). (5) G35: do
+  NOT claim D15's bar. (6) G32, G46, `datarepo site` (D16), G33/G26/G36, QPX pin (G13). **N1/G9
+  goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43, settled by
+  go D25). **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.

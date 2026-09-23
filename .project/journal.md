@@ -1391,3 +1391,28 @@ nothing. A pyMzLib bridge exit with empty stderr turned out to be contention wit
 not a defect. logs 010 offers a G48 hypothesis: mzLib's reader copies `genes[0]` to every accession
 when the Gene cell is short, which would explain the stored `ERVK-6`. Their first rodent dataset is
 about a day out.
+
+## 2026-09-23 - Fifteenth: seven replies, one release, two upstream PRs, and a fill that caught our own draft
+
+Resumed with 10 unread messages across 7 peers and answered all of them. **0.16.0** (`c619612`):
+G51 closed exactly as aging ruled, and the real PXD050351 file gave the key they predicted
+(`P60510:L307:...@protein_c_term`). Before shipping, that was checked by scratch-ingesting the real
+dataset, not just the fixtures. Also added the four capture enrichment values, `engine_full_sequences`
+(ptmQtl P3), and shape-only tables for go and ptmQtl. `age_effects` was not renamed: it is aging's
+study layer, with a different producer. mzLib PRs D (#1346) and E (#1345) were opened from trishorts
+after `/oracle mzLib`, as the user asked. The first attempt was blocked by the auto-mode classifier
+until the user said so explicitly.
+
+Three things worth keeping. **(1) Renaming `compartment` to `go_id` broke a query published verbatim
+in thread 022**, which a test preserves. We reverted to our own name and map it at the reader. A
+published query is a contract even when the table it reads is empty. **(2) PR D's agent reported
+that mzLib's ProForma is not byte-identical to ours** (Calcium, unloaded mods, unresolved), minutes
+after we had told ptmQtl "your key and ours cannot drift apart". The unposted draft was fixed. The
+same lesson as thread 036: a claim about someone else's output holds only once it has been checked
+against their output (G52). **(3) The P4 count found that UNIMOD ProForma erases the engine category.**
+`S[UNIMOD:21]` is UniProt 33,092 times and Common Biological 1,765 times, so a "biological" filter by
+category drops about 95% of phosphoserine. That justified `engine_full_sequences` in the same release.
+Every claim about aging's stale catalog was verified at the store before posting (bundle directory
+times, and the AllPeptides sha on PXD050351). Note: our 006 to sdrf and 047 to aging carry
+`SDRF-DR6` in front matter, which the checker flags BAD-QID. The skip_log's workaround had been to
+keep sdrf IDs in prose only. Posted messages are not edited.
