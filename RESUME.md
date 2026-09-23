@@ -6,11 +6,18 @@
 
 | | |
 |---|---|
-| Commits | 150 |
+| Commits | 162 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 23 |
-| Open gaps | 52 |
+| Locked decisions | 24 |
+| Open gaps | 54 |
 | Gate items skipped | 3 |
+
+**Worktrees** -- details in `code/PINNED.md`
+
+| Worktree | Branch | HEAD | Pin | Status |
+|---|---|---|---|---|
+| `code/mzLib_prD_proforma` | fix/psmtsv-proforma-from-full-sequence | `7562d4bc` | `7562d4bc` | at pin |
+| `code/mzLib_prE_peaks` | fix/quantified-peaks-optional-mbr-score | `ce7578c9` | `ce7578c9` | at pin |
 
 <!-- END GENERATED -->
 
@@ -22,7 +29,32 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-22, fourteenth session): 0.15.0 places PTM sites by sequence
+## Latest (2026-09-23, fifteenth session): 0.16.0, and a responsibilities charter for eight projects
+
+**`datarepo` 0.16.0 (`c619612`, pushed), core schema 0.0.8, `INGESTER_VERSION` 0.11.0, aging study
+layer 0.3.0, `STUDY_INGESTER_VERSION` 0.4.0, `CATALOG_VERSION` 4.** It re-ids every bundle, so aging
+owe a re-ingest, timed with their own manifest correction.
+
+- **0.16.0:** G51 closed as aging ruled (C-terminal site on the last residue, typed
+  `protein_c_term`/`peptide_c_term` against the searched sequence). Checked on the real PXD050351
+  file: `P60510:L307:...@protein_c_term`, 0 wrong sites. Four capture `Enrichment` values
+  (DATAREPO-34); 7 of aging's first 10 datasets are enrichments, not proteomes.
+  `peptidoforms.engine_full_sequences`, because UNIMOD ProForma erases the engine category.
+  Shape-only `organelle_term_categories` (go) and `trait_effects`/`ptm_pairs` (ptmQtl).
+- **mzLib PRs from the `trishorts` fork, after `/oracle mzLib`** (the user's standing instruction):
+  **D #1346** (psmtsv ProForma) and **E #1345** (peaks reader without `MBR Score`). Worktrees under
+  `code/`, recorded in `code/PINNED.md`.
+- **CI is green again** (`6533d71`). It had failed since at least 09-22 because fixture files checked
+  out CRLF on Windows, which changed the example bundle's source hashes. `tests/data/** -text` now.
+- **D24 (user decision): dataRepo never DEFINES but does RUN.** Engines own logic and definitions.
+  dataRepo runs the released versions of engines that work on stored results (logs, ptmQtl, maybe
+  go). aging's search runs the in-search ones (phred Q_loc, QuantProject quant, sdrf SDRF).
+  **`design/CHARTER.md`** sets out define/run/store/consume per project, the chain the core question
+  needs, and 14 seams with one owner each. It went to all eight parties (aging 048, go 006, logs
+  014, ptmQtl 004, phred 002, sdrf 007, QuantProject 002, pyMzLib 006). It is a DRAFT until each
+  signs its rows. It reversed our logs 013 answer: we now take option (a).
+
+## 2026-09-22 (fourteenth session): 0.15.0 places PTM sites by sequence
 
 **`datarepo` 0.15.0 (`666b6fb`, pushed), `INGESTER_VERSION` 0.10.0, aging study layer 0.3.0,
 `STUDY_INGESTER_VERSION` 0.4.0, core schema 0.0.7, `CATALOG_VERSION` 4.** aging owe a re-ingest.
@@ -632,88 +664,48 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**We owe nothing that is due. logs 010 is read and needs no reply. Every other peer owes us.** On
-2026-09-22 (the fourteenth session) we shipped **0.15.0** (`666b6fb`: DATAREPO-32, G44, and
-`age_effect_refusals.organism`) and answered aging 042/043 in **044**. All of it is pushed. Code is
-datarepo **0.15.0**, core schema **0.0.7**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION`
-**0.10.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **4**. **0.15.0
-re-ids every bundle, so aging owe a re-ingest.**
+**We owe nothing. All eight charter messages and seven earlier replies are posted and pushed.**
+Code is datarepo **0.16.0** (`c619612`), core schema **0.0.8**, `INGESTER_VERSION` **0.11.0**.
 
-**First, always:** run the thread checker (command in `CLAUDE.md`'s threads bullet). The most likely
-replies:
-- **`aging` 045**: their re-ingest on `666b6fb`, their `site_positions.py` re-run, DATAREPO-33
-  (C-terminal site typing), archiving the contaminant database, and PXD050351's organism.
-- **`ptmQtl` 002**: REQ-PTMQTL-1..5.
+**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). Then merge every charter
+reply into `design/CHARTER.md`: fill in the §8 sign-off row, bump the version, and turn any seam a
+party refuses into a question to the party they name. **A seam with no owner is the one thing that
+must not be left.**
 
-**In flight:**
-- **aging's re-ingest.** When it lands, run `python tools/verify_ptm_sites.py
-  F:/aging_data/repo/store`. It should say `ok` for every dataset except PXD050351, which should show
-  only the one G51 site beyond length.
-- **aging's serving catalog** (`F:/aging_data/repo/catalog.duckdb`, `7b9de8696589c948`) is stale
-  again the moment they re-ingest. Check `describe`'s `catalog_id` before trusting an MCP answer.
-- **The first rodent datasets** are about a day out (logs 010). Watch whether their provenance
-  names a mouse or rat proteome in `inputs`: the ingest reads whatever the provenance lists.
+**In flight (re-check each):**
+- **Charter sign-offs** (DATAREPO-36..40, -L3, -P7, -Q1): threads aging 048, go 006, logs 014,
+  ptmQtl 004, phred 002, sdrf 007, QuantProject 002, pyMzLib 006.
+- **mzLib PRs:** `gh pr view 1346 -R smith-chem-wisc/mzLib` (D) and `gh pr view 1345 -R
+  smith-chem-wisc/mzLib` (E). Worktrees `code/mzLib_prD_proforma`, `code/mzLib_prE_peaks`.
+- **aging's re-ingest on `c619612`.** When it lands, run
+  `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should pass on **every** bundle,
+  with no exceptions left. Their serving catalog `72449bdd25c36df2` is stale for six datasets (G45).
+- **Still open from earlier today:** ptmQtl P5/P6, logs L1/L2, go DATAREPO-35 (a first real TSV).
 
-**Do not trust a catalog number quoted anywhere in this file.** aging's batch grows the store without
-warning, and the catalog they *serve* (and that the `datarepo` MCP server reads) is still the old
-4-dataset 0.11.0 build (G45, told in 041). Every measurement this session came from a scratch
-catalog, `f8fc910cce116fbe`, 9 datasets. Rebuild rather than reuse it, and **name the PXDs**,
-because the manifest now lists datasets with no bundle and a bare build refuses on the first one:
+### The next action
+
+1. **Merge charter replies** as above. The first real work D24 creates is a **runner**: dataRepo
+   calling logs's resolver and ptmQtl's engine through pyMzLib, once their verbs exist (seam S9).
+   Do not build one until a verb exists. Design it with pyMzLib (DATAREPO-40).
+2. **Ask the user whether the `localization` project** (site-level FLR, phred's declared boundary
+   partner) joins the charter (G56). Do not write to it before they answer.
+3. **G52:** when `pro_forma` reaches `pip install mzlib`, diff it against `proforma.py` on the
+   corpus before switching. They differ in three ways, and the string is the peptidoform id.
+4. **G53/G54:** build the go reader and the logs table only from a real delivered or run output.
+5. **G48:** explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. Never back-fill
+   `Protein.gene`.
+6. G42 (store a pointer to aging's kept SDRF, sdrf 005 §2), G35 (do NOT claim D15's bar), G32, G46,
+   `datarepo site` (D16, the next thing that is ours alone), G33/G26/G36, the QPX pin (G13).
+   **N1/G9 goes to the next NCEMS meeting regardless.**
+7. **`/project advance`**: the phase still says INCEPTION and the work is plainly BUILD. It is a
+   gated step, not a close-out edit.
+
+**Do not trust a catalog number quoted anywhere in this file.** For a measurement, build a scratch
+catalog from the store and name the PXDs:
 
 ```
 datarepo build E:/CodeReview/aging/instance/manifest.yaml $(ls F:/aging_data/repo/store) --store F:/aging_data/repo/store --latest --out <scratch>/cat.duckdb
 ```
-
-### The next action
-
-1. **Read whatever landed, starting with `ptmQtl` 002 if it exists.** Our 001 to them made two
-   claims that change what we build. (a) **`ptm_stoichiometry` is per SAMPLE GROUP**, pooled over
-   the group's runs, and that is the wrong grain for a regression on a continuous trait
-   (REQ-PTMQTL-1). It is our G17 shape and has no producer, so if ptmQtl confirm the problem, the
-   per-sample request goes to QuantProject in *their* words. (b) **Nothing in our schema has a
-   PAIR grain** for a PTM-PTM co-occurrence result (REQ-PTMQTL-5). Do not design either table
-   before they describe one real row. ptmQtl has **no git remote**, so their mirror copies are
-   committed locally only.
-
-2. **Close G48 -- `Protein.gene` is a stored value we cannot reproduce.** Tracing `P63135` through
-   `_per_accession` gives `None` for PXD032040 (its first claiming row is ragged, `n_acc=9,
-   n_gene=8`); **the catalog stores `ERVK-6`**. Explain it before writing any fix. **Start from logs
-   010 §3's hypothesis**: mzLib's `SpectrumMatchFromTsv` (line 111 at master) copies `genes[0]` to
-   every accession when the Gene cell is short, so pyMzLib may hand us an already-broadcast value.
-   Test it by reading PXD032040's raw `AllPSMs.psmtsv` row beside what `read_psmtsv` returns for
-   it. logs 004 asked us not to race it and **never to back-fill `Protein.gene` from their
-   output**.
-
-2b. **G51 / DATAREPO-33 -- the C-terminal site.** Wait for aging's ruling. Then, on the next
-   `INGESTER_VERSION` bump, strip the terminal `-` from `base_sequence` (`src/datarepo/proforma.py`)
-   and type or hold the site as ruled. Do not ship a C-terminal `site_type` before they rule.
-
-3. **Chase DATAREPO-31 with `sdrf`: the 153 accessions carrying a real donor age.** It is now owed
-   to two consumers: aging's batch, and ptmQtl, whose first question cannot be asked of a corpus in
-   which **0 of 162 samples carry any trait**. When the list arrives, forward it to aging as a queue
-   filter and to ptmQtl.
-
-4. **Build what `go` 003 settled (D22), and do NOT build `accession_is_leading` (G43).** Ruled and
-   ready: `inherited`/`propagated` as nullable booleans; `organelle_label` renamed
-   `organelle_category` and nullable; subcategory stored **with** its prefix; three version fields;
-   expansion over their set-valued `accession_used`. **Held pending DATAREPO-29/30**: a term-keyed
-   table for categories. Stop citing `REQ-GO-2..10`.
-
-5. **G42 -- `samples` cannot tell `not available` from never-asked.** Carry the deposit's verbatim
-   cell into `sample_characteristics`. Owed to sdrf in our 004 §3.
-
-6. ~~G44 (decoy `organism_name`)~~ **DONE in 0.15.0** (rode the DATAREPO-32 bump as promised).
-
-7. **G35: do NOT claim D15's bar.** 0.12.0-0.14.0 are unverified. A re-run must point at least one
-   agent at `F:/aging_data/<run>/<PXD>/04_search/`.
-
-8. **G32**, then **G46** (orthology source release recoverable at pooling time; logs' numbers are
-   75.49% clean 1:1:1 and 2,539 genes with no rodent ortholog), then `datarepo site` (D16), then
-   G33/G26/G36 and the QPX pin (G13). **N1/G9 goes to the next NCEMS meeting regardless.**
-
-9. **`/project advance`**: the phase field still says INCEPTION and the work is plainly BUILD. This
-   is a gated step, not a close-out edit.
-
 
 **After any schema edit:** `python tools/build_docs.py` **and** `python tools/build_tables.py`, or CI
 fails on drift. If the ingester's output changes, also `python tools/build_example_bundle.py`.

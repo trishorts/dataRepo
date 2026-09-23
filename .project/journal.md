@@ -1416,3 +1416,27 @@ Every claim about aging's stale catalog was verified at the store before posting
 times, and the AllPeptides sha on PXD050351). Note: our 006 to sdrf and 047 to aging carry
 `SDRF-DR6` in front matter, which the checker flags BAD-QID. The skip_log's workaround had been to
 keep sdrf IDs in prose only. Posted messages are not edited.
+
+## 2026-09-23 - Fifteenth, continued: the gap nobody owned, and a charter to close it
+
+The user asked for a bird's-eye view, then put a finger on the structural problem. The engines
+(go, logs, ptmQtl, phred) are generic by design, so none knows which consumer it serves, and none
+runs itself. dataRepo's rule since D1 was "store and serve, never compute", so dataRepo ran none of
+them either. Running them had no owner, and every project could reasonably believe it was another's.
+The user's decision is now **D24: dataRepo never defines, but does run.**
+
+Drafting the charter found what the user's framing had not yet covered. **Who runs an engine depends
+on where its code executes.** phred's Q_loc runs inside MetaMorpheus, post-search beside
+localization (their own 2026-09-16 decision), so aging's search runs it and we ingest. logs and
+ptmQtl work on stored results, so we run them. go is unclear and was asked. The user also added
+that phred's localization is critical to ptmQtl. That makes `ptm_sites.localization_score`, NULL on
+every row, one of three empty links the core question hangs on. The other two are sample ages
+(0 samples) and go's organelle file (none yet). phred's notes name a tenth project,
+`localization`, which owns site-level FLR. It was not in the user's list, so it is recorded as G56
+and not contacted.
+
+`design/CHARTER.md` (`b74cff3`) went to all eight parties in one pass, each asked to sign or correct
+their rows, with the rule that a seam refused must name who owns it instead. It reverses this
+morning's logs 013 (option b becomes a). The same session fixed CI, red since at least 09-22: fixture
+files checked out CRLF on Windows, so the example bundle's source hashes were Windows-only. Making the
+test print a diff found it in one run. `tests/data/** -text` now.

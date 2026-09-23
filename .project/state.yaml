@@ -698,6 +698,18 @@ gaps:
     EnsemblGeneResolver per (search_database_sha256, gene_set_release) and delivers; we ingest. Shape and key
     accepted as given. Asked for the human table for 760984e8... now, DATAREPO-L1 (outcome column name;
     decoys) and L2 (contaminant DB a second delivery?). Nothing is ever back-filled into Protein.gene (G48).
+  - >-
+    G55 The responsibilities charter (design/CHARTER.md, D24) is a DRAFT until all eight parties sign
+    their rows: aging 048 (DATAREPO-36), go 006 (-37), logs 014 (-L3), ptmQtl 004 (-P7), phred 002
+    (-Q1), sdrf 007 (-38), QuantProject 002 (-39), pyMzLib 006 (-40), all posted 2026-09-23. Merge each
+    reply into the charter, bump its version, and turn any refused seam into a question to the party
+    named. The first build D24 creates is a RUNNER that calls engines through pyMzLib (seam S9); build
+    none until a verb exists.
+  - >-
+    G56 The `localization` project (E:/CodeReview/localization, site-level FLR for O-glycopeptides) is
+    phred's declared boundary partner (FLR : Q_loc :: FDR : PEP) and is NOT a party to the charter.
+    The user listed eight parties without it. Default: ask the user before writing to it; the charter
+    records it as open (section 7).
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
@@ -737,7 +749,19 @@ skip_log:
       wants another hand-over only the reader changes, and no search bundle id moved. What is still
       unsettled is tracked as G30, and the build is re-stated to aging in thread 023.
 
-repos: []
+repos:
+  - name: mzLib
+    worktree: code/mzLib_prD_proforma
+    branch: fix/psmtsv-proforma-from-full-sequence
+    base: "E:/GitClones/mzLib, off upstream/master 588c2249"
+    pinned: 7562d4bc
+    pr: "https://github.com/smith-chem-wisc/mzLib/pull/1346"
+  - name: mzLib
+    worktree: code/mzLib_prE_peaks
+    branch: fix/quantified-peaks-optional-mbr-score
+    base: "E:/GitClones/mzLib, off upstream/master 588c2249"
+    pinned: ce7578c9
+    pr: "https://github.com/smith-chem-wisc/mzLib/pull/1345"
 
 github:
   remote: "https://github.com/trishorts/dataRepo"

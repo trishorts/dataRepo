@@ -14,9 +14,11 @@ This folder is a `/project`-managed research project. **You are de facto working
   (ptmQtl). It re-ids every bundle, so **aging owe a re-ingest**, timed with their manifest
   correction for seven capture enrichments. Their serving catalog is stale again (G45 reopened).
   mzLib PRs **D #1346** (psmtsv ProForma) and **E #1345** (peaks reader) are open from `trishorts`.
-  **First thing: run the thread checker.** All 7 replies went out on 2026-09-23. **We owe nothing.**
-  Waiting on: aging (re-ingest), ptmQtl (P5 pair scope, P6 pair order), logs (the human gene table,
-  L1/L2), go (DATAREPO-35, first real TSV), pyMzLib (PR review), qc, sdrf.
+  **First thing: run the thread checker**, then merge each reply to the **responsibilities charter**
+  (`design/CHARTER.md`, D24: dataRepo never defines but does run) into it and fill in §8 (G55). It
+  went to all eight parties on 2026-09-23. **We owe nothing.** Also waiting on: aging (re-ingest),
+  ptmQtl (P5/P6), logs (L1/L2, now under option (a)), go (DATAREPO-35), pyMzLib (PR review).
+  Ask the user whether the `localization` project joins the charter (G56) before writing to it.
   When aging re-ingest, run `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should now
   pass on **every** bundle.
   Next, in order:
