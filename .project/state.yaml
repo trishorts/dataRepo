@@ -267,6 +267,22 @@ decisions:
       `protein_annotations` (key/value string, dataset-keyed) is the WRONG home for their
       one-to-many output and asked them to confirm it before either side builds -- the G39 lesson
       applied before it costs anything.
+  - id: D24
+    date: 2026-09-23
+    text: >-
+      dataRepo NEVER DEFINES, but it DOES RUN (user decision, 2026-09-23; amends D1 and D8's "store and
+      serve, never compute"). The generic engines (go, logs, ptmQtl, phred) own their logic,
+      definitions and versions and never learn which consumer they serve; dataRepo executes their
+      RELEASED, pinned versions on stored data for whichever consumer asks, and stores the output with
+      engine version, inputs and definition id. The split is by where the code executes: engines that
+      run INSIDE the MetaMorpheus search (phred Q_loc, QuantProject quant, sdrf SDRF, possibly go) are
+      run by aging's pipeline, and dataRepo ingests them; engines that run ON STORED RESULTS (logs gene
+      resolution, ptmQtl fits, possibly go) are run by dataRepo. Reason, in the user's words: "I don't
+      want critical tasks to slip through the cracks between projects with each one thinking it is the
+      others responsibility." Under the old rule, no engine ran itself, dataRepo ran none, and running
+      them had no owner. REVERSES our logs 013 answer (option b, now a). The full split, the seams
+      and the sign-off table are in design/CHARTER.md; it is not in force until all eight parties
+      (aging, go, logs, ptmQtl, phred, sdrf, QuantProject, pyMzLib) sign their rows.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.

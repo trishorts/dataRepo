@@ -248,7 +248,10 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Don't re-own other projects' work.**
   - aging's rule (D1) applies here: the organelle map belongs to `go`, metric definitions (`DEF-*`) to QuantProject, and the age normalizer to sdrf/mzLib.
   - Parse with pyMzLib typed readers where they exist.
-  - dataRepo only stores and serves.
+  - dataRepo **never defines**, but since D24 (2026-09-23) it **does run** the generic engines'
+    released versions on stored data (logs, ptmQtl, maybe go). In-search engines (phred, quant,
+    SDRF) run in aging's search. Who does what is in `design/CHARTER.md`, which is **not in force
+    until all eight parties sign**.
 - **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
 
 **Sibling project: `E:\CodeReview\aging`** (the NCEMS pipeline). aging *produces* results under
