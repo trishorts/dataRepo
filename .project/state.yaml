@@ -742,7 +742,12 @@ gaps:
     "Insufficient memory" (PXD032044, 1.83 GB; 1.24 GB reads). Ask for a bridge that refuses a payload
     it cannot serialise with a clear message, or streams. Offer the measurements: parse of all
     1,798,356 records succeeds for a one-row window (~50 s); the whole read fails. We worked around it
-    in 0.17.2 (windows), so it is a courtesy report, not a blocker.
+    in 0.17.2 (windows), so it is a courtesy report, not a blocker. SENT as pyMzLib thread 008
+    (2026-09-23, dataRepo `ef3ac83`, pyMzLib `8972c0b`), asking DATAREPO-42, with measurements on
+    0.1.1: the whole 1.24 GB read is 777,706,146 stdout chars (~805/record); the 1.83 GB read throws
+    `OutOfMemoryException` at 98 s; projected 1.15-1.45G chars, above .NET's ~1.07G-char string max
+    (a projection, not confirmed inside the bridge). Remaining: their reply; re-run the probe on
+    any new release (we offered).
   - >-
     G58 The public site's upkeep (D25). OPEN on aging's DATAREPO-38 (thread 051): adopt the about
     text (suggested `instance/site_about.md`) and regenerate after each catalog rebuild. After aging's
