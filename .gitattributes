@@ -5,3 +5,6 @@ schema/**/*.yaml text eol=lf
 *.py text eol=lf
 # Fixture databases are checked against a sha256 in the fixture provenance, so their bytes must not move.
 tests/data/work_root/db/*.xml -text
+# The whole fixture tree, for the same reason: the ingester hashes every source's raw bytes into
+# the example bundle, and CRLF on a Windows checkout made it disagree with Linux CI.
+tests/data/** -text
