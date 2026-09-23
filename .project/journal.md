@@ -1481,3 +1481,30 @@ The user also asked for a short deck for biologists: `presentations/dataRepo_ove
 10 slides, including one on the define/run/store/consume rule and one per partner project (go, logs,
 ptmQtl, phred, sdrf, QuantProject, pyMzLib, and pride/qc/pep/localization). It was validated but not
 rendered: this machine has no working renderer (skip logged).
+
+## 2026-09-23 - Seventeenth: answering the review on mzLib PRs D and E
+
+A short session. The user asked for replies to every comment on mzLib #1345 (PR E, FlashLFQ peaks)
+and #1346 (PR D, ProForma from Full Sequence), with code changes. The only reviewer on either was
+Alexander-Sol's automated review.
+
+On E, the reviewer asked for `MBRScore` to become `double?` and for the dash converter on the PIP
+columns. Taking the second suggestion literally would have introduced exactly the lie the PR exists
+to remove: `DashToNullOrDoubleConverter` reads a BLANK cell as 0.0, the PIP columns are blank on
+every MSMS peak, so every MSMS peak would have read PIP Q-Value 0, the best possible. A new
+`DashOrBlankToNullDoubleConverter` (dash or blank -> null, null -> blank, garbage throws) now covers
+MBR Score and both PIP columns. That also changed old 1.0.549 tables, whose MSMS rows wrote MBR
+Score blank: they now read null where they read 0. It is flagged to the reviewer as their call.
+Pushed as `88610382`; 1250/1250 file-reading tests.
+
+On D, two of three Lows were the same defect: a blank ProForma cell counted as the file's value, so
+the row read null and a disambiguated candidate inherited it. Only a non-blank cell counts now
+(`ebdfa790`). The third Low asked whether the getter could throw on real data. Rather than argue, a
+temporary uncommitted test converted every distinct Full Sequence in aging's 21 real searches:
+8,361,580 rows, 1,315,772 distinct, 1,217,630 converted, 0 null, 0 thrown (98,142 ambiguous, null by
+design). The reply declines a catch-all on that evidence.
+
+One slip, caught and corrected: the first reply said 21/21 tests, counting the temporary probe. The
+real number is 20; the comment was edited to say so, and the pushed commit message still says 21.
+Both PRs' `integration` check fails on the known MetaMorpheus `IDigestionParams.SpecificDigestionAgent`
+break (CS0535), confirmed from the log. pyMzLib has not been told the PRs changed (G60).

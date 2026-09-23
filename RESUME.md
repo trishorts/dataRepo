@@ -6,18 +6,18 @@
 
 | | |
 |---|---|
-| Commits | 171 |
+| Commits | 179 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 26 |
-| Open gaps | 57 |
+| Open gaps | 58 |
 | Gate items skipped | 4 |
 
 **Worktrees** -- details in `code/PINNED.md`
 
 | Worktree | Branch | HEAD | Pin | Status |
 |---|---|---|---|---|
-| `code/mzLib_prD_proforma` | fix/psmtsv-proforma-from-full-sequence | `7562d4bc` | `7562d4bc` | at pin |
-| `code/mzLib_prE_peaks` | fix/quantified-peaks-optional-mbr-score | `ce7578c9` | `ce7578c9` | at pin |
+| `code/mzLib_prD_proforma` | fix/psmtsv-proforma-from-full-sequence | `ebdfa790` | `ebdfa790` | at pin |
+| `code/mzLib_prE_peaks` | fix/quantified-peaks-optional-mbr-score | `88610382` | `88610382` | at pin |
 
 <!-- END GENERATED -->
 
@@ -681,7 +681,8 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**We owe nothing, except G57: the pyMzLib payload-limit report promised to aging in 052.** Code is
+**We owe two things: G57, the pyMzLib payload-limit report promised to aging in 052, and G60, a
+short pyMzLib thread saying mzLib PRs D/E changed after review (E's `MBRScore` is now `double?`).** Code is
 datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, `INGESTER_VERSION` **0.11.0**.
 
 **First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). Then merge every charter
@@ -694,6 +695,9 @@ must not be left.**
   ptmQtl 004, phred 002, sdrf 007, QuantProject 002, pyMzLib 006.
 - **mzLib PRs:** `gh pr view 1346 -R smith-chem-wisc/mzLib` (D) and `gh pr view 1345 -R
   smith-chem-wisc/mzLib` (E). Worktrees `code/mzLib_prD_proforma`, `code/mzLib_prE_peaks`.
+  Alexander-Sol's automated review was answered on 2026-09-23 with code (D `ebdfa790`, E `88610382`);
+  E's reply asks the reviewer to rule on old-format MSMS rows now reading `MBRScore` null, not 0.
+  `integration` fails on the unrelated MetaMorpheus CS0535 (`SpecificDigestionAgent`) break.
 - **aging's re-ingest on `c619612`.** When it lands, run
   `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should pass on **every** bundle,
   with no exceptions left. Their serving catalog `72449bdd25c36df2` is stale for six datasets (G45).

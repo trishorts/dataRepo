@@ -754,6 +754,15 @@ gaps:
     G59 Not verified: a complete `datarepo ingest` of PXD032044 end to end on 0.17.2. The reader was
     verified (1,798,356 records, 9 windows, 494 s); nothing after it was run at 1.8M PSMs. aging will
     hit it first -- if it fails after the reader, the error names the stage.
+  - >-
+    G60 mzLib PRs D (#1346) and E (#1345) were REVISED after Alexander-Sol's automated review
+    (2026-09-23) and pyMzLib has not been told. E (`88610382`): `QuantifiedPeak.MBRScore` is now
+    `double?` (a public type change) and MBR Score / PIP Q-Value / PIP PEP use a new
+    `DashOrBlankToNullDoubleConverter`, so a blank or absent cell reads null, never 0; old-format
+    MSMS rows now read MBRScore null where they read 0. D (`ebdfa790`): a blank ProForma cell is
+    computed from Full Sequence like an absent column. Post a short pyMzLib thread naming both
+    changes and the field names, and watch both PRs for the reviewer's answer on the MBRScore
+    behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
@@ -806,13 +815,13 @@ repos:
     worktree: code/mzLib_prD_proforma
     branch: fix/psmtsv-proforma-from-full-sequence
     base: "E:/GitClones/mzLib, off upstream/master 588c2249"
-    pinned: 7562d4bc
+    pinned: ebdfa790
     pr: "https://github.com/smith-chem-wisc/mzLib/pull/1346"
   - name: mzLib
     worktree: code/mzLib_prE_peaks
     branch: fix/quantified-peaks-optional-mbr-score
     base: "E:/GitClones/mzLib, off upstream/master 588c2249"
-    pinned: ce7578c9
+    pinned: 88610382
     pr: "https://github.com/smith-chem-wisc/mzLib/pull/1345"
 
 github:

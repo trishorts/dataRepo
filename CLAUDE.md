@@ -14,7 +14,8 @@ This folder is a `/project`-managed research project. **You are de facto working
   DATAREPO-37: `.psmtsv` files over 512 MiB are read in windows (no INGESTER bump, D26). aging are
   **mid-re-ingest on `c619612`**. Their serving catalog is stale (G45).
   **First thing: run the thread checker.** Then: **G57**, the pyMzLib payload-limit report promised
-  to aging in 052. After that, merge each **charter** reply into `design/CHARTER.md` (D24) and fill in
+  to aging in 052, and **G60**: tell pyMzLib that mzLib PRs D/E changed after review (D `ebdfa790`,
+  E `88610382`: `QuantifiedPeak.MBRScore` is now `double?`), and check the reviewer's reply. After that, merge each **charter** reply into `design/CHARTER.md` (D24) and fill in
   §8 (G55). Also waiting on: aging (DATAREPO-38, the re-ingest), ptmQtl (P5/P6), logs (L1/L2),
   go (DATAREPO-35), pyMzLib (PR review; mzLib PRs **D #1346** and **E #1345**).
   **When the re-ingest lands:** run `python tools/verify_ptm_sites.py F:/aging_data/repo/store` (it
@@ -55,6 +56,12 @@ This folder is a `/project`-managed research project. **You are de facto working
   512 MiB of source (1.24 GB is known to read whole, 1.83 GB not). A proven-identical reader change
   does not bump `INGESTER_VERSION` (D26); a probably-identical one does.
 
+- **mzLib's `DashToNullOrDoubleConverter` reads a BLANK cell as 0.0, not null** (the `TryParse`
+  fallback). A reviewer on PR E proposed it for the PIP columns, which are blank on every MSMS peak,
+  so every MSMS peak would have read PIP Q-Value 0, the best possible value. Use
+  `DashOrBlankToNullDoubleConverter` (added in PR E) where 0 is a meaningful value. Same family
+  as the required-column falsehood below. A review suggestion is a claim about code: fill it before
+  applying it.
 - **After editing `.project/state.yaml`, parse it:** `python -c "import yaml;yaml.safe_load(open('.project/state.yaml',encoding='utf-8'))"`. A broken file makes render_resume silently count 0 gaps. It happened on 2026-09-19.
 - **Anything that reaches a written row is an input to the bundle hash — and nothing else is.** Both
   halves have now bitten. The manifest entry was not hashed for a day because it felt like a contract
