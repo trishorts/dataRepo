@@ -760,8 +760,9 @@ gaps:
     `double?` (a public type change) and MBR Score / PIP Q-Value / PIP PEP use a new
     `DashOrBlankToNullDoubleConverter`, so a blank or absent cell reads null, never 0; old-format
     MSMS rows now read MBRScore null where they read 0. D (`ebdfa790`): a blank ProForma cell is
-    computed from Full Sequence like an absent column. Post a short pyMzLib thread naming both
-    changes and the field names, and watch both PRs for the reviewer's answer on the MBRScore
+    computed from Full Sequence like an absent column. TOLD pyMzLib in thread 007 (2026-09-23,
+    dataRepo `2ea8df3`, pyMzLib `9d3d8bb`), asking DATAREPO-41 (does `double?` touch the bridge or
+    a binding). Remaining: watch both PRs for the reviewer's answer on the MBRScore
     behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
