@@ -109,21 +109,104 @@ def read_sdrf(path: Path, log: ReaderLog | None = None) -> tuple[list[str], list
     return list(doc.columns), rows
 
 
-def read_psmtsv(path: Path, log: ReaderLog | None = None) -> dict[str, list[Any]]:
+#: Bytes of SOURCE text read per pyMzLib call. The bridge returns a whole read as one JSON document
+#: on stdout, and .NET cannot build a string past ~2 GB: a 1.75 GB `AllPSMs.psmtsv` (PXD032044, aging
+#: 049, DATAREPO-37) died with "Insufficient memory" on a 512 GB machine. Parsing is not the limit --
+#: the bridge parsed all 1,798,356 of that file's records to answer a one-row window -- the size of
+#: the answer is. Measured bounds: PXD067622's 1.24 GB file reads whole, PXD032044's 1.83 GB does
+#: not. 512 MiB of source is 2.4x under the size known to work, and a window that still fails is
+#: halved. Each window re-parses the file (~55 s for PXD032044), so fewer windows is the cost that
+#: matters: at 256 MiB that file took 17 windows and 16 minutes.
+WINDOW_BYTES = 512 * 1024 * 1024
+
+#: A window is halved on an out-of-memory failure, down to this many records and no further.
+MIN_WINDOW_RECORDS = 1_000
+
+
+def _rows_per_window(path: Path, budget: int) -> int:
+    """How many records fit in `budget` bytes of source, estimated from the file's first lines.
+
+    This counts line breaks, it does not parse: a `.psmtsv` is one record per line. An estimate is
+    enough, because a window that still turns out too big is halved and retried.
+    """
+    with path.open("rb") as handle:
+        sample = handle.read(4 * 1024 * 1024)
+    lines = max(sample.count(b"\n") - 1, 1)  # minus the header
+    bytes_per_record = max(len(sample) / lines, 1.0)
+    return max(int(budget / bytes_per_record), MIN_WINDOW_RECORDS)
+
+
+def _is_out_of_memory(exc: Exception) -> bool:
+    return "memory" in str(exc).lower()
+
+
+def read_psmtsv(
+    path: Path, log: ReaderLog | None = None, *, window_bytes: int = WINDOW_BYTES
+) -> dict[str, list[Any]]:
     """Read a MetaMorpheus `.psmtsv` through pyMzLib, as columns.
+
+    A file larger than `window_bytes` is read in windows (`limit`/`offset`) and the windows are
+    concatenated. That is the same parse, so the columns are the same values in the same order as one
+    whole-file read. Each window re-parses the file inside the bridge, which costs time, not
+    correctness. A smaller file is read in one call, exactly as before.
 
     Returns:
         The reader's native fields, one list per column. Composite fields that have no faithful
         column shape (matched fragment ions, protein-group tuples) are excluded by pyMzLib; the
         verbatim text of the ion series is taken from the file's own column where needed.
+
+    Raises:
+        ReaderUnavailable: pyMzLib is missing, or a window fails even at `MIN_WINDOW_RECORDS`, or the
+            windows disagree about the file's columns or record count.
     """
     readers = require_pymzlib()
-    records = readers.read_records(str(path), timeout=None)
-    if records.truncated:  # pragma: no cover - only with an explicit limit
-        raise ReaderUnavailable(f"pyMzLib truncated its read of {path}")
+    path = Path(path)
+    if path.stat().st_size <= window_bytes:
+        records = readers.read_records(str(path), timeout=None)
+        if records.truncated:  # pragma: no cover - only with an explicit limit
+            raise ReaderUnavailable(f"pyMzLib truncated its read of {path}")
+        if log is not None:
+            log.record(path, "pymzlib", records.record_count)
+        return records.columns
+
+    window = _rows_per_window(path, window_bytes)
+    columns: dict[str, list[Any]] | None = None
+    total: int | None = None
+    offset, calls = 0, 0
+    while total is None or offset < total:
+        try:
+            part = readers.read_records(str(path), limit=window, offset=offset, timeout=None)
+        except Exception as exc:  # noqa: BLE001 - pyMzLib's BridgeError is not importable stably
+            if not _is_out_of_memory(exc) or window <= MIN_WINDOW_RECORDS:
+                raise
+            window = max(window // 2, MIN_WINDOW_RECORDS)
+            continue
+        calls += 1
+        if total is None:
+            total = part.record_count
+        elif part.record_count != total:
+            raise ReaderUnavailable(
+                f"{path} changed while it was being read: {total} records, then {part.record_count}"
+            )
+        if columns is None:
+            columns = {name: list(values) for name, values in part.columns.items()}
+        else:
+            if list(part.columns) != list(columns):
+                raise ReaderUnavailable(f"pyMzLib gave different columns for two windows of {path}")
+            for name, values in part.columns.items():
+                columns[name].extend(values)
+        got = len(next(iter(part.columns.values()), []))
+        if got == 0:
+            break
+        offset += got
+
+    columns = columns or {}
+    read = len(next(iter(columns.values()), []))
+    if total is not None and read != total:
+        raise ReaderUnavailable(f"read {read} of {total} records from {path} across {calls} windows")
     if log is not None:
-        log.record(path, "pymzlib", records.record_count)
-    return records.columns
+        log.record(path, "pymzlib", read, f"read in {calls} windows of up to {window} records")
+    return columns
 
 
 def read_tsv(path: Path, log: ReaderLog | None = None, note: str | None = None) -> tuple[list[str], list[list[str]]]:
