@@ -124,12 +124,18 @@ def parse(full_sequence: str, registry: ModRegistry) -> Peptidoform:
     mods: list[ModPlacement] = []
     unresolved: list[str] = []
     n_term_tags: list[str] = []
+    c_term_tags: list[str] = []
     residue_tags: dict[int, list[str]] = {}
 
-    for residue, bracket in pieces:
-        if residue:
+    for index, (residue, bracket) in enumerate(pieces):
+        # MetaMorpheus writes a C-terminal modification as `...L-[mod]`: the `-` is ProForma's
+        # terminus marker, not a residue. It used to be appended to the base sequence, so the one
+        # C-terminal site in the corpus was keyed on residue `-` one past the protein's end
+        # (DATAREPO-33). Only a trailing `-` is a terminus; anywhere else it is kept as written.
+        c_terminal = residue == "-" and index == len(pieces) - 1 and bracket is not None
+        if residue and not c_terminal:
             base.append(residue)
-        position = len(base) if residue else N_TERMINUS
+        position = C_TERMINUS if c_terminal else (len(base) if residue else N_TERMINUS)
         if bracket is None:
             continue
         for token in bracket.split("|"):
@@ -144,7 +150,7 @@ def parse(full_sequence: str, registry: ModRegistry) -> Peptidoform:
             mods.append(
                 ModPlacement(
                     position=position,
-                    residue="N-term" if position == N_TERMINUS else base[position - 1],
+                    residue={N_TERMINUS: "N-term", C_TERMINUS: "C-term"}.get(position) or base[position - 1],
                     name=name,
                     category=category,
                     unimod=unimod,
@@ -154,12 +160,16 @@ def parse(full_sequence: str, registry: ModRegistry) -> Peptidoform:
             tag = _tag(name, unimod, mass)
             if position == N_TERMINUS:
                 n_term_tags.append(tag)
+            elif position == C_TERMINUS:
+                c_term_tags.append(tag)
             else:
                 residue_tags.setdefault(position, []).append(tag)
 
     parts = ["".join(n_term_tags) + "-"] if n_term_tags else []
     for index, residue in enumerate(base, start=1):
         parts.append(residue + "".join(residue_tags.get(index, ())))
+    if c_term_tags:
+        parts.append("-" + "".join(c_term_tags))
 
     return Peptidoform(
         proforma="".join(parts),

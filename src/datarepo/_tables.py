@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.7"
+SCHEMA_VERSION = "0.0.8"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -141,6 +141,7 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("protein_accessions", pa.list_(pa.string()), nullable=True),
         pa.field("is_unique", pa.bool_(), nullable=True),
         pa.field("is_isoform_specific", pa.bool_(), nullable=True),
+        pa.field("engine_full_sequences", pa.list_(pa.string()), nullable=True),
     ]),
     "protein_groups": pa.schema([  # ProteinGroup
         pa.field("protein_group_id", pa.string(), nullable=False),
@@ -230,8 +231,17 @@ TABLES: dict[str, pa.Schema] = {
     "protein_localizations": pa.schema([  # ProteinLocalization
         pa.field("protein_accession", pa.string(), nullable=False),
         pa.field("compartment", pa.string(), nullable=False),
-        pa.field("organelle_label", pa.string(), nullable=False),
+        pa.field("organelle_map_version", pa.string(), nullable=False),
+        pa.field("go_release", pa.string(), nullable=False),
         pa.field("evidence", pa.string(), nullable=True),
+        pa.field("source_id", pa.string(), nullable=False),
+    ]),
+    "organelle_term_categories": pa.schema([  # OrganelleTermCategory
+        pa.field("compartment", pa.string(), nullable=False),
+        pa.field("organelle_map_version", pa.string(), nullable=False),
+        pa.field("go_release", pa.string(), nullable=False),
+        pa.field("organelle_category", pa.string(), nullable=False),
+        pa.field("organelle_subcategory", pa.string(), nullable=True),
         pa.field("source_id", pa.string(), nullable=False),
     ]),
     "protein_annotations": pa.schema([  # ProteinAnnotation
@@ -290,6 +300,54 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("message", pa.string(), nullable=False),
         pa.field("source", pa.string(), nullable=False),
     ]),
+    "trait_effects": pa.schema([  # TraitEffect
+        pa.field("feature_type", pa.string(), nullable=False),
+        pa.field("feature_key", pa.string(), nullable=False),
+        pa.field("feature_key_unimod", pa.string(), nullable=True),
+        pa.field("protein_accessions", pa.list_(pa.string()), nullable=False),
+        pa.field("trait_id", pa.string(), nullable=False),
+        pa.field("response", pa.string(), nullable=False),
+        pa.field("scope", pa.string(), nullable=False),
+        pa.field("beta_detect", pa.float64(), nullable=True),
+        pa.field("se_detect", pa.float64(), nullable=True),
+        pa.field("p_detect", pa.float64(), nullable=True),
+        pa.field("beta_int", pa.float64(), nullable=True),
+        pa.field("se_int", pa.float64(), nullable=True),
+        pa.field("p_int", pa.float64(), nullable=True),
+        pa.field("p_combined", pa.float64(), nullable=True),
+        pa.field("q", pa.float64(), nullable=True),
+        pa.field("fdr_family", pa.string(), nullable=False),
+        pa.field("n_detected", pa.int64(), nullable=False),
+        pa.field("n_absent_protein_present", pa.int64(), nullable=False),
+        pa.field("n_protein_present", pa.int64(), nullable=False),
+        pa.field("estimable_detect", pa.bool_(), nullable=False),
+        pa.field("estimable_int", pa.bool_(), nullable=False),
+        pa.field("mbr_dependent", pa.bool_(), nullable=False),
+        pa.field("mod_class", pa.string(), nullable=False),
+        pa.field("ambiguity_level", pa.string(), nullable=True),
+        pa.field("definition_id", pa.string(), nullable=False),
+    ]),
+    "ptm_pairs": pa.schema([  # PtmPair
+        pa.field("result_type", pa.string(), nullable=False),
+        pa.field("scope", pa.string(), nullable=False),
+        pa.field("feature_key_a", pa.string(), nullable=False),
+        pa.field("protein_accessions_a", pa.list_(pa.string()), nullable=False),
+        pa.field("feature_key_b", pa.string(), nullable=False),
+        pa.field("protein_accessions_b", pa.list_(pa.string()), nullable=False),
+        pa.field("same_protein", pa.bool_(), nullable=False),
+        pa.field("flags", pa.list_(pa.string()), nullable=True),
+        pa.field("class_pair", pa.string(), nullable=False),
+        pa.field("trait_id", pa.string(), nullable=True),
+        pa.field("stratum", pa.string(), nullable=True),
+        pa.field("sign", pa.string(), nullable=True),
+        pa.field("statistic", pa.string(), nullable=False),
+        pa.field("value", pa.float64(), nullable=False),
+        pa.field("n", pa.int64(), nullable=False),
+        pa.field("p", pa.float64(), nullable=True),
+        pa.field("q", pa.float64(), nullable=True),
+        pa.field("fdr_family", pa.string(), nullable=True),
+        pa.field("definition_id", pa.string(), nullable=False),
+    ]),
     "metrics": pa.schema([  # Metric
         pa.field("scope", pa.string(), nullable=False),
         pa.field("scope_id", pa.string(), nullable=False),
@@ -328,12 +386,15 @@ TABLE_CLASS: dict[str, str] = {
     "quant_values": "QuantValue",
     "annotation_sources": "AnnotationSource",
     "protein_localizations": "ProteinLocalization",
+    "organelle_term_categories": "OrganelleTermCategory",
     "protein_annotations": "ProteinAnnotation",
     "feature_sets": "FeatureSet",
     "feature_set_members": "FeatureSetMember",
     "definitions": "Definition",
     "provenance_records": "ProvenanceRecord",
     "findings": "Finding",
+    "trait_effects": "TraitEffect",
+    "ptm_pairs": "PtmPair",
     "metrics": "Metric",
     "search_modifications_declared": "SearchModification",
 }

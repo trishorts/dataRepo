@@ -569,6 +569,40 @@ def test_the_initiator_methionine_is_read_from_each_proteins_own_sequence(regist
     assert kinds == {"P1": "protein_n_term", "P2": "peptide_n_term"}
 
 
+@needs_pymzlib
+def test_a_c_terminal_site_is_typed_by_whether_the_peptide_ends_the_protein(registry):
+    """aging 045 section 2 (DATAREPO-33): keyed on the peptide's LAST residue at its own position,
+    `protein_c_term` when that residue ends the protein, else `peptide_c_term`. Never length + 1.
+    """
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    columns = _shared(
+        "P1|P2", "[3 to 10]",
+        full_sequence="KPVADYFL-[Common Artifact:Leucine methyl ester on L]",
+    )
+    seqs = _sequences(P1="MSKPVADYFL", P2="MSKPVADYFLGG")
+    rows = ptm_site_rows(columns, "PXD1", proforma=ProformaCache(registry), sequences=seqs)
+    got = {r["protein_accession"]: (r["residue"], r["position"], r["site_type"]) for r in rows}
+    assert got == {"P1": ("L", 10, "protein_c_term"), "P2": ("L", 10, "peptide_c_term")}
+    assert all(r["ptm_site_id"].endswith(f"@{r['site_type']}") for r in rows)
+
+
+@needs_pymzlib
+def test_a_c_terminal_site_with_no_sequence_is_counted_not_typed(registry):
+    """Without the protein there is no telling a protein C-terminus from a cleavage one."""
+    from datarepo.proforma import ProformaCache
+    from datarepo.sources.identifications import ptm_site_rows
+
+    unplaced: dict[str, int] = {}
+    rows = ptm_site_rows(
+        _shared("P1", "[3 to 10]", full_sequence="KPVADYFL-[Common Artifact:Leucine methyl ester on L]"),
+        "PXD1", proforma=ProformaCache(registry), unplaced=unplaced,
+    )
+    assert rows == []
+    assert unplaced == {"c_term_no_sequence": 1}
+
+
 # --- ptm_sites after aging 013: no level filter, contaminants kept and marked --------------------
 
 

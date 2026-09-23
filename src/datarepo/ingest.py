@@ -667,6 +667,13 @@ def _unplaced_site_findings(
             f"where this protein carries a different candidate than the first, which is the one "
             f"stored"
         )
+    if unplaced.get("c_term_no_sequence"):
+        # A single-accession PSM can be placed from its spans without a sequence, but a C-terminal
+        # site also needs the protein's length to be typed (aging 045 section 2), so it is held.
+        parts.append(
+            f"{unplaced['c_term_no_sequence']} carried a C-terminal modification on a protein with "
+            f"no sequence, so protein and peptide C-terminus could not be told apart"
+        )
     if sequences.missing:
         parts.append("database(s) named by the search provenance but not on disk: " + ", ".join(sequences.missing))
     return [

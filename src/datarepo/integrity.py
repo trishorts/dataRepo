@@ -80,6 +80,15 @@ IDENTIFIERS = (
 #: sources (provenance and results.txt), which `reconcile.metric_conflicts` compares instead.
 COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
+    # Keyed while empty, for the reason `STUDY_COMPOSITE_IDENTIFIERS` gives below.
+    ("organelle_term_categories", (
+        "compartment", "organelle_map_version", "go_release", "organelle_category", "organelle_subcategory",
+    )),
+    ("trait_effects", ("feature_type", "feature_key", "trait_id", "response", "scope", "definition_id")),
+    ("ptm_pairs", (
+        "result_type", "scope", "feature_key_a", "feature_key_b", "trait_id", "stratum", "statistic",
+        "definition_id",
+    )),
 )
 
 #: A study layer's natural keys, by layer and table. Enforced twice since 0.7.0: `study` refuses a

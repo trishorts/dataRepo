@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from datarepo.modlist import ModEntry, ModRegistry
-from datarepo.proforma import N_TERMINUS, ProformaCache, parse
+from datarepo.proforma import C_TERMINUS, N_TERMINUS, ProformaCache, parse
 
 
 @pytest.fixture
@@ -23,6 +23,7 @@ def small_registry():
             ModEntry("Ammonia loss", frozenset("CN"), 385, -17.026549, "test"),
             ModEntry("Calcium", frozenset("DE"), None, 37.946941, "test"),
             ModEntry("Nameless", frozenset("K"), None, None, "test"),
+            ModEntry("Leucine methyl ester", frozenset("L"), 34, 14.01565, "test"),
         ]
     )
 
@@ -47,6 +48,23 @@ def test_leading_bracket_is_an_n_terminal_modification(small_registry):
     assert result.base_sequence == "CAK"
     assert result.mods[0].position == N_TERMINUS
     assert result.mods[0].residue == "N-term"
+
+
+def test_a_trailing_dash_bracket_is_a_c_terminal_modification_not_a_residue(small_registry):
+    """DATAREPO-33: PXD050351's `KPVADYFL-[...]`. The `-` is the terminus marker.
+
+    It used to be appended to the base sequence, so `ptm_sites` keyed the site on residue `-` one
+    past the protein's end. The ProForma string was already right and must stay byte-identical,
+    because it is the peptidoform id.
+    """
+    result = parse("KPVADYFL-[Common Artifact:Leucine methyl ester on L]", small_registry)
+    assert result.base_sequence == "KPVADYFL"
+    assert result.proforma == "KPVADYFL-[UNIMOD:34]"
+    assert [(m.position, m.residue) for m in result.mods] == [(C_TERMINUS, "C-term")]
+
+
+def test_a_dash_that_is_not_trailing_is_not_a_terminus(small_registry):
+    assert parse("PEP-TIDE", small_registry).base_sequence == "PEP-TIDE"
 
 
 def test_two_modifications_on_one_peptide_keep_their_positions(small_registry):

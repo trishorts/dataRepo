@@ -18,7 +18,7 @@ import re
 from typing import Any, Iterable, Sequence
 
 from ..errors import IngestError
-from ..proforma import N_TERMINUS, ProformaCache
+from ..proforma import C_TERMINUS, N_TERMINUS, ProformaCache
 from ..usi import RunNameMap, mint
 from .protein_db import ProteinSequences, occurrences
 
@@ -409,8 +409,14 @@ def peptidoform_rows(
                 "protein_accessions": accessions,
                 "is_unique": len(accessions) == 1 if accessions else None,
                 "is_isoform_specific": None,
+                "engine_full_sequences": [_first(full[i])],
             }
         else:
+            # Kept as a set, not a pick: two engine names that resolve to one UNIMOD accession
+            # make one peptidoform id from two producer strings, and that must stay visible
+            # (ptmQtl 002, DATAREPO-P3).
+            if _first(full[i]) not in row["engine_full_sequences"]:
+                row["engine_full_sequences"] = sorted(row["engine_full_sequences"] + [_first(full[i])])
             if q is not None and (row["best_q_value"] is None or q < row["best_q_value"]):
                 row["best_q_value"] = q
             if q_notch is not None and (
@@ -520,15 +526,30 @@ def ptm_site_rows(
         )
         for mod in parsed.mods:
             name = _site_key_name(mod.name, full[i])
-            terminal = mod.position == N_TERMINUS
+            n_terminal = mod.position == N_TERMINUS
+            c_terminal = mod.position == C_TERMINUS
             # A terminus is a POSITION; the thing modified there is still a residue. So a terminal
-            # mod is keyed on the residue it actually sits on -- the peptide's first -- and never on
-            # a sentinel. `residue` stays null only when the peptide is somehow empty.
-            residue = parsed.base_sequence[:1] or None if terminal else mod.residue
-            offset = 1 if terminal else mod.position
-            for acc, start, previous in placements:
+            # mod is keyed on the residue it actually sits on -- the peptide's first, or for a
+            # C-terminal mod its last (aging 045 section 2) -- and never on a sentinel or on
+            # protein length + 1. `residue` stays null only when the peptide is somehow empty.
+            if n_terminal:
+                residue, offset = parsed.base_sequence[:1] or None, 1
+            elif c_terminal:
+                residue, offset = parsed.base_sequence[-1:] or None, len(parsed.base_sequence)
+            else:
+                residue, offset = mod.residue, mod.position
+            for acc, start, previous, length in placements:
                 position = start + offset - 1
-                site_type = _site_type(terminal, start, previous)
+                if c_terminal:
+                    if length is None:
+                        # Protein or peptide C-terminus is a question only the sequence answers.
+                        # Without it the site is counted, not guessed.
+                        if unplaced is not None:
+                            unplaced["c_term_no_sequence"] = unplaced.get("c_term_no_sequence", 0) + 1
+                        continue
+                    site_type = "protein_c_term" if position == length else "peptide_c_term"
+                else:
+                    site_type = _site_type(n_terminal, start, previous)
                 suffix = "" if site_type == "residue" else f"@{site_type}"
                 key = f"{dataset_id}:{acc}:{residue}{position}:{name}{suffix}"
                 row = sites.get(key)
@@ -595,8 +616,10 @@ def _placements(
     previous_cell: Any,
     sequences: ProteinSequences,
     unplaced: dict[str, int] | None,
-) -> list[tuple[str, int, str]]:
-    """`(accession, 1-based peptide start, residue before it)` for every place a PSM's peptide sits.
+) -> list[tuple[str, int, str, int | None]]:
+    """`(accession, 1-based peptide start, residue before it, protein length)` for every place a
+    PSM's peptide sits. The length is None when no sequence was available, and is what separates
+    `protein_c_term` from `peptide_c_term` (DATAREPO-33).
 
     **The spans cell is never paired with the accession cell.** MetaMorpheus de-duplicates it --
     `P60709|P63261|Q6S8J3` beside `[216 to 238]|[916 to 938]` -- and lists a repeated peptide once
@@ -617,7 +640,7 @@ def _placements(
     every span belongs to it and no pairing is needed. Anything else is not placed and is counted
     in `unplaced`, so the bundle says how many sites it could not position rather than guessing.
     """
-    out: list[tuple[str, int, str]] = []
+    out: list[tuple[str, int, str, int | None]] = []
     missed: dict[str, str] = {}
     for acc in accessions:
         candidates = sequences.get(acc)
@@ -628,8 +651,8 @@ def _placements(
         for sequence in candidates:
             for start in occurrences(base_sequence, sequence):
                 previous = sequence[start - 2] if start >= 2 else ""
-                if (acc, start, previous) not in out:
-                    out.append((acc, start, previous))
+                if (acc, start, previous, len(sequence)) not in out:
+                    out.append((acc, start, previous, len(sequence)))
                 found = True
         if not found:
             missed[acc] = "peptide_not_in_sequence"
@@ -638,7 +661,7 @@ def _placements(
     if len(accessions) == 1:
         starts = _residue_starts(ranges)
         previous = _per_accession(previous_cell, len(starts)) if starts else []
-        return [(accessions[0], s, previous[k] or "") for k, s in enumerate(starts)]
+        return [(accessions[0], s, previous[k] or "", None) for k, s in enumerate(starts)]
     if unplaced is not None:
         for reason in missed.values():
             unplaced[reason] = unplaced.get(reason, 0) + 1
@@ -648,12 +671,11 @@ def _placements(
 def _site_type(terminal: bool, start: int, previous_residue: str) -> str:
     """Which `SiteType` a placement is, from the producer's own coordinates.
 
-    Only N-terminal placements are classified, because only they are distinguishable in what
-    MetaMorpheus writes. A modification on a peptide's LAST residue and one on its C-terminus render
-    identically in a full sequence (`...K[mod]`), and the mod file's `PP` line -- the only thing
-    that could separate them -- is not parsed by `modlist`. Guessing would move existing ids for no
-    evidence, so a C-terminal placement stays `residue`, which is what it has always effectively
-    been. Raised to aging as DATAREPO-26.
+    N-terminal placements only. A C-terminal one is typed in `ptm_site_rows` against the searched
+    protein's length, because MetaMorpheus marks it explicitly (`...L-[mod]`) and the only question
+    is whether the peptide's last residue is the protein's: `protein_c_term` if it is, otherwise
+    `peptide_c_term` (aging 045 section 2, answering DATAREPO-33). Until 0.16.0 the `-` was read as
+    a residue and the one such site in the corpus was stored one past the protein's end.
 
     The initiator-methionine case is the whole reason this is not `start == 1`. Co-translational
     N-terminal acetylation follows Met excision, so the modified residue is **residue 2** and the

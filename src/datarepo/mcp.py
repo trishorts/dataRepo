@@ -1016,16 +1016,25 @@ class CatalogServer:
         back looking like a considered no.
         """
         like = f"%{query.lower()}%"
-        rows = self._maybe(
-            "protein_localizations",
-            "SELECT dataset_id, compartment, organelle_label, evidence, "
-            "count(*) AS n_proteins, list_sort(list(DISTINCT protein_accession))[1:10] AS examples "
-            "FROM protein_localizations "
-            "WHERE lower(coalesce(compartment, '')) LIKE ? OR lower(coalesce(organelle_label, '')) "
-            "LIKE ? GROUP BY 1, 2, 3, 4 ORDER BY n_proteins DESC",
-            [like, like],
-            limit,
-        )
+        # The category is a property of the term (go 004, DATAREPO-29), so it is joined in rather
+        # than read off the protein row. A catalog from before schema 0.0.8 has neither table
+        # shape; it gets no rows rather than an error.
+        rows = []
+        if self.box.has_table("organelle_term_categories"):
+            rows = self._maybe(
+                "protein_localizations",
+                "SELECT l.dataset_id, l.compartment, c.organelle_category, c.organelle_subcategory, "
+                "l.evidence, count(DISTINCT l.protein_accession) AS n_proteins, "
+                "list_sort(list(DISTINCT l.protein_accession))[1:10] AS examples "
+                "FROM protein_localizations l LEFT JOIN organelle_term_categories c "
+                "ON c.compartment = l.compartment AND c.organelle_map_version = l.organelle_map_version "
+                "AND c.go_release = l.go_release "
+                "WHERE lower(l.compartment) LIKE ? OR lower(coalesce(c.organelle_category, '')) LIKE ? "
+                "OR lower(coalesce(c.organelle_subcategory, '')) LIKE ? "
+                "GROUP BY 1, 2, 3, 4, 5 ORDER BY n_proteins DESC",
+                [like, like, like],
+                limit,
+            )
         sources = [
             self._source(
                 "protein_localizations",
