@@ -217,7 +217,7 @@ def _figures_of_merit(con: Any) -> list[dict[str, Any]]:
     kinds = con.execute(
         "SELECT count(DISTINCT modification_name) FROM ptm_sites WHERE target_decoy = 'target'"
     ).fetchone()[0]
-    ms2_note = "MS2 spectra in the files that passed QC (aging:DEF-MS2)"
+    ms2_note = "MS2 scans in the raw files, summed (aging:DEF-MS2)"
     if ms2_datasets != n_datasets:
         ms2_note += f"; {ms2_datasets} of {n_datasets} datasets report it"
     return [
@@ -535,15 +535,21 @@ def _jsonld_script(doc: dict[str, Any]) -> str:
 
 STYLE = """\
 :root {
-  --bg: #fbfbf9; --fg: #1d1d1b; --muted: #5d5d58; --line: #e2e1dc; --panel: #f2f1ec;
-  --accent: #1f5f8b; --warn-bg: #fff4dc; --warn-line: #e3b44b; --err-bg: #fde8e6;
-  --err-line: #d0584c;
+  --bg: #fbfaf7; --fg: #1c1b22; --muted: #5b5968; --line: #e4e1ea; --panel: #f4f2f8;
+  --accent: #6d28d9; --accent-soft: #efe9fb;
+  --band: linear-gradient(120deg, #0e7490 0%, #4f46e5 48%, #a21caf 100%);
+  --band-fg: #ffffff; --band-muted: #e5e7ff;
+  --c1: #0e9f8e; --c2: #3b82f6; --c3: #8b5cf6; --c4: #e0447a; --c5: #f08c1c; --c6: #16a34a;
+  --warn-bg: #fff4dc; --warn-line: #e3a008; --err-bg: #fde8e6; --err-line: #dc4c3f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #161615; --fg: #e8e7e3; --muted: #a09f99; --line: #34332f; --panel: #1f1f1d;
-    --accent: #7db7e0; --warn-bg: #2f2716; --warn-line: #a88432; --err-bg: #34201e;
-    --err-line: #c0685e;
+    --bg: #14131a; --fg: #ebe9f2; --muted: #a4a1b3; --line: #2f2c3b; --panel: #1d1b26;
+    --accent: #c4b5fd; --accent-soft: #2a2340;
+    --band: linear-gradient(120deg, #0b5566 0%, #3730a3 50%, #86198f 100%);
+    --band-fg: #ffffff; --band-muted: #d6d8ff;
+    --c1: #2dd4bf; --c2: #60a5fa; --c3: #a78bfa; --c4: #f472b6; --c5: #fbbf24; --c6: #4ade80;
+    --warn-bg: #2f2716; --warn-line: #c08a2a; --err-bg: #36201f; --err-line: #e06b5f;
   }
 }
 * { box-sizing: border-box; }
@@ -551,34 +557,48 @@ body {
   margin: 0; background: var(--bg); color: var(--fg);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-main, header, footer { max-width: 60rem; margin: 0 auto; padding: 0 16px; }
-header { padding-top: 2rem; }
-footer { color: var(--muted); font-size: 0.875rem; padding: 2rem 16px 3rem; }
-h1 { font-size: 1.6rem; line-height: 1.25; margin: 0.25rem 0 0.75rem; }
-h2 { font-size: 1.15rem; margin: 2rem 0 0.5rem; }
+main, footer { max-width: 60rem; margin: 0 auto; padding: 0 16px; }
+header {
+  background: var(--band); color: var(--band-fg);
+  padding: 2.25rem max(16px, calc((100% - 60rem) / 2 + 16px)) 1.75rem;
+  margin-bottom: 1.5rem;
+}
+header h1 { margin: 0.25rem 0 0.4rem; }
+header p { margin: 0.3rem 0; color: var(--band-muted); }
+header a { color: var(--band-fg); text-decoration-color: rgba(255, 255, 255, 0.5); }
+header code { color: var(--band-fg); }
+footer {
+  color: var(--muted); font-size: 0.875rem; padding: 2rem 16px 3rem; margin-top: 2.5rem;
+  border-top: 4px solid transparent; border-image: var(--band) 1;
+}
+h1 { font-size: 1.75rem; line-height: 1.25; }
+h2 { font-size: 1.15rem; margin: 2rem 0 0.5rem; padding-left: 0.6rem;
+  border-left: 4px solid var(--accent); }
 a { color: var(--accent); }
 code { font: 0.9em ui-monospace, "Cascadia Mono", Consolas, monospace; }
-.crumb { font-size: 0.9rem; color: var(--muted); }
+.crumb { font-size: 0.9rem; }
+.tagline { font-size: 1.05rem; }
 .lede { font-size: 1.05rem; }
 .generated {
-  background: var(--panel); border-left: 3px solid var(--line); padding: 0.75rem 1rem;
-  margin: 1rem 0;
+  background: var(--accent-soft); border-left: 4px solid var(--accent); padding: 0.75rem 1rem;
+  margin: 1rem 0; border-radius: 0 6px 6px 0;
 }
 .generated .label {
   display: block; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 0.25rem;
+  color: var(--accent); font-weight: 600; margin-bottom: 0.25rem;
 }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 0.925rem; }
-th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line);
+th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line);
   vertical-align: top; }
-th { font-weight: 600; color: var(--muted); }
+thead th { font-weight: 600; color: var(--fg); background: var(--accent-soft); }
+tbody tr:hover { background: var(--panel); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }
-.finding { border-left: 3px solid var(--line); padding: 0.5rem 0.75rem; margin: 0.5rem 0;
-  background: var(--panel); }
+.finding { border-left: 4px solid var(--line); padding: 0.5rem 0.75rem; margin: 0.5rem 0;
+  background: var(--panel); border-radius: 0 6px 6px 0; }
 .finding.warning { border-color: var(--warn-line); background: var(--warn-bg); }
 .finding.error { border-color: var(--err-line); background: var(--err-bg); }
 .finding .code { font-weight: 600; }
@@ -587,16 +607,22 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .about h2 { margin-top: 1.25rem; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
   gap: 0.75rem; margin: 1.5rem 0 0.5rem; }
-.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 0.75rem 0.9rem; }
-.tile-label { font-size: 0.85rem; color: var(--muted); }
-.tile-value { font-size: 1.9rem; font-weight: 600; line-height: 1.2; margin: 0.15rem 0; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  border-top: 5px solid var(--c1); padding: 0.75rem 0.9rem; }
+.tile:nth-child(6n+2) { border-top-color: var(--c2); }
+.tile:nth-child(6n+3) { border-top-color: var(--c3); }
+.tile:nth-child(6n+4) { border-top-color: var(--c4); }
+.tile:nth-child(6n+5) { border-top-color: var(--c5); }
+.tile:nth-child(6n+6) { border-top-color: var(--c6); }
+.tile-label { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+.tile-value { font-size: 2rem; font-weight: 650; line-height: 1.2; margin: 0.15rem 0; }
 .tile-note { font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
 .notice { background: var(--warn-bg); border-bottom: 2px solid var(--warn-line);
   padding: 0.6rem 16px; text-align: center; font-size: 0.925rem; }
 @media (max-width: 36rem) {
   dl { grid-template-columns: 1fr; }
   dt { margin-top: 0.5rem; }
+  header { padding-top: 1.5rem; }
 }
 """
 
@@ -629,8 +655,11 @@ def _compact(value: Any) -> str:
     """1,284 / 12.9K / 4.45M: a tile's headline. The exact value is in its title attribute."""
     if value is None:
         return "—"
-    for size, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (10_000, "K")):
-        if value >= size:
+    # (threshold, divisor, suffix): thousands are compacted only from 10,000, so 9,236 stays exact.
+    for threshold, size, suffix in (
+        (1_000_000_000, 1_000_000_000, "B"), (1_000_000, 1_000_000, "M"), (10_000, 1_000, "K"),
+    ):
+        if value >= threshold:
             return f"{value / size:.3g}{suffix}"
     return f"{value:,}"
 
@@ -702,6 +731,9 @@ def _index_html(
     about_block = f'<section class="about">\n{about_html(about)}\n</section>' if about else ""
     body = f"""<header>
 <h1>{_e(title)}</h1>
+<p class="tagline">Public proteomics data, reanalysed with one pipeline, for questions about aging.</p>
+</header>
+<main>
 {about_block}
 <div class="tiles">
 {tiles}
@@ -713,8 +745,6 @@ reanalysed with one pipeline and stored with the same schema, so they can be com
 they serve is how organelle proteomes change with age.</p>
 <p><strong>For AI agents:</strong> start at <a href="llms.txt"><code>llms.txt</code></a>. The same facts
 as this page are in <a href="datasets.json"><code>datasets.json</code></a>.</p>
-</header>
-<main>
 <h2>Datasets</h2>
 <p class="note">Counts are at 1% FDR, as the search engine reports them. "Warnings" are open findings
 about a dataset. Read them before using it.</p>

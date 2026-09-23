@@ -229,6 +229,14 @@ def test_the_figures_of_merit_are_the_catalogs_sums(tmp_path, catalog):
     assert "0 of 2 datasets report it" in merit["Spectra searched"]["note"]
 
 
+def test_a_compacted_figure_keeps_its_magnitude():
+    from datarepo.site import _compact
+
+    # 117,699 once rendered as "11.8K" -- a tenfold understatement on the front page.
+    assert [_compact(v) for v in (204, 9236, 10_000, 117_699, 2_158_459, 4_453_229)] == [
+        "204", "9,236", "10K", "118K", "2.16M", "4.45M"]
+
+
 def test_the_front_page_carries_the_owners_overview(tmp_path, catalog):
     about = (
         "## About\n\nThe **aging** working group asks *why*. <b>no</b>\n\n"
