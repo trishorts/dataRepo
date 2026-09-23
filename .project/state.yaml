@@ -730,7 +730,11 @@ gaps:
     (-Q1), sdrf 007 (-38), QuantProject 002 (-39), pyMzLib 006 (-40), all posted 2026-09-23. Merge each
     reply into the charter, bump its version, and turn any refused seam into a question to the party
     named. The first build D24 creates is a RUNNER that calls engines through pyMzLib (seam S9); build
-    none until a verb exists.
+    none until a verb exists. v0.2 (2026-09-23) MERGED five replies: aging 050, go 007+008, sdrf 008,
+    logs 015, QuantProject 003 (S4 declined -> per-engine namespaces; seams S15-S19 added and
+    renumbered). Awaiting ptmQtl, phred, pyMzLib. The five who corrected must ACCEPT the merged
+    wording (not inferred from silence): tell each that v0.2 exists. dataRepo now owes GO-A1..A3,
+    SDRF-DR7, SDRF-DR8, and U11 (D24 vs a consumer's own science) is in OPEN_QUESTIONS.
   - >-
     G56 The `localization` project (E:/CodeReview/localization, site-level FLR for O-glycopeptides) is
     phred's declared boundary partner (FLR : Q_loc :: FDR : PEP) and is NOT a party to the charter.
