@@ -866,7 +866,11 @@ gaps:
     ours, the 32,340 reference-only rows are exactly the variant proteoforms; all rows carry the
     manifest row_values. Latest bundle per dataset: 19,971 human target accessions, 100% join, none
     contains `_` (no variant or `_N` accessions in stored output), so the entry join needs no mapping
-    today. Scripts: scratchpad logsd1/{run,diff,coverage}.py. Not run: mouse, rat.
+    today. Scripts: scratchpad logsd1/{run,diff,coverage,species}.py. Mouse and rat ALSO identical
+    (logs 020): 0 rows only ours; all 16,165 mouse and 7,789 rat stored accessions join. RAT: 48.6% of
+    stored accessions have no primary-assembly gene (not_in_source 37.2%, off_primary_only 11.5%) vs
+    human 5.1%, mouse 9.4% -- cause is logs' to explain; PROMISED logs we would tell aging (a rat gene
+    view drops ~half the identified proteins). Not yet told.
   - >-
     G65 [CLOSED 2026-09-24: MEASURED IDENTICAL. PXD036557 ingested with datarepo 0.17.2 (`22c319c`)
     under mzlib 0.1.1 and 0.2.0 in fresh venvs: same bundle id `d15c8938fd855483`, all 16 tables
