@@ -813,6 +813,18 @@ gaps:
     acceptance: charter v0.3 (RUN column and S1 move to "the instance operator, today aging, via
     datarepo's runner"), then ONE message each to go, logs, ptmQtl, sdrf, QuantProject covering v0.2 +
     v0.3 together (the five v0.2 notices are HELD for this). U11 closes as dissolved.
+  - >-
+    G62 Two SDRF builds promised to sdrf in thread 010 (2026-09-23). (1) A `source` column on
+    SampleCharacteristic with sdrf's five values (deposited, pride project record, config, curated,
+    inferred), filled from option B (row default + per-characteristic override); a cell with neither is
+    NULL, never `deposited`. Build from the first REAL SDRF carrying `comment[characteristics source]`.
+    Our 006 had claimed this column existed; 010 corrected it. (2) The data-file gate: match SDRF
+    `comment[data file]` against the runs actually searched. Today an unmatched SDRF gives dangling
+    assay run_ids and integrity.py REFUSES the whole bundle as an "ingester bug" while `sdrf_status` is
+    `trusted` for any SDRF present. Build: all matched -> trusted; some -> use matching rows, a finding
+    names the rest, not trusted; none -> SDRF unused, flagged sample per run, finding. Cross-check against
+    sdrf's `results/benchmark/screen.tsv` (46 SDRFs naming absent files). Needs an INGESTER_VERSION bump
+    and an SdrfStatus value.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

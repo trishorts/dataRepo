@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Commits | 190 |
+| Commits | 193 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 27 |
-| Open gaps | 59 |
+| Open gaps | 60 |
 | Gate items skipped | 4 |
 
 **Worktrees** -- details in `code/PINNED.md`
