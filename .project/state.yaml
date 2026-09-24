@@ -309,6 +309,26 @@ decisions:
       Bumping would have re-identified every bundle in the middle of aging's re-ingest for zero
       change in any row. The test stays one sentence -- does this change what the rows say -- and
       "proven not" is an answer, "probably not" is not.
+
+  - id: D27
+    date: 2026-09-23
+    text: >-
+      dataRepo SHIPS; an instance's OPERATOR RUNS (user decision, 2026-09-23; revises D24's RUN half,
+      completes D8). The dataRepo PROJECT operates nothing: it does not run engines, ingest, build or
+      publish for any consumer. It defines and ships the software and its contracts -- schema,
+      ingest/catalog contracts, provenance, the MCP server, the site generator, and the runner command
+      through which an operator executes a released engine on stored data, which also fixes how an engine
+      run is recorded. Whoever operates an instance runs all of it on that instance: today aging, which
+      already runs ingest, build and the site (D8, D25, aging D42). D24's first half stands: dataRepo never
+      DEFINES, and engines stay generic. The user's reason: "if I truly want dataRepo to be generic, then I
+      better let the /project aging actually take over the running of the dataRepo whenever it wants to.
+      Then dataRepo can just focus on what it means to be dataRepo." A consumer-operator role for the
+      dataRepo project cannot extend to a second consumer. Consequences: U11 dissolves (aging runs its own
+      fits and the generic engines alike); operator docs and examples may use aging data for a while, but
+      aging's specifics stay in aging's `instance/` and dataRepo's CI stays on a non-aging fixture;
+      dataRepo keeps scratch runs on real data to TEST its software (findings come from filling), and
+      never serves or publishes them. The charter moves to v0.3 only after aging accepts the operator
+      role (G61).
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
@@ -773,6 +793,13 @@ gaps:
     dataRepo `2ea8df3`, pyMzLib `9d3d8bb`), asking DATAREPO-41 (does `double?` touch the bridge or
     a binding). Remaining: watch both PRs for the reviewer's answer on the MBRScore
     behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
+  - >-
+    G61 D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for
+    engine runs on stored data (logs, go, ptmQtl) and their provenance, on top of ingest, build and the
+    site it already runs. Ask aging FIRST, alone; announce to no engine until aging answers. On
+    acceptance: charter v0.3 (RUN column and S1 move to "the instance operator, today aging, via
+    datarepo's runner"), then ONE message each to go, logs, ptmQtl, sdrf, QuantProject covering v0.2 +
+    v0.3 together (the five v0.2 notices are HELD for this). U11 closes as dissolved.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
