@@ -35,7 +35,7 @@ depends on it is marked as such.
 | U10 | **Does `catalog_id` promise more than it delivers?** It hashes `datarepo.__version__` alongside `CATALOG_VERSION`, so **0.10.0 -- which adds an MCP server and changes nothing `build` writes -- gives every catalog a new id from the same bundles.** That is the mirror of the decision that deliberately kept `__version__` OUT of the bundle hash (G29). It is not obviously wrong: a catalog is derived and disposable (D10), so the cost is a rebuild rather than a broken citation, and over-hashing can only be wrong in the safe direction. But aging is the one citing catalog ids, so whether a catalog id should move for a change that cannot reach a catalog is theirs to say. Option (b) is to drop `__version__` and make `CATALOG_VERSION` carry the builder, which would make every future `build` change a deliberate bump exactly as `INGESTER_VERSION` does. | **(a)** leave it, and document what the id does and does not promise. Tracked as G34; not changed without a thread. |
 | U11 | **Does D24 cover a consumer's own science?** D24 says dataRepo RUNS every engine that works on stored results. aging's abundance age-effect fits (`DEF-AGE-EFFECT`, mzLib `Statistics`) are code on stored results, so D24's letter would make them ours. aging would rather keep them, because the trait and the refusals are their science (aging 050 §2). | aging keeps them. D24 covers **generic engines** that no consumer owns; a consumer's own science stays the consumer's to run. Written into charter v0.2 §2 as a proposed reading. **CLOSED, dissolved by D27** (2026-09-24): aging accepted the operator role (aging 055, their D45) and runs its own fits and the generic engines alike. Charter v0.3 §2. |
 
-### The runner (G64, `design/RUNNER.md`; for aging as operator, and for you)
+### The runner (G64, `design/RUNNER.md`) -- ANSWERED 2026-09-24: all four defaults accepted by the user (D28)
 
 | ID | Question | Our default until answered |
 |---|---|---|
@@ -67,6 +67,7 @@ depends on it is marked as such.
 
 | ID | Answer | Recorded as |
 |---|---|---|
+| U12-U15 | The runner's shape as proposed: output beside the bundle under `_engine/`; id from engine, version and input sha256s; operator supplies inputs; one schema change adds `gene_resolutions` with go's columns | D28 (2026-09-24) |
 | G2 | Prototype local; NCEMS runs production | D1 |
 | G3 | Public from day one, no login | D2 |
 | — | CC BY 4.0 data, MIT code | D3 |

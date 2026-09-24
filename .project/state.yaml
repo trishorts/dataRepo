@@ -329,6 +329,19 @@ decisions:
       dataRepo keeps scratch runs on real data to TEST its software (findings come from filling), and
       never serves or publishes them. The charter moves to v0.3 only after aging accepts the operator
       role (G61).
+  - id: D28
+    date: 2026-09-24
+    text: >-
+      The runner's shape (user decision, 2026-09-24, U12-U15 accepted as proposed in design/RUNNER.md).
+      (U12) An engine's output is a separate artefact at `<store>/_engine/<engine>/<artefact id>/`,
+      beside the bundles and never inside one. (U13) Its id, and the "already done" test, is a sha256
+      over the engine, its released version, every input's role and sha256, the definition id,
+      RUNNER_VERSION and the schema version -- not the bundle id, so one logs run serves every dataset
+      that searched the same database. (U14) The operator supplies every input file; the runner
+      fetches nothing and checks each against the engine's published manifest. (U15) logs' rows go in a
+      new core table `gene_resolutions` keyed (search_database_sha256, gene_set_release, accession,
+      gene_id), added in ONE schema change together with go's per-row evidence columns. Building still
+      waits on aging's review as operator (DATAREPO-50).
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.

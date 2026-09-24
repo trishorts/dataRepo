@@ -1,9 +1,9 @@
 # The runner: how an instance operator runs a released engine on stored data (G64)
 
-**Status: PROPOSAL, 2026-09-24. Not built.** D27 decided that dataRepo ships a runner and the instance
-operator (today aging) runs it; charter v0.3 §2 lists what it must do. This page proposes how. Every
-open choice has a default in `OPEN_QUESTIONS.md` (U12-U15), and aging, as the operator, is asked to
-check it before a line is written.
+**Status: DECIDED BY THE USER, 2026-09-24 (D28, U12-U15). Not built.** D27 decided that dataRepo ships
+a runner and the instance operator (today aging) runs it; charter v0.3 §2 lists what it must do. The
+user accepted this page's four choices as written. aging, as the operator, is asked to review it
+(DATAREPO-50) before a line is written.
 
 ## What it is for
 
