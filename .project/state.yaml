@@ -739,6 +739,18 @@ gaps:
     header; recompute go D26's five header counts) is COMMITTED TO in go 005 and lives in the reader. go's
     D22 columns (n_members, n_with, accession_used, propagated) and annotation_status are deliberately not
     added until a real file shows them populated. Waiting on DATAREPO-35 (first real go TSV).
+    UPDATED 2026-09-23 (go 007/008, our go 009 `08f5199`): go runs ON STORED results and emits TWO files
+    per run (D28: annotation rows with no category; one term-to-category file per consumer map) with
+    every non-decoy group and its `q_value` (D29; recount header counters at q<=0.01). A PRE-RELEASE
+    file (PXD036557, header `release: none`) is ACCEPTED for building the reader only: the reader must
+    REFUSE `release: none` at ingest. Schema fixes owed at reader build: DROP
+    `ProteinLocalization.organelle_map_version` (required, but D28 rows have no map: a required column
+    with no true value); ADD `category_map_name` to OrganelleTermCategory's key; REPLACE the
+    row-vs-table cross-check with a REFUSING coverage check (every category go_id in the paired
+    annotation file, same go_release); decide from real rows where the GROUP q_value lives in a
+    per-accession table. Also promised: `build` refuses a catalog with more than one go_release;
+    provenance records both the searched-database and annotation-XML shas; a FASTA-searched run with no
+    annotation XML is refused.
   - >-
     G54 logs gene-resolution table (logs 011/012): we chose option (b) -- logs runs mzLib's
     EnsemblGeneResolver per (search_database_sha256, gene_set_release) and delivers; we ingest. Shape and key
