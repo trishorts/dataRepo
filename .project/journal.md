@@ -1508,3 +1508,50 @@ One slip, caught and corrected: the first reply said 21/21 tests, counting the t
 real number is 20; the comment was edited to say so, and the pushed commit message still says 21.
 Both PRs' `integration` check fails on the known MetaMorpheus `IDigestionParams.SpecificDigestionAgent`
 break (CS0535), confirmed from the log. pyMzLib has not been told the PRs changed (G60).
+
+## 2026-09-23 - Eighteenth: dataRepo stops operating anything (D27), and three mzLib PRs merge while we close
+
+The session started as a clear-the-decks pass and ended with the project's role changed.
+
+The owed messages went first. pyMzLib 007 told them PRs D and E had changed after review
+(`MBRScore` is now `double?`). pyMzLib 008 is the payload-limit report promised to aging (G57), and
+it went out measured, not inherited: re-run on 0.1.1 (still latest), the whole 1.24 GB read is
+777,706,146 stdout characters (~805 per record), and the 1.83 GB read throws `OutOfMemoryException`
+at 98 s inside a clean error envelope. Projected, that file's payload is 1.15-1.45 billion
+characters, above .NET's ~1.07 billion-character string maximum. We said plainly that the
+projection is not confirmed inside the bridge.
+
+Then the charter. Five of eight parties had answered (aging 050, go 007/008, sdrf 008, logs 015,
+QuantProject 003), and v0.2 merged them. The substantive changes: QuantProject declined to be a
+registry of other engines' definitions, so S4 became per-engine namespaces; sdrf asked for a third
+run location, before the search; go moved to on-stored-results and gave the organelle map to aging;
+and three parties each proposed an "S15", renumbered to S15-S19. S19 matters most: the experimental
+design. Without it every per-sample number in the store is per injection, silently.
+
+Then the user changed the rule. D24 had said dataRepo never defines but does run. The user's
+reasoning, verbatim in D27: if dataRepo is truly generic, aging should run it, and dataRepo should
+focus on being dataRepo. The argument that settled it is that a consumer-operator role cannot extend
+to a second consumer. So D27: dataRepo ships the software (including the runner an operator uses to
+execute an engine, which fixes how a run is recorded), and whoever operates an instance runs
+everything on it. It also dissolves U11 (aging's own fits). aging was asked first and alone (053,
+DATAREPO-43). No engine has been told, and the five v0.2 notices are held so each party gets v0.2
+and v0.3 in one message.
+
+The answers owed to peers each found something by going to fill it. Answering go (009) found that go's
+D28 leaves `ProteinLocalization.organelle_map_version` as a required column with no true value.
+Answering sdrf (010) found that our own 006 had told them `sample_characteristics` "stores provenance
+per characteristic" -- it has no source column; a proposal had been reported as built -- and that an
+SDRF naming files absent from the deposit makes integrity.py refuse the whole bundle as an "ingester
+bug" while `sdrf_status` says `trusted` for any SDRF present. Answering aging's per-run enrichment
+(054) found that PXD058611's files are named `178.raw`..`213.raw`, so nothing can infer the split; a
+per-run streptavidin count does -- 6-16 PSMs in every run 178-198, 0 in every run 199-213 -- sent as
+evidence, not an assignment, because 21/15 is not the "half" aging read in the protocol.
+
+Two slips, both the same: an Edit on wrapped YAML text missed, and the commit that followed claimed a
+state change it did not contain (`61a8bcc` for G60, `8054444` for G53). Each was followed by a
+correcting commit that says so. The check is `git show --stat HEAD` naming `state.yaml`.
+
+At close-out: #1338 (logs' resolver), #1345 (PR E) and #1346 (PR D) all MERGED into mzLib master,
+approved, between 23:53 and 00:22 UTC. The reviewer accepted the `MBRScore` behaviour change by
+merging. No mzLib release carries them yet (1.0.591 is latest). aging has allocated 055 and not
+written it; the empty template sits untracked in our thread folder and was deliberately not committed.

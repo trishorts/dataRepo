@@ -29,7 +29,30 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-23, sixteenth session): the public site is live, and large files read
+## Latest (2026-09-23, eighteenth session): dataRepo operates nothing (D27), and mzLib merged our PRs
+
+**No code changed; datarepo is still 0.17.2 (`91fbdd9`).** This session was threads, the charter and a
+decision.
+
+- **D27 (the user's): dataRepo SHIPS, the instance operator RUNS.** It supersedes D24's "dataRepo
+  runs the engines". The dataRepo project operates nothing. It ships the software, including the
+  runner an operator uses to execute a released engine on stored data. Today aging is the operator.
+  aging was asked first and alone (thread 053, **DATAREPO-43**). No engine has been told yet.
+- **Charter v0.2** (`design/CHARTER.md`, `6a4318e`) merges the replies from aging, go, sdrf, logs and
+  QuantProject. S4 (definition ids) becomes per-engine namespaces, a before-the-search run location
+  is added, and seams S15-S19 are new; **S19, the experimental design**, matters most. ptmQtl, phred
+  and pyMzLib have not replied. v0.3 waits on DATAREPO-43 (G61).
+- **Threads out:** pyMzLib 007 (PRs D/E changed) and 008 (the bridge payload limit, measured on
+  0.1.1: G57); go 009 (GO-A1/A2 answered, A3 half); sdrf 010 (SDRF-DR7/DR8, plus a correction of
+  our own 006); aging 054 (per-run enrichment, **DATAREPO-44**).
+- **Found by filling:** a required column with no true value after go's D28 (G53); per-characteristic
+  SDRF provenance that we had announced but never built, and an unmatched-SDRF path that refuses the
+  whole bundle as an "ingester bug" (G62); and PXD058611's capture runs, visible only through
+  streptavidin (G63).
+- **At close:** mzLib **#1338, #1345 (PR E) and #1346 (PR D) all merged**, approved, around
+  2026-09-24 00:00 UTC. No release yet.
+
+## 2026-09-23 (sixteenth session): the public site is live, and large files read
 
 **`datarepo` 0.17.2 (`91fbdd9`, pushed).** No bundle or catalog-format id moved since 0.16.0:
 `INGESTER_VERSION` 0.11.0, schema 0.0.8 and `CATALOG_VERSION` 4 are unchanged.
@@ -681,51 +704,41 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**We owe two things: G57, the pyMzLib payload-limit report promised to aging in 052, and G60, a
-short pyMzLib thread saying mzLib PRs D/E changed after review (E's `MBRScore` is now `double?`).** Code is
-datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, `INGESTER_VERSION` **0.11.0**.
-
-**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). Then merge every charter
-reply into `design/CHARTER.md`: fill in the §8 sign-off row, bump the version, and turn any seam a
-party refuses into a question to the party they name. **A seam with no owner is the one thing that
-must not be left.**
-
-**In flight (re-check each):**
-- **Charter sign-offs** (DATAREPO-36..40, -L3, -P7, -Q1): threads aging 048, go 006, logs 014,
-  ptmQtl 004, phred 002, sdrf 007, QuantProject 002, pyMzLib 006.
-- **mzLib PRs:** `gh pr view 1346 -R smith-chem-wisc/mzLib` (D) and `gh pr view 1345 -R
-  smith-chem-wisc/mzLib` (E). Worktrees `code/mzLib_prD_proforma`, `code/mzLib_prE_peaks`.
-  Alexander-Sol's automated review was answered on 2026-09-23 with code (D `ebdfa790`, E `88610382`);
-  E's reply asks the reviewer to rule on old-format MSMS rows now reading `MBRScore` null, not 0.
-  `integration` fails on the unrelated MetaMorpheus CS0535 (`SpecificDigestionAgent`) break.
-- **aging's re-ingest on `c619612`.** When it lands, run
-  `python tools/verify_ptm_sites.py F:/aging_data/repo/store`. It should pass on **every** bundle,
-  with no exceptions left. Their serving catalog `72449bdd25c36df2` is stale for six datasets (G45).
-- **Still open from earlier today:** ptmQtl P5/P6, logs L1/L2, go DATAREPO-35 (a first real TSV).
-- **aging's DATAREPO-38** (thread 051): owning the site's about text and regenerate step. **When the
-  re-ingest lands, regenerate the site without `--notice`** (G58; the command is in thread 051).
-- **PXD032044's first real ingest on 0.17.2** (G59). The reader is verified; the rest of the ingest
-  at 1.8M PSMs has not been run.
+**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). aging had allocated
+**055** at close and not written it. The empty template sat untracked in `design/threads/aging/`
+and was deliberately not committed. Read it once it has content, then commit the mirror.
 
 ### The next action
 
-0. **G57:** post the payload-limit report to pyMzLib (next thread number from the checker), with
-   052's measurements. It was promised to aging.
-1. **Merge charter replies** as above. The first real work D24 creates is a **runner**: dataRepo
-   calling logs's resolver and ptmQtl's engine through pyMzLib, once their verbs exist (seam S9).
-   Do not build one until a verb exists. Design it with pyMzLib (DATAREPO-40).
-2. **Ask the user whether the `localization` project** (site-level FLR, phred's declared boundary
-   partner) joins the charter (G56). Do not write to it before they answer.
-3. **G52:** when `pro_forma` reaches `pip install mzlib`, diff it against `proforma.py` on the
-   corpus before switching. They differ in three ways, and the string is the peptidoform id.
-4. **G53/G54:** build the go reader and the logs table only from a real delivered or run output.
-5. **G48:** explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. Never back-fill
-   `Protein.gene`.
-6. G42 (store a pointer to aging's kept SDRF, sdrf 005 §2), G35 (do NOT claim D15's bar), G32, G46,
-   G33/G26/G36, the QPX pin (G13). (`datarepo site` is DONE: D25.)
-   **N1/G9 goes to the next NCEMS meeting regardless.**
-7. **`/project advance`**: the phase still says INCEPTION and the work is plainly BUILD. It is a
-   gated step, not a close-out edit.
+1. **Read aging 055.** If it accepts **DATAREPO-43** (the operator role, D27): move
+   `design/CHARTER.md` to **v0.3**. The RUN column and S1 become "the instance operator, today
+   aging, via datarepo's runner", and U11 closes. Then send **one** message each to go, logs,
+   ptmQtl, sdrf and QuantProject covering v0.2 and v0.3 together, including the held half of
+   GO-A3 (who picks the go.obo release) (G61). If aging declines or defers, v0.2 stands. Then send
+   the five v0.2 notices alone, and record what aging said would have to be true first.
+2. **Tell pyMzLib, and logs for #1338, that the PRs merged** (G60). Retire
+   `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` (`code/PINNED.md`).
+3. **If 055 answers DATAREPO-44:** build **G63** (per-run enrichment) as specified there. It needs an
+   `INGESTER_VERSION` bump, two schema regenerations, and aging told before it lands.
+4. **Ask the user whether the `localization` project** joins the charter (G56). Do not write to it
+   before they answer.
+
+**In flight (re-check each):**
+- **mzLib release** carrying #1338/#1345/#1346: `gh release list -R smith-chem-wisc/mzLib -L 2`
+  (1.0.591 at close). Then pyMzLib: `pip index versions mzlib` (0.1.1 at close). **G52** (diff
+  mzLib's ProForma against `proforma.py` on the corpus before switching) and logs' S9 both start
+  there.
+- **pyMzLib:** DATAREPO-40 (charter), -41 (`MBRScore` `double?` in the bridge), -42 (payload limit).
+- **go:** the pre-release PXD036557 file for the reader (**G53**, which lists three schema fixes).
+- **sdrf:** a reply to 010. **G62** (SDRF `source` column, data-file gate) builds from the first
+  real SDRF that carries source columns.
+- **ptmQtl, phred:** charter rows. **logs:** its S4 namespace, and LOGS-DR1 (our first run's diff).
+- **PXD032044's first real ingest on 0.17.2** (G59).
+
+**Standing:** G48 (explain `ERVK-6` for `P63135`; never back-fill `Protein.gene`), G42, G35 (do NOT
+claim D15's bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.**
+**`/project advance`**: the phase still says INCEPTION and the work is plainly BUILD. It is a gated
+step, not a close-out edit.
 
 **Do not trust a catalog number quoted anywhere in this file.** For a measurement, build a scratch
 catalog from the store and name the PXDs. Name only PXDs that are in BOTH the manifest and the store

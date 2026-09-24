@@ -726,7 +726,7 @@ gaps:
     INGESTER_VERSION bump -- strip the terminal `-` from base_sequence and give the site a
     C-terminal site type -- and do NOT ship a C-terminal site type before they rule.
   - >-
-    G52 mzLib PR D (smith-chem-wisc/mzLib#1346, opened 2026-09-23) computes psmtsv ProForma, but its
+    G52 [PR D MERGED 2026-09-24 00:22 UTC; waits on an mzLib release, then pyMzLib] mzLib PR D (smith-chem-wisc/mzLib#1346, opened 2026-09-23) computes psmtsv ProForma, but its
     string is NOT byte-identical to `proforma.py`: Calcium on D -> UNIMOD:951 (ours: mass tag); mods mzLib
     does not load stay named `[Common Artifact:...]` (ours resolve from the MetaMorpheus install, e.g.
     UNIMOD:34); unresolved -> `[Category:Name on X]` (ours `[Info:...]`). The string is our peptidoform id,
@@ -785,7 +785,11 @@ gaps:
     (a projection, not confirmed inside the bridge). Remaining: their reply; re-run the probe on
     any new release (we offered).
   - >-
-    G58 The public site's upkeep (D25). OPEN on aging's DATAREPO-38 (thread 051): adopt the about
+    G58 CLOSED 2026-09-23 by aging 050: DATAREPO-38 accepted both halves (`instance/site_about.md`;
+    `instance/publish_catalog_and_site.ps1` runs after every ingest in the batch runner, aging D42);
+    regenerated WITHOUT `--notice` at gh-pages `f3b4bf8`, live front page names catalog
+    `70bcd76acebf16f3` (checked by curl 2026-09-23: id present, no banner). Original text follows.
+    The public site's upkeep (D25). OPEN on aging's DATAREPO-38 (thread 051): adopt the about
     text (suggested `instance/site_about.md`) and regenerate after each catalog rebuild. After aging's
     re-ingest: regenerate WITHOUT `--notice`, from a catalog built by the same datarepo install
     (`catalog_id` hashes `__version__`, so a site and a serving catalog from different builders cite
@@ -803,7 +807,11 @@ gaps:
     MSMS rows now read MBRScore null where they read 0. D (`ebdfa790`): a blank ProForma cell is
     computed from Full Sequence like an absent column. TOLD pyMzLib in thread 007 (2026-09-23,
     dataRepo `2ea8df3`, pyMzLib `9d3d8bb`), asking DATAREPO-41 (does `double?` touch the bridge or
-    a binding). Remaining: watch both PRs for the reviewer's answer on the MBRScore
+    a binding). MERGED 2026-09-24 ~00:11-00:22 UTC, both APPROVED (E head `149c5173`, D head
+    `163925fd`, each with master merged in by the maintainer); logs' #1338 merged at 23:53 UTC. The
+    MBRScore behaviour change was accepted by merge. NO mzLib release carries them yet (1.0.591
+    latest). Owed: tell pyMzLib (and logs, for #1338) that they merged; the worktrees
+    `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` can be retired. Original remainder: watch both PRs for the reviewer's answer on the MBRScore
     behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
   - >-
     G61 D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for

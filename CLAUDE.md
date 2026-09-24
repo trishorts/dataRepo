@@ -8,30 +8,32 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
 - **Pick up at:** code is datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, aging study
   layer **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
-  `catalog.CATALOG_VERSION` **4**. The **public site is LIVE** as a preview at
-  https://trishorts.github.io/aging-pipeline/ (D25): `datarepo site`, served from an orphan
-  `gh-pages` branch of the public `aging-pipeline` repo (`aging` is private). 0.17.2 fixed
-  DATAREPO-37: `.psmtsv` files over 512 MiB are read in windows (no INGESTER bump, D26). aging are
-  **mid-re-ingest on `c619612`**. Their serving catalog is stale (G45).
-  **First thing: run the thread checker.** Then: **G57**, the pyMzLib payload-limit report promised
-  to aging in 052, and **G60**: tell pyMzLib that mzLib PRs D/E changed after review (D `ebdfa790`,
-  E `88610382`: `QuantifiedPeak.MBRScore` is now `double?`), and check the reviewer's reply. After that, merge each **charter** reply into `design/CHARTER.md` (D24) and fill in
-  §8 (G55). Also waiting on: aging (DATAREPO-38, the re-ingest), ptmQtl (P5/P6), logs (L1/L2),
-  go (DATAREPO-35), pyMzLib (PR review; mzLib PRs **D #1346** and **E #1345**).
-  **When the re-ingest lands:** run `python tools/verify_ptm_sites.py F:/aging_data/repo/store` (it
-  should pass on **every** bundle), then regenerate the site **without** `--notice` (G58; the
-  recipe is in thread 051). Ask the user whether `localization` joins the charter (G56) before
-  writing to it.
-  Next, in order:
-  (1) **G52**: when `pro_forma` reaches pip, DIFF mzLib's string against `proforma.py` on the
-  corpus before switching. They differ in 3 ways, and the string is the peptidoform id.
-  (2) Build the **go reader** (G53) and the **logs gene table** (G54) only from a real delivered file.
-  (3) **G48**: explain `ERVK-6` for `P63135` from logs 010 §3's hypothesis. **Never back-fill
-  `Protein.gene`.**
-  (4) G42 verbatim SDRF cells, stored as a pointer to aging's kept SDRF (sdrf 005 §2). (5) G35: do
-  NOT claim D15's bar. (6) G32, G46, G33/G26/G36, QPX pin (G13). **N1/G9 goes to the next NCEMS
-  meeting regardless.** Do NOT build `accession_is_leading` (G43, settled by go D25). **D1-D21
-  locked.**
+  `catalog.CATALOG_VERSION` **4**. **D27 (2026-09-23): dataRepo SHIPS, the instance operator RUNS.**
+  The dataRepo project operates nothing; aging runs ingest, build, the site and (if they accept)
+  every engine run on stored data. The public site is live and aging regenerates it after every
+  ingest (G58 closed): https://trishorts.github.io/aging-pipeline/.
+  **First thing: run the thread checker.** aging had allocated **055** at close and not written it;
+  the empty template sat untracked in `design/threads/aging/` and was NOT committed. Read it once
+  it has content, then commit the mirror. Expect it to answer **DATAREPO-43** (does aging accept the
+  operator role, thread 053) and/or **DATAREPO-44** (the `run_enrichment` manifest shape, 054).
+  Then, in order:
+  (1) **If aging accepts DATAREPO-43:** move `design/CHARTER.md` to v0.3 (RUN column + S1 become
+  "the instance operator, today aging, via datarepo's runner"; close U11), then send ONE message
+  each to go, logs, ptmQtl, sdrf and QuantProject covering v0.2 AND v0.3 together, and answer the
+  held half of **GO-A3** (who picks the go.obo release) (G61). The five v0.2 notices are held for
+  this: do not send them separately.
+  (2) **mzLib #1338, #1345 (PR E) and #1346 (PR D) MERGED** on 2026-09-24 ~00:00 UTC. Tell pyMzLib
+  (and logs for #1338). Watch for an mzLib release: `gh release list -R smith-chem-wisc/mzLib -L 2`.
+  G52's diff and logs' S9 both start when a release plus a pyMzLib verb exist. Retire the two
+  worktrees in `code/` (PINNED.md).
+  (3) Builds promised and waiting on a real input: **G63** per-run enrichment (after DATAREPO-44),
+  **G62** SDRF `source` column + data-file gate (the first real SDRF with source columns), **G53** the
+  go reader (from go's pre-release PXD036557 file; three schema fixes listed there). Each reaching
+  rows needs an `INGESTER_VERSION` bump in the same commit.
+  Also waiting on: pyMzLib (DATAREPO-40/41/42), ptmQtl and phred (charter rows), sdrf (reply to 010),
+  go (pre-release file), logs (S4 namespace). Standing items: G48 (never back-fill
+  `Protein.gene`), G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the
+  next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43). **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -242,6 +244,18 @@ This folder is a `/project`-managed research project. **You are de facto working
   repeating the peptide, also give two spans. Where a fact per accession is needed, derive it from
   the thing itself (sites now come from the searched sequence) or return null. `_per_accession`'s
   broadcast/zip/null rule is safe only for a column that collapses and never repeats.
+- **An Edit on wrapped YAML can miss, and the commit after it will still claim the change.** Twice on
+  2026-09-23 (`61a8bcc`, `8054444`): the search text spanned a line break in `state.yaml`, the
+  edit failed or never ran, and a commit titled "G60: ..." / "G53: ..." shipped only the RESUME
+  re-render. Grep the exact line before editing, and check `git show --stat HEAD` names
+  `.project/state.yaml` before pushing.
+- **Before telling a peer a column exists, open the schema.** sdrf 006 said `sample_characteristics`
+  "stores provenance per characteristic"; it has no source column at all, and a proposal from our
+  004 had been reported as built (corrected in sdrf 010). It's the commit-then-announce rule applied
+  to design: say "proposed" until `schema/datarepo.yaml` has it.
+- **`threads.py new` writes BOTH copies at once, so a peer's unwritten message shows up in OUR tree.**
+  aging's 055 was an empty template, untracked here at close. Never commit a template as a
+  mirror; wait until it has content (the thread-036 lesson from the other side).
 - **Commit with `git commit -F <file>` (or from Bash), never a PowerShell here-string that contains
   a double quote.** PowerShell 5.1 splits the message at each `"` into pathspecs, the commit fails,
   and a chained `git push` then pushes nothing while looking successful. It happened at 0.15.0.
@@ -275,10 +289,12 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Don't re-own other projects' work.**
   - aging's rule (D1) applies here: the organelle map belongs to `go`, metric definitions (`DEF-*`) to QuantProject, and the age normalizer to sdrf/mzLib.
   - Parse with pyMzLib typed readers where they exist.
-  - dataRepo **never defines**, but since D24 (2026-09-23) it **does run** the generic engines'
-    released versions on stored data (logs, ptmQtl, maybe go). In-search engines (phred, quant,
-    SDRF) run in aging's search. Who does what is in `design/CHARTER.md`, which is **not in force
-    until all eight parties sign**.
+  - dataRepo **never defines** (D24) and, since **D27** (2026-09-23), **operates nothing** either:
+    it ships the software, including the runner through which an instance's OPERATOR (today aging)
+    executes a released engine on stored data. D24's "dataRepo runs the engines" is superseded,
+    pending aging's acceptance (DATAREPO-43); charter v0.2 still reads the D24 way until v0.3.
+    dataRepo still makes scratch runs on real data to TEST its software, never to serve. Who does
+    what is in `design/CHARTER.md`, which is **not in force until all eight parties sign**.
 - **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
 
 **Sibling project: `E:\CodeReview\aging`** (the NCEMS pipeline). aging *produces* results under
