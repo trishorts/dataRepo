@@ -814,9 +814,12 @@ gaps:
     `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` can be retired. Original remainder: watch both PRs for the reviewer's answer on the MBRScore
     behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
   - >-
-    G61 [aging ACCEPTED in 055, their D45, 2026-09-23: DO charter v0.3 now; S17 loses "proposed",
-    since aging owns the organelle map (their D46, go 021); runner wish list in 055 section 1:
-    bundle + released engine version in, idempotent, output beside the bundle never inside it]
+    G61 [CHARTER v0.3 WRITTEN 2026-09-24 (design/CHARTER.md; U11 closed). STILL OWED: ONE notice each to
+    go, logs, ptmQtl, sdrf, QuantProject covering v0.2 + v0.3 (the answer to GO-A3's second half -- the
+    operator chooses the go.obo release -- goes in go's; LOGS-D2 goes in logs'); then a short v0.3
+    notice to aging and pyMzLib. Close G61 when all are sent.]
+    (aging ACCEPTED in 055, their D45, 2026-09-23; S17 lost "proposed", aging D46; runner wish list
+    from 055 section 1 is now charter section 2 and G64.)
     D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for
     engine runs on stored data (logs, go, ptmQtl) and their provenance, on top of ingest, build and the
     site it already runs. ASKED as aging thread 053 (DATAREPO-43, dataRepo `005d48b`, aging `32c8f54`,
@@ -846,6 +849,15 @@ gaps:
     `run_enrichment` is a manifest CONTENT field; INGESTER_VERSION bump; two schema regenerations.
     Evidence sent (not an assignment): PXD058611 streptavidin P22629 PSMs 6-16 in each of runs 178-198,
     0 in each of 199-213 (21 vs 15, not "half"); script scratchpad strep.py.
+  - >-
+    G64 The runner (D27, charter v0.3 section 2) is NOT BUILT. It is the command through which an
+    instance operator runs a released engine on stored data: takes a bundle + a released engine version
+    (never a working tree); refuses a repeat (bundle, engine version, inputs) as "already done"; writes a
+    new artefact BESIDE the bundle, never into it; records engine, version, every input's sha256 and the
+    definition id; refuses an output that fails the engine's contract. First engine: logs
+    (`proteins.resolve_genes()`, pyMzLib 0.2.0; `logs:DEF-GENE-RESOLUTION v1` requires `xref=`). Its
+    first run is a SCRATCH test that produces LOGS-D1's row diff; the operator (aging) makes the served
+    runs. Say "proposed" to peers until it is committed.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
