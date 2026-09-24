@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Commits | 195 |
+| Commits | 198 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 27 |
 | Open gaps | 61 |
@@ -50,7 +50,7 @@ decision.
   whole bundle as an "ingester bug" (G62); and PXD058611's capture runs, visible only through
   streptavidin (G63).
 - **At close:** mzLib **#1338, #1345 (PR E) and #1346 (PR D) all merged**, approved, around
-  2026-09-24 00:00 UTC. No release yet.
+  2026-09-24 00:00 UTC. No release yet. **aging accepted D27's operator role** (055, their D45).
 
 ## 2026-09-23 (sixteenth session): the public site is live, and large files read
 
@@ -704,18 +704,18 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). aging had allocated
-**055** at close and not written it. The empty template sat untracked in `design/threads/aging/`
-and was deliberately not committed. Read it once it has content, then commit the mirror.
+**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). **aging accepted
+DATAREPO-43 in 055** (their D45): aging operates the instance, engine runs included. DATAREPO-44
+(the `run_enrichment` shape, 054) is still open.
 
 ### The next action
 
-1. **Read aging 055.** If it accepts **DATAREPO-43** (the operator role, D27): move
-   `design/CHARTER.md` to **v0.3**. The RUN column and S1 become "the instance operator, today
-   aging, via datarepo's runner", and U11 closes. Then send **one** message each to go, logs,
-   ptmQtl, sdrf and QuantProject covering v0.2 and v0.3 together, including the held half of
-   GO-A3 (who picks the go.obo release) (G61). If aging declines or defers, v0.2 stands. Then send
-   the five v0.2 notices alone, and record what aging said would have to be true first.
+1. **Charter v0.3** (`design/CHARTER.md`): the RUN column and S1 become "the instance operator,
+   today aging, via datarepo's runner". U11 closes. S17 loses "proposed", because aging owns the
+   organelle map (their D46). Fold in aging's runner wish list from 055 §1: a bundle and a released
+   engine version in, idempotent, output beside the bundle and never inside it. Then send **one**
+   message each to go, logs, ptmQtl, sdrf and QuantProject covering v0.2 and v0.3 together, including
+   GO-A3's held half (the operator picks the go.obo release) (G61).
 2. **Tell pyMzLib, and logs for #1338, that the PRs merged** (G60). Retire
    `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` (`code/PINNED.md`).
 3. **If 055 answers DATAREPO-44:** build **G63** (per-run enrichment) as specified there. It needs an

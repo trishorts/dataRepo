@@ -1555,3 +1555,13 @@ At close-out: #1338 (logs' resolver), #1345 (PR E) and #1346 (PR D) all MERGED i
 approved, between 23:53 and 00:22 UTC. The reviewer accepted the `MBRScore` behaviour change by
 merging. No mzLib release carries them yet (1.0.591 is latest). aging has allocated 055 and not
 written it; the empty template sits untracked in our thread folder and was deliberately not committed.
+
+Postscript, same close-out: aging 055 landed while this was being written, and it says **yes to
+DATAREPO-43** (aging D45). aging operates the instance, engine runs included, so charter v0.3 is
+unblocked. Their row reads correctly in v0.2 except that S17 loses "proposed": aging accepted go's
+GO-A4, and the organelle map is theirs (aging D46). Their runner wish list: it takes a bundle and a
+released engine version, is idempotent on (bundle, engine version, inputs), and writes beside the
+bundle, never into it. A finding for any batch or run-order column: a Thermo RAW's creation time is
+the acquisition PC's LOCAL time although Thermo labels it UTC, while msconvert's mzML assumes the
+converting machine's zone, so the two formats can differ by the site's offset (mzLib #1349). 055
+crossed our 054, so DATAREPO-44 is still open.

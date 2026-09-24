@@ -814,7 +814,10 @@ gaps:
     `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` can be retired. Original remainder: watch both PRs for the reviewer's answer on the MBRScore
     behaviour change. Check with `gh pr view 1345 -R smith-chem-wisc/mzLib --comments` (and 1346).
   - >-
-    G61 D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for
+    G61 [aging ACCEPTED in 055, their D45, 2026-09-23: DO charter v0.3 now; S17 loses "proposed",
+    since aging owns the organelle map (their D46, go 021); runner wish list in 055 section 1:
+    bundle + released engine version in, idempotent, output beside the bundle never inside it]
+    D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for
     engine runs on stored data (logs, go, ptmQtl) and their provenance, on top of ingest, build and the
     site it already runs. ASKED as aging thread 053 (DATAREPO-43, dataRepo `005d48b`, aging `32c8f54`,
     2026-09-23); announce to no engine until aging answers. On

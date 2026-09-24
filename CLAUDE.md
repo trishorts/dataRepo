@@ -9,19 +9,18 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Pick up at:** code is datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, aging study
   layer **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
   `catalog.CATALOG_VERSION` **4**. **D27 (2026-09-23): dataRepo SHIPS, the instance operator RUNS.**
-  The dataRepo project operates nothing; aging runs ingest, build, the site and (if they accept)
+  The dataRepo project operates nothing; aging runs ingest, build, the site and (accepted in 055)
   every engine run on stored data. The public site is live and aging regenerates it after every
   ingest (G58 closed): https://trishorts.github.io/aging-pipeline/.
-  **First thing: run the thread checker.** aging had allocated **055** at close and not written it;
-  the empty template sat untracked in `design/threads/aging/` and was NOT committed. Read it once
-  it has content, then commit the mirror. Expect it to answer **DATAREPO-43** (does aging accept the
-  operator role, thread 053) and/or **DATAREPO-44** (the `run_enrichment` manifest shape, 054).
+  **First thing: run the thread checker.** **aging ACCEPTED DATAREPO-43 in 055** (their D45): they
+  operate the instance, engine runs included. DATAREPO-44 (054, `run_enrichment` shape) is still open.
   Then, in order:
-  (1) **If aging accepts DATAREPO-43:** move `design/CHARTER.md` to v0.3 (RUN column + S1 become
+  (1) **Charter v0.3 now:** move `design/CHARTER.md` to v0.3 (RUN column + S1 become
   "the instance operator, today aging, via datarepo's runner"; close U11), then send ONE message
   each to go, logs, ptmQtl, sdrf and QuantProject covering v0.2 AND v0.3 together, and answer the
-  held half of **GO-A3** (who picks the go.obo release) (G61). The five v0.2 notices are held for
-  this: do not send them separately.
+  held half of **GO-A3** (who picks the go.obo release: the operator) (G61). Also: S17 loses
+  "proposed" (aging owns the organelle map, their D46); fold in aging's runner wish list (055 section 1).
+  The five v0.2 notices are held for this: do not send them separately.
   (2) **mzLib #1338, #1345 (PR E) and #1346 (PR D) MERGED** on 2026-09-24 ~00:00 UTC. Tell pyMzLib
   (and logs for #1338). Watch for an mzLib release: `gh release list -R smith-chem-wisc/mzLib -L 2`.
   G52's diff and logs' S9 both start when a release plus a pyMzLib verb exist. Retire the two
@@ -254,8 +253,12 @@ This folder is a `/project`-managed research project. **You are de facto working
   004 had been reported as built (corrected in sdrf 010). It's the commit-then-announce rule applied
   to design: say "proposed" until `schema/datarepo.yaml` has it.
 - **`threads.py new` writes BOTH copies at once, so a peer's unwritten message shows up in OUR tree.**
-  aging's 055 was an empty template, untracked here at close. Never commit a template as a
-  mirror; wait until it has content (the thread-036 lesson from the other side).
+  aging's 055 was an empty template, untracked here, for most of a close-out, then filled in. Never
+  commit a template as a mirror; wait until it has content and matches the peer's committed copy
+  (the thread-036 lesson from the other side).
+- **A Thermo RAW's start time is LOCAL, though labelled UTC; msconvert's mzML assumes the converter's
+  zone** (aging 055, mzLib #1349). Never compare acquisition times across RAW and mzML, or across
+  sites, as if both were UTC. Order within one deposit and one format is safe.
 - **Commit with `git commit -F <file>` (or from Bash), never a PowerShell here-string that contains
   a double quote.** PowerShell 5.1 splits the message at each `"` into pathspecs, the commit fails,
   and a chained `git push` then pushes nothing while looking successful. It happened at 0.15.0.
@@ -287,12 +290,12 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **FRAMEWORK.md is still partly a proposal.** Steps 1 (ingest) and 2 (build) are built and their contracts locked as D9 and D10; steps 3-6 (client/MCP, REST, deploy, auto-ingest) are not decided, so don't build on them as if they were.
 - **The user is not a server or infrastructure person.** They said "out of my league" and rely on you to explain. Keep choices few and give a recommendation each time.
 - **Don't re-own other projects' work.**
-  - aging's rule (D1) applies here: the organelle map belongs to `go`, metric definitions (`DEF-*`) to QuantProject, and the age normalizer to sdrf/mzLib.
+  - aging's rule (D1) applies here: the organelle map's content belongs to **aging** (since 2026-09-23: go D27, aging D46; `go` owns only the map's file format and GO machinery), metric definitions (`DEF-*`) to QuantProject under their own namespace, and the age normalizer to sdrf/mzLib.
   - Parse with pyMzLib typed readers where they exist.
   - dataRepo **never defines** (D24) and, since **D27** (2026-09-23), **operates nothing** either:
     it ships the software, including the runner through which an instance's OPERATOR (today aging)
-    executes a released engine on stored data. D24's "dataRepo runs the engines" is superseded,
-    pending aging's acceptance (DATAREPO-43); charter v0.2 still reads the D24 way until v0.3.
+    executes a released engine on stored data. D24's "dataRepo runs the engines" is superseded;
+    aging accepted (055, their D45). Charter v0.2 still reads the D24 way until v0.3 is written.
     dataRepo still makes scratch runs on real data to TEST its software, never to serve. Who does
     what is in `design/CHARTER.md`, which is **not in force until all eight parties sign**.
 - **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
