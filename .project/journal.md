@@ -1565,3 +1565,40 @@ bundle, never into it. A finding for any batch or run-order column: a Thermo RAW
 the acquisition PC's LOCAL time although Thermo labels it UTC, while msconvert's mzML assumes the
 converting machine's zone, so the two formats can differ by the site's offset (mzLib #1349). 055
 crossed our 054, so DATAREPO-44 is still open.
+
+## 2026-09-24 - Nineteenth: three releases, two defects found by filling definitions in, and the runner's shape decided (D28)
+
+The session opened on a full inbox and ended with every peer owing us rather than the reverse.
+Charter v0.3 (`22c319c`) moved RUN to the instance operator and merged five replies; seven notices
+went out at once, carrying the held v0.2 notices, GO-A3's answer (the operator picks the go.obo
+release) and LOGS-D2 (entry-level join, with the warning that a `_2` suffix is a load-collision
+counter, not a variant -- measured afterwards as absent from the corpus). mzLib 1.0.592 and pyMzLib
+0.2.0 released that morning; ingest on 0.2.0 was measured row-identical to 0.1.1 before aging moved
+(G65), and the PR D/E worktrees were retired. LOGS-D1 ran on all three species and reproduced logs'
+reference exactly; rat has 48.6% of stored accessions with no primary-assembly gene.
+
+The user then asked for G63 and for autonomous progress while away. 0.18.0 (`f3b20e4`) built per-run
+enrichment (PXD058611: 21 probe runs, 15 whole-proteome, from aging's manifest map) and swapped in
+QuantProject's three definition ids. Copying `DEF-PROT-SPC`'s text into the bundle found that every
+zero spectral count had been stored as missing -- one "zero means no row" rule for a column holding
+two definitions that read zero oppositely. A blind agent given only the MCP tools then caught that the
+`quant_values` description still said "never 0" (and would have counted 18/18 runs for 15/3), that no
+finding marked a mixed dataset, and that `sdrf_skeleton` called four annotated SDRFs empty; all three
+fixed before release. 0.18.1 (`482136c`) added the go reader, checked against go's pre-release files.
+
+Measuring G66 (P02768 labelled contaminant in `proteins`, target in its group) and reading MetaMorpheus
+at the source found our second defect: `Decoy/Contaminant/Target` is written per match and not
+de-duplicated while `Accession` is de-duplicated, so the row's worst letter had been given to every
+accession -- the third `|`-column zip bug. Under TCAmbiguity RemoveContaminant a both-database
+accession is always the target. Re-ingesting to verify then showed provenance records moving between
+two runs an hour apart: aging's shared `db/provenance.json` is overwritten by every database
+preparation, and all 24 served datasets pointed at a record that is gone. 0.19.0 (`708102b`) fixes the
+label per accession (65,012/65,012 now agree with MetaMorpheus) and refuses an upstream file whose
+sha256 changed. It shipped after aging had re-ingested on 0.18.1; the CHANGELOG first claimed
+otherwise and was corrected (`c26eba9`) before announcing.
+
+Also measured and sent: pyMzLib `out=` reads the 1.83 GB file the whole read cannot, and its TSV equals
+the typed read in 70.5M cells (G68); mzLib's ProForma matches ours for 96% of 88k peptidoforms, the rest
+being `[UniProt:...]` where UNIMOD exists, so we do not switch (G52); 6.6% of protein intensities are
+outside QuantProject's 1% set; all 10 corpus SDRFs are community-annotated (pride). The user accepted
+the runner proposal's four choices (D28); building waits on aging's review as operator (DATAREPO-50).

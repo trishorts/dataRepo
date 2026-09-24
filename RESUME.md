@@ -6,13 +6,11 @@
 
 | | |
 |---|---|
-| Commits | 240 |
+| Commits | 241 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 28 |
 | Open gaps | 67 |
 | Gate items skipped | 4 |
-
-> **1 document(s) in `design/` not referenced above** -- `RUNNER.md`. Add a line for each, or say why not.
 
 <!-- END GENERATED -->
 
@@ -24,7 +22,31 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-23, eighteenth session): dataRepo operates nothing (D27), and mzLib merged our PRs
+## Latest (2026-09-24, nineteenth session): 0.18.0, 0.18.1, 0.19.0, and the runner's shape decided (D28)
+
+**Code is datarepo 0.19.0 (`708102b`), schema 0.0.9, `INGESTER_VERSION` 0.13.0, `CATALOG_VERSION` 5.**
+aging's corpus is on **0.18.1** (all 24 re-ingested, catalog `bff2ddb866c033c8`); 0.19.0 re-ids again
+and, the schema being unchanged, can be adopted one dataset at a time (aging 062).
+
+- **Pick up at:** run the thread checker. If aging has answered **DATAREPO-50** (review of
+  `design/RUNNER.md`), build the runner (G64): `datarepo run`, artefacts under `<store>/_engine/`, logs'
+  `resolve_genes` first, and ONE schema change adding `gene_resolutions` plus go's per-row columns
+  (D28). If not, the open work is G67 (blind-test leftovers) and whatever the peers reply.
+- **Shipped:** per-run enrichment (G63), QuantProject's definition ids (G15), the go reader
+  (`sources/go.py`, G53; storage waits on the runner), a per-accession contaminant label (G66), and a
+  check that refuses an upstream provenance file overwritten after the search.
+- **Defects found by filling things in:** zero spectral counts stored as missing; `quant_values`
+  saying "never 0"; `sdrf_skeleton` calling annotated SDRFs empty; the contaminant label taken from the
+  PSM row (the third `|`-column zip bug); aging's shared `db/provenance.json` overwritten under all 24
+  datasets (G69, asked of aging as DATAREPO-49).
+- **Measured and sent:** LOGS-D1 identical for human, mouse, rat (logs 019/020); pyMzLib `out=`
+  equals the typed read (G68, 012-013); ProForma 96% identical, not switching (G52, 014);
+  QuantProject's unfiltered-row count (005); pride's SDRF question (003).
+- **Decided:** D28 -- the runner's shape, U12-U15 as proposed in `design/RUNNER.md`.
+- **Waiting on:** aging DATAREPO-49/50; go DATAREPO-45, logs DATAREPO-46, sdrf DATAREPO-47 and its
+  drafted SDRF (G62), QuantProject DATAREPO-48, ptmQtl DATAREPO-P7; pyMzLib on the `out=` contract.
+
+## 2026-09-23 (eighteenth session): dataRepo operates nothing (D27), and mzLib merged our PRs
 
 **No code changed; datarepo is still 0.17.2 (`91fbdd9`).** This session was threads, the charter and a
 decision.

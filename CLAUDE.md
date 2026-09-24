@@ -15,12 +15,12 @@ This folder is a `/project`-managed research project. **You are de facto working
   re-ids again (per-accession contaminant label, G66 closed; overwritten upstream provenance left
   out with a finding) and, schema unchanged, can be adopted dataset by dataset (aging 062). Asked of
   aging: **DATAREPO-49** (one provenance file per database preparation, G69) and **DATAREPO-50**
-  (review `design/RUNNER.md`, U12-U15). Also waiting: go DATAREPO-45, logs DATAREPO-46, sdrf
+  (review `design/RUNNER.md`; the user already accepted its shape as **D28**). Also waiting: go DATAREPO-45, logs DATAREPO-46, sdrf
   DATAREPO-47 + the drafted SDRF (G62), QuantProject DATAREPO-48, ptmQtl DATAREPO-P7, pyMzLib on
   whether the `out=` TSV is a contract (G68). Done this session: LOGS-D1 (all three species
   identical), G63 manifest path, G15, G53 reader (`sources/go.py`, storage waits on G64), G65.
-  Next builds: **G64** the runner once aging answers DATAREPO-50 (logs first; `gene_resolutions` is a
-  schema change -- take it once, with go's per-row columns); G52 ProForma diff now that 0.2.0 fills
+  Next builds: **G64** the runner once aging answers DATAREPO-50, exactly as D28 says (logs first;
+  `gene_resolutions` is a schema change -- take it once, with go's per-row columns); G52 ProForma diff now that 0.2.0 fills
   `pro_forma`; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the
   same commit. Standing items: G48, G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13.
   **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43).
