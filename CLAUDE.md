@@ -6,25 +6,25 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.18.0** (`f3b20e4`, changelog fix `ac2cbc9`), core schema
-  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.12.0**,
+- **Pick up at:** code is datarepo **0.19.0** (`708102b`; CHANGELOG fix `c26eba9`), core schema
+  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.13.0**,
   `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **5**. **D27: dataRepo SHIPS,
-  the instance operator (aging) RUNS**; charter **v0.3** (`22c319c`) is written and the notices went
-  out 2026-09-24 (G61 closed). The public site is live: https://trishorts.github.io/aging-pipeline/.
-  **First thing: run the thread checker.** 0.18.0 was announced to aging (060) and QuantProject (005):
-  it re-ids every bundle, adds per-run enrichment (G63 manifest path; aging adds `run_enrichment` to
-  PXD058611), swaps in QuantProject's three definition ids (G15 closed), and STORES ZERO SPECTRAL
-  COUNTS (+1.3M rows; count detections with `value > 0`). aging is on 0.17.2 until they choose to
-  re-ingest. LOGS-D1 is done for human, mouse and rat (identical, logs 019/020); LOGS-D2 answered
-  entry-level. pyMzLib 0.2.0 ingest measured identical to 0.1.1 (G65 closed); the PR D/E worktrees are
-  retired. Waiting on replies: go DATAREPO-45, logs DATAREPO-46, sdrf DATAREPO-47, QuantProject
-  DATAREPO-48, ptmQtl DATAREPO-P7, sdrf's drafted SDRF (G62). Next builds, in order: **G53** go reader
-  (pre-release file verified at `F:\ClaudeTestBuilds\go-data\prerelease-282b480d`; the three schema
-  fixes are already in 0.0.9), **G64** the runner (logs' resolver first), G66 (P02768 in both the
-  contaminant and human DBs), G67 (blind-test leftovers). Each change that reaches rows needs an
-  `INGESTER_VERSION` bump in the same commit. Standing items: G48, G42, G35 (do NOT claim D15's bar),
-  G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build
-  `accession_is_leading` (G43). **D1-D21 locked.**
+  the instance operator (aging) RUNS**; charter **v0.3** (`22c319c`) is out (G61 closed). Public site:
+  https://trishorts.github.io/aging-pipeline/. **First thing: run the thread checker.**
+  aging's corpus is on **0.18.1** (all 24 re-ingested, catalog `bff2ddb866c033c8`, their 061); 0.19.0
+  re-ids again (per-accession contaminant label, G66 closed; overwritten upstream provenance left
+  out with a finding) and, schema unchanged, can be adopted dataset by dataset (aging 062). Asked of
+  aging: **DATAREPO-49** (one provenance file per database preparation, G69) and **DATAREPO-50**
+  (review `design/RUNNER.md`, U12-U15). Also waiting: go DATAREPO-45, logs DATAREPO-46, sdrf
+  DATAREPO-47 + the drafted SDRF (G62), QuantProject DATAREPO-48, ptmQtl DATAREPO-P7, pyMzLib on
+  whether the `out=` TSV is a contract (G68). Done this session: LOGS-D1 (all three species
+  identical), G63 manifest path, G15, G53 reader (`sources/go.py`, storage waits on G64), G65.
+  Next builds: **G64** the runner once aging answers DATAREPO-50 (logs first; `gene_resolutions` is a
+  schema change -- take it once, with go's per-row columns); G52 ProForma diff now that 0.2.0 fills
+  `pro_forma`; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the
+  same commit. Standing items: G48, G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13.
+  **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43).
+  **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
