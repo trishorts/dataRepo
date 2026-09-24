@@ -796,7 +796,8 @@ gaps:
   - >-
     G61 D27 (dataRepo ships; the instance operator runs) needs aging to ACCEPT the operator role for
     engine runs on stored data (logs, go, ptmQtl) and their provenance, on top of ingest, build and the
-    site it already runs. Ask aging FIRST, alone; announce to no engine until aging answers. On
+    site it already runs. ASKED as aging thread 053 (DATAREPO-43, dataRepo `005d48b`, aging `32c8f54`,
+    2026-09-23); announce to no engine until aging answers. On
     acceptance: charter v0.3 (RUN column and S1 move to "the instance operator, today aging, via
     datarepo's runner"), then ONE message each to go, logs, ptmQtl, sdrf, QuantProject covering v0.2 +
     v0.3 together (the five v0.2 notices are HELD for this). U11 closes as dissolved.
