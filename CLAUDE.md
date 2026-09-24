@@ -6,33 +6,25 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.17.2** (`91fbdd9`), core schema **0.0.8**, aging study
-  layer **0.3.0**, `bundle.INGESTER_VERSION` **0.11.0**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
-  `catalog.CATALOG_VERSION` **4**. **D27 (2026-09-23): dataRepo SHIPS, the instance operator RUNS.**
-  The dataRepo project operates nothing; aging runs ingest, build, the site and (accepted in 055)
-  every engine run on stored data. The public site is live and aging regenerates it after every
-  ingest (G58 closed): https://trishorts.github.io/aging-pipeline/.
-  **First thing: run the thread checker.** **aging ACCEPTED DATAREPO-43 in 055** (their D45): they
-  operate the instance, engine runs included. DATAREPO-44 (054, `run_enrichment` shape) is still open.
-  Then, in order:
-  (1) **Charter v0.3 now:** move `design/CHARTER.md` to v0.3 (RUN column + S1 become
-  "the instance operator, today aging, via datarepo's runner"; close U11), then send ONE message
-  each to go, logs, ptmQtl, sdrf and QuantProject covering v0.2 AND v0.3 together, and answer the
-  held half of **GO-A3** (who picks the go.obo release: the operator) (G61). Also: S17 loses
-  "proposed" (aging owns the organelle map, their D46); fold in aging's runner wish list (055 section 1).
-  The five v0.2 notices are held for this: do not send them separately.
-  (2) **mzLib #1338, #1345 (PR E) and #1346 (PR D) MERGED** on 2026-09-24 ~00:00 UTC. Tell pyMzLib
-  (and logs for #1338). Watch for an mzLib release: `gh release list -R smith-chem-wisc/mzLib -L 2`.
-  G52's diff and logs' S9 both start when a release plus a pyMzLib verb exist. Retire the two
-  worktrees in `code/` (PINNED.md).
-  (3) Builds promised and waiting on a real input: **G63** per-run enrichment (after DATAREPO-44),
-  **G62** SDRF `source` column + data-file gate (the first real SDRF with source columns), **G53** the
-  go reader (from go's pre-release PXD036557 file; three schema fixes listed there). Each reaching
-  rows needs an `INGESTER_VERSION` bump in the same commit.
-  Also waiting on: pyMzLib (DATAREPO-40/41/42), ptmQtl and phred (charter rows), sdrf (reply to 010),
-  go (pre-release file), logs (S4 namespace). Standing items: G48 (never back-fill
-  `Protein.gene`), G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the
-  next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43). **D1-D21 locked.**
+- **Pick up at:** code is datarepo **0.18.0** (`f3b20e4`, changelog fix `ac2cbc9`), core schema
+  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.12.0**,
+  `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **5**. **D27: dataRepo SHIPS,
+  the instance operator (aging) RUNS**; charter **v0.3** (`22c319c`) is written and the notices went
+  out 2026-09-24 (G61 closed). The public site is live: https://trishorts.github.io/aging-pipeline/.
+  **First thing: run the thread checker.** 0.18.0 was announced to aging (060) and QuantProject (005):
+  it re-ids every bundle, adds per-run enrichment (G63 manifest path; aging adds `run_enrichment` to
+  PXD058611), swaps in QuantProject's three definition ids (G15 closed), and STORES ZERO SPECTRAL
+  COUNTS (+1.3M rows; count detections with `value > 0`). aging is on 0.17.2 until they choose to
+  re-ingest. LOGS-D1 is done for human, mouse and rat (identical, logs 019/020); LOGS-D2 answered
+  entry-level. pyMzLib 0.2.0 ingest measured identical to 0.1.1 (G65 closed); the PR D/E worktrees are
+  retired. Waiting on replies: go DATAREPO-45, logs DATAREPO-46, sdrf DATAREPO-47, QuantProject
+  DATAREPO-48, ptmQtl DATAREPO-P7, sdrf's drafted SDRF (G62). Next builds, in order: **G53** go reader
+  (pre-release file verified at `F:\ClaudeTestBuilds\go-data\prerelease-282b480d`; the three schema
+  fixes are already in 0.0.9), **G64** the runner (logs' resolver first), G66 (P02768 in both the
+  contaminant and human DBs), G67 (blind-test leftovers). Each change that reaches rows needs an
+  `INGESTER_VERSION` bump in the same commit. Standing items: G48, G42, G35 (do NOT claim D15's bar),
+  G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build
+  `accession_is_leading` (G43). **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
@@ -169,6 +161,13 @@ This folder is a `/project`-managed research project. **You are de facto working
   multi-gene and keeps the genuine cases (the histones). logs hit the same trap in Ensembl's own
   dumps (their 007). Any per-gene count over that field needs GeneID or a primary-assembly
   restriction.
+- **One storage rule for one column is a claim that every definition in it reads "nothing" the same
+  way.** `quant_values` held intensities (0 = not measured) and spectral counts (0 = a measurement)
+  under one "a zero becomes no row" rule, so 1.3M real zero counts were stored as missing for weeks.
+  Nobody reviewing the reader saw it; copying QuantProject's `DEF-PROT-SPC` text into the bundle did
+  ("0 is a real zero here"). The table's own description then said "never 0" and would have told a
+  reader to count rows as detections. When a column holds several definitions, the zero/NULL rule is
+  per definition, and the description must say so (0.18.0).
 - **Findings come from trying to FILL a thing, not from reviewing it.** Everything found on
   2026-09-22: the razor artifact came from going to write the column; G42 from checking a mapping we
   expected to survive; G44 and aging's stale catalog from building a catalog for an unrelated

@@ -955,19 +955,7 @@ skip_log:
       every slide, and a per-box text-fit estimate (one title shortened). Open it in PowerPoint once
       before presenting.
 
-repos:
-  - name: mzLib
-    worktree: code/mzLib_prD_proforma
-    branch: fix/psmtsv-proforma-from-full-sequence
-    base: "E:/GitClones/mzLib, off upstream/master 588c2249"
-    pinned: ebdfa790
-    pr: "https://github.com/smith-chem-wisc/mzLib/pull/1346"
-  - name: mzLib
-    worktree: code/mzLib_prE_peaks
-    branch: fix/quantified-peaks-optional-mbr-score
-    base: "E:/GitClones/mzLib, off upstream/master 588c2249"
-    pinned: 88610382
-    pr: "https://github.com/smith-chem-wisc/mzLib/pull/1345"
+repos: []  # PR D and PR E worktrees retired 2026-09-24: both merged, in mzLib 1.0.592
 
 github:
   remote: "https://github.com/trishorts/dataRepo"

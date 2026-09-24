@@ -12,3 +12,7 @@ whenever a worktree is created or advanced.
 approved.** The maintainer merged master into each branch first (E head `149c5173`, D head
 `163925fd`), so each worktree shows "behind" its remote; nothing of ours is unpushed. Both worktrees
 can be retired. No mzLib release carries either yet (1.0.591 is latest).
+
+**Retired 2026-09-24.** Both worktrees were removed (`git worktree remove`, clean, nothing unpushed)
+after the PRs shipped in **mzLib 1.0.592** / pyMzLib 0.2.0. The branches remain on `origin`
+(trishorts/mzLib). No worktree is active.

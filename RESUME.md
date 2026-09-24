@@ -6,18 +6,11 @@
 
 | | |
 |---|---|
-| Commits | 223 |
+| Commits | 227 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 27 |
 | Open gaps | 65 |
 | Gate items skipped | 4 |
-
-**Worktrees** -- details in `code/PINNED.md`
-
-| Worktree | Branch | HEAD | Pin | Status |
-|---|---|---|---|---|
-| `code/mzLib_prD_proforma` | fix/psmtsv-proforma-from-full-sequence | `ebdfa790` | `ebdfa790` | at pin |
-| `code/mzLib_prE_peaks` | fix/quantified-peaks-optional-mbr-score | `88610382` | `88610382` | at pin |
 
 <!-- END GENERATED -->
 
