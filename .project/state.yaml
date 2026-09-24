@@ -862,7 +862,13 @@ gaps:
     first run is a SCRATCH test that produces LOGS-D1's row diff; the operator (aging) makes the served
     runs. Say "proposed" to peers until it is committed.
   - >-
-    G65 Ingest on pyMzLib (`mzlib` on PyPI) 0.2.0 is UNTESTED, and the aging batch venv
+    G65 [CLOSED 2026-09-24: MEASURED IDENTICAL. PXD036557 ingested with datarepo 0.17.2 (`22c319c`)
+    under mzlib 0.1.1 and 0.2.0 in fresh venvs: same bundle id `d15c8938fd855483`, all 16 tables
+    equal row for row, all sources byte-identical; only bundle.json written_utc differs. Covers
+    read_records (psmtsv) and sdrf.read. NOT covered: the windowed >512 MiB read -- re-run with the
+    pyMzLib probe (G57). No bump (D26). Told aging in 057. Script: scratchpad g65/compare.py. Still
+    worth doing: record the pyMzLib version in the reader log.]
+    Ingest on pyMzLib (`mzlib` on PyPI) 0.2.0 is UNTESTED, and the aging batch venv
     (`F:\aging_batch\venv`, held mzlib 0.1.1 and datarepo 0.16.0 on 2026-09-24) is being moved to it
     that day. pyproject asks `mzlib>=0.1.1`; bundles record the datarepo version and the reader
     BACKEND, not the pyMzLib version, and the bundle id hashes neither, so a changed read keeps the
