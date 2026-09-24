@@ -57,8 +57,26 @@ class ProteinSequences:
         if sequence not in known:
             known.append(sequence)
 
+    contaminant_from: dict[str, set[bool]] = field(default_factory=dict)
+    """Accession -> which kinds of database it was read from: {True} contaminant only, {False}
+    target only, {True, False} both (human keratins, albumin). See `database_status`."""
+
     def get(self, accession: str) -> list[str]:
         return self.by_accession.get(accession, [])
+
+    def database_status(self, accession: str) -> str | None:
+        """`contaminant`, `target` or `both`, from the databases the accession was read from.
+
+        None when no database on disk carried it (a missing database, or a name the engine made).
+        """
+        kinds = self.contaminant_from.get(accession)
+        if not kinds:
+            return None
+        if kinds == {True}:
+            return "contaminant"
+        if kinds == {False}:
+            return "target"
+        return "both"
 
     def __len__(self) -> int:
         return len(self.by_accession)
@@ -132,6 +150,17 @@ def _iter_fasta(path: Path) -> Iterator[tuple[str, str]]:
         yield accession, "".join(chunks).upper()
 
 
+def is_contaminant_database(path: Path) -> bool:
+    """MetaMorpheus's own rule for which database is a contaminant panel.
+
+    The command line marks a database file as contaminant when its path contains "contaminant" or
+    "CRAP", case-insensitively (MetaMorpheus `CMD/Program.cs:261, 368-374` at `6e152da70`; the GUI
+    uses the same rule). It is a property of the FILE, never of an accession.
+    """
+    text = str(path).lower()
+    return "contaminant" in text or "crap" in text
+
+
 def read_database(path: Path, into: ProteinSequences) -> int:
     """Add every entry of one UniProt XML or FASTA file; returns how many were read."""
     name = path.name.lower()
@@ -143,9 +172,11 @@ def read_database(path: Path, into: ProteinSequences) -> int:
         # A gzipped database is legal input to MetaMorpheus but none has been searched yet; refuse
         # rather than silently place nothing.
         raise IngestError(f"cannot read protein database {path}: only .xml and .fasta are supported")
+    contaminant = is_contaminant_database(path)
     count = 0
     for accession, sequence in entries:
         into.add(accession, sequence)
+        into.contaminant_from.setdefault(accession, set()).add(contaminant)
         count += 1
     return count
 

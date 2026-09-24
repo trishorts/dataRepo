@@ -15,7 +15,7 @@ from typing import Any
 
 from . import definitions as defs
 from ._tables import SCHEMA_VERSION
-from .bundle import BundleWriter
+from .bundle import BundleWriter, sha256_file
 from .errors import DatasetExcluded, IngestError
 from .manifest import DatasetEntry, Manifest, load_manifest
 from .modlist import ModRegistry
@@ -86,20 +86,43 @@ def _find(run_dir: Path, *relative: str) -> Path | None:
     return None
 
 
-def _lineage(work_root: Path, search_provenance_path: Path, search_provenance: dict[str, Any]) -> list[Path]:
+def _lineage(
+    work_root: Path, search_provenance_path: Path, search_provenance: dict[str, Any]
+) -> tuple[list[Path], list[dict[str, Any]]]:
     """The search stage's provenance and every stage it declares upstream of itself.
 
     Globbing the run folder for `provenance.json` would be wrong: a run folder can hold more than
     one search of the same data (`04_search` beside `04_search_mm1111`), and only one of them is
     the canonical run the manifest names. The provenance's own `upstream[]` is the authoritative
     lineage, so the bundle records exactly the stages that produced it.
+
+    **An upstream file is read only if it is still the file the search recorded** (0.19.0). Each
+    `upstream[]` entry carries the sha256 the file had when the search ran, and until 0.19.0 that
+    was never checked. aging's `db/provenance.json` is ONE shared file that every database
+    preparation overwrites, so 33 of the 38 searches on their disk pointed at a record of some later
+    preparation -- a mouse dataset's bundle carried the record of a human isoform database made
+    three days after its search, and re-ingesting unchanged search output moved its bundle id. A
+    file whose sha256 no longer matches is left out and reported, never read as this search's.
+
+    Returns:
+        `(paths to read, mismatches)`, each mismatch `{stage, path, recorded, actual}`.
     """
     paths = [search_provenance_path]
+    mismatches: list[dict[str, Any]] = []
     for entry in search_provenance.get("upstream") or []:
         candidate = work_root / str(entry.get("path", ""))
-        if candidate.is_file() and candidate not in paths:
-            paths.append(candidate)
-    return paths
+        if not candidate.is_file() or candidate in paths:
+            continue
+        recorded = entry.get("sha256")
+        if recorded:
+            actual = sha256_file(candidate)
+            if actual != recorded:
+                mismatches.append(
+                    {"stage": entry.get("stage"), "path": str(entry.get("path")), "recorded": recorded, "actual": actual}
+                )
+                continue
+        paths.append(candidate)
+    return paths, mismatches
 
 
 def _task_files(work_root: Path, search_provenance: dict[str, Any]) -> list[Path]:
@@ -182,7 +205,9 @@ def ingest_dataset(
 
     provenance_rows: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
-    for path in _lineage(manifest.work_root, search_provenance_path, search_provenance):
+    lineage, lineage_mismatches = _lineage(manifest.work_root, search_provenance_path, search_provenance)
+    findings += _lineage_findings(lineage_mismatches, dataset_id)
+    for path in lineage:
         doc = prov.load(path)
         stage_name = path.parent.name
         source = writer.add_source(path, f"provenance:{stage_name}", copy_as=f"provenance_{stage_name}.json")
@@ -377,9 +402,25 @@ def ingest_dataset(
         psm_counts=identifications.psm_counts_by_peptidoform(psm_rows),
         protein_groups={g["protein_group_id"] for g in protein_groups},
     )
+    # A protein's contaminant label comes from the database it was read from, not from the PSM row
+    # it shares with a contaminant (G66). An accession in BOTH a target and the contaminant database
+    # is whatever the search's TCAmbiguity made it; MetaMorpheus's default drops the contaminant copy.
+    tc = search_params.tc_ambiguity(_task_files(manifest.work_root, search_provenance))
+
+    def contaminant_of(accession: str) -> bool | None:
+        status = sequences.database_status(accession)
+        if status == "both":
+            return {"RemoveContaminant": False, "RemoveTarget": True}.get(tc or "")
+        return {"contaminant": True, "target": False}.get(status or "")
+
+    unresolved_labels: Counter = Counter()
     proteins = identifications.add_group_proteins(
         identifications.protein_rows(
-            [c for c in (psm_columns, peptide_columns) if c], dataset_id, organism=entry.organism
+            [c for c in (psm_columns, peptide_columns) if c],
+            dataset_id,
+            organism=entry.organism,
+            contaminant_of=contaminant_of,
+            unresolved=unresolved_labels,
         ),
         protein_groups,
         organism=entry.organism,
@@ -503,6 +544,7 @@ def ingest_dataset(
     findings += _modification_findings(proforma, dataset_id)
     findings += _usi_findings(run_names, dataset_id)
     findings += _enrichment_findings(run_rows, dataset_id, enrichment_mixed)
+    findings += _contaminant_label_findings(unresolved_labels, tc, dataset_id)
     findings += _unplaced_site_findings(unplaced, sequences, dataset_id)
     findings += _site_residue_findings(site_check, dataset_id)
 
@@ -756,6 +798,53 @@ def _site_residue_findings(check: dict[str, int], dataset_id: str) -> list[dict[
                 f"are in bundle.json under protein_databases.site_residue_check."
             ),
             "source": "datarepo ingest (DATAREPO-32 self-check)",
+        }
+    ]
+
+
+def _lineage_findings(mismatches: list[dict[str, Any]], dataset_id: str) -> list[dict[str, Any]]:
+    """One finding per upstream provenance file that changed after the search recorded it."""
+    return [
+        {
+            "finding_id": f"{dataset_id}:upstream_provenance_changed:{m['stage']}",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "upstream_provenance_changed",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"The search recorded its upstream '{m['stage']}' provenance ({m['path']}) with sha256 "
+                f"{m['recorded']}, and the file there now has {m['actual']}: it was overwritten after "
+                f"the search. It is left out of this bundle rather than read as this search's record. "
+                f"The search's own record of the {m['stage']} stage is gone unless the producer archived it."
+            ),
+            "source": "datarepo ingest",
+        }
+        for m in mismatches
+    ]
+
+
+def _contaminant_label_findings(unresolved: Counter, tc: str | None, dataset_id: str) -> list[dict[str, Any]]:
+    """A finding when a protein's contaminant label had to fall back to its PSM row's (G66)."""
+    if not unresolved:
+        return []
+    examples = ", ".join(sorted(unresolved)[:5])
+    return [
+        {
+            "finding_id": f"{dataset_id}:contaminant_label_unresolved",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "contaminant_label_unresolved",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"{len(unresolved)} protein(s) share a PSM row with proteins of another kind, and the "
+                f"searched databases could not say which they are (not on disk, or in both a target "
+                f"and the contaminant database under TCAmbiguity {tc or 'unknown'}). Each was given "
+                f"its row's label, contaminant over target, so `is_contaminant` may over-state for "
+                f"them: {examples}."
+            ),
+            "source": "datarepo ingest",
         }
     ]
 

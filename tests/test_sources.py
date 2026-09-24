@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -856,3 +857,94 @@ def test_text_only_annotation_is_not_reported_as_absent():
     ]
     assert _uncoded_annotation(rows) == "organism part: Urine"
     assert _uncoded_annotation(rows[1:]) == ""
+
+
+# --- contaminant label per accession (G66) ----------------------------------------------------
+
+def _proteins(status, accessions, contaminant_of, unresolved=None):
+    from datarepo.sources import identifications
+
+    columns = {
+        "accession": [accessions], "decoy_contam_target": [status],
+        "organism_name": ["Homo sapiens|Bos taurus"], "gene_name": [""], "name": [""],
+    }
+    rows = identifications.protein_rows(
+        [columns], "PXD1", organism="NCBITaxon:9606", contaminant_of=contaminant_of, unresolved=unresolved
+    )
+    return {r["protein_accession"]: r for r in rows}
+
+
+def test_a_target_sharing_a_psm_with_a_contaminant_stays_a_target():
+    # Human albumin P02768 is in both the proteome and the contaminant panel; under MetaMorpheus's
+    # default RemoveContaminant it is the target entry. Bovine P02769 is contaminant-only.
+    decided = {"P02768": False, "P02769": True}
+    rows = _proteins("T|C", "P02768|P02769", decided.get)
+    assert rows["P02768"]["is_contaminant"] is False and rows["P02768"]["source_db"] == "uniprot"
+    assert rows["P02768"]["organism"] == "NCBITaxon:9606"
+    assert rows["P02769"]["is_contaminant"] is True and rows["P02769"]["source_db"] == "contaminants"
+
+
+def test_one_letter_holds_for_every_accession_because_every_match_agreed():
+    rows = _proteins("C", "P02768|P02769", {"P02768": False}.get)
+    assert rows["P02768"]["is_contaminant"] is True and rows["P02769"]["is_contaminant"] is True
+
+
+def test_an_accession_the_databases_cannot_place_keeps_the_row_rule_and_is_counted():
+    from collections import Counter
+
+    unresolved = Counter()
+    rows = _proteins("T|C", "P02768|P02769", {"P02769": True}.get, unresolved)
+    assert rows["P02768"]["is_contaminant"] is True
+    assert unresolved == Counter({"P02768": 1})
+
+
+def test_database_status_and_tc_ambiguity(tmp_path):
+    from datarepo.sources import protein_db, search_params
+
+    seqs = protein_db.ProteinSequences()
+    for acc, contam in (("P02768", False), ("P02768", True), ("P02769", True), ("P60709", False)):
+        seqs.add(acc, "SEQ")
+        seqs.contaminant_from.setdefault(acc, set()).add(contam)
+    assert [seqs.database_status(a) for a in ("P02768", "P02769", "P60709", "Q00000")] == [
+        "both", "contaminant", "target", None,
+    ]
+    assert protein_db.is_contaminant_database(Path("F:/db/MetaMorpheusContaminants.xml"))
+    assert protein_db.is_contaminant_database(Path("crap.fasta"))
+    assert not protein_db.is_contaminant_database(Path("uniprotkb_proteome_UP000005640.xml"))
+
+    task = tmp_path / "3_SearchTask.toml"
+    task.write_text('[SearchParameters]\nTCAmbiguity = "RemoveTarget"\n', encoding="utf-8")
+    assert search_params.tc_ambiguity([task]) == "RemoveTarget"
+    task.write_text("[SearchParameters]\n", encoding="utf-8")
+    assert search_params.tc_ambiguity([task]) == "RemoveContaminant"
+    assert search_params.tc_ambiguity([]) is None
+
+
+def test_an_upstream_provenance_file_changed_after_the_search_is_left_out(tmp_path):
+    # aging's db/provenance.json is one shared file every database preparation overwrites; a search
+    # that recorded it must not later be given another preparation's record (0.19.0).
+    import hashlib
+
+    from datarepo.ingest import _lineage, _lineage_findings
+
+    (tmp_path / "db").mkdir()
+    (tmp_path / "qc").mkdir()
+    db, qc = tmp_path / "db" / "provenance.json", tmp_path / "qc" / "provenance.json"
+    db.write_text('{"stage": "db_prepare", "prepared": "mouse"}', encoding="utf-8")
+    qc.write_text('{"stage": "qc_spectra"}', encoding="utf-8")
+    recorded_db = hashlib.sha256(db.read_bytes()).hexdigest()
+    search = tmp_path / "search.json"
+    doc = {"upstream": [
+        {"stage": "db_prepare", "path": "db/provenance.json", "sha256": recorded_db},
+        {"stage": "qc_spectra", "path": "qc/provenance.json",
+         "sha256": hashlib.sha256(qc.read_bytes()).hexdigest()},
+    ]}
+    paths, mismatches = _lineage(tmp_path, search, doc)
+    assert db in paths and qc in paths and mismatches == []
+
+    db.write_text('{"stage": "db_prepare", "prepared": "human isoforms"}', encoding="utf-8")
+    paths, mismatches = _lineage(tmp_path, search, doc)
+    assert db not in paths and qc in paths
+    assert [m["stage"] for m in mismatches] == ["db_prepare"]
+    (finding,) = _lineage_findings(mismatches, "PXD1")
+    assert finding["code"] == "upstream_provenance_changed" and recorded_db in finding["message"]

@@ -15,7 +15,8 @@ support.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Sequence
+from collections import Counter
+from typing import Any, Callable, Iterable, Sequence
 
 from ..errors import IngestError
 from ..proforma import C_TERMINUS, N_TERMINUS, ProformaCache
@@ -262,12 +263,31 @@ def _entry_taxon(source_db: str, dataset_organism: str | None) -> str | None:
 
 
 def protein_rows(
-    columns_list: Sequence[dict[str, list[Any]]], dataset_id: str, *, organism: str | None
+    columns_list: Sequence[dict[str, list[Any]]],
+    dataset_id: str,
+    *,
+    organism: str | None,
+    contaminant_of: Callable[[str], bool | None] | None = None,
+    unresolved: Counter | None = None,
 ) -> list[dict[str, Any]]:
     """Build Protein rows from the accession/name/gene columns of the identification files.
 
     Contaminant entries are flagged from the target/decoy column and given their own `source_db`,
     so a query can exclude them without a name-prefix heuristic.
+
+    **The label is per accession, and the column is not** (G66, 0.19.0). MetaMorpheus writes
+    `Decoy/Contaminant/Target` once per peptide-protein match, not de-duplicated, and collapses it to
+    one letter only when every match agrees (`PsmTsvWriter.cs:258`, `Resolve`); `Accession` is
+    written DE-duplicated (`:229`). So the two cells cannot be zipped -- the third `|`-joined
+    column in this file to break that way. Until 0.19.0 the row's worst letter was given to every
+    accession on it, so a human albumin sharing a peptide with bovine albumin (`T|C`) was stored as a
+    contaminant, while MetaMorpheus -- which under its default `RemoveContaminant` had dropped the
+    contaminant copy of any accession also in the target database -- called its group `T`. Now:
+
+    * **one letter** -- every match agreed, so it holds for every accession on the row;
+    * **several** -- each accession's label comes from the database it was read from, via
+      `contaminant_of` (see `ingest`); where that cannot say, the old row rule is kept and counted in
+      `unresolved`, so a fallback is never silent.
 
     **The row's own organism wins over the dataset's.** It used to be the other way round -- the
     dataset organism was written first and MetaMorpheus's per-accession `organism_name` consulted
@@ -287,13 +307,26 @@ def protein_rows(
         organisms = columns.get("organism_name") or [""] * n
         status = columns.get("decoy_contam_target") or [""] * n
         for i in range(n):
-            contaminant = _target_decoy(status[i]) == "contaminant"
+            row_contaminant = _target_decoy(status[i]) == "contaminant"
+            letters = {x.strip().upper() for x in str(status[i] or "").split("|") if x.strip()}
+            mixed = len(letters) > 1 and contaminant_of is not None
             row_accessions = _accessions(accessions[i])
             gene_parts = _per_accession(genes[i], len(row_accessions))
             organism_parts = _per_accession(organisms[i], len(row_accessions))
             for j, acc in enumerate(row_accessions):
                 if acc in out:
                     continue
+                contaminant = row_contaminant
+                if mixed:
+                    if acc.upper().startswith(DECOY_PREFIX):
+                        contaminant = False
+                    else:
+                        decided = contaminant_of(acc)
+                        if decided is None:
+                            if unresolved is not None:
+                                unresolved[acc] += 1
+                        else:
+                            contaminant = decided
                 # MetaMorpheus writes `primary:TUBA1B, synonym:TUBA3`; the primary name is enough.
                 gene = gene_parts[j] or ""
                 primary = gene.split(",")[0].replace("primary:", "").strip() or None

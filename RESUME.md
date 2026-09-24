@@ -6,11 +6,13 @@
 
 | | |
 |---|---|
-| Commits | 227 |
+| Commits | 233 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
 | Locked decisions | 27 |
-| Open gaps | 65 |
+| Open gaps | 67 |
 | Gate items skipped | 4 |
+
+> **1 document(s) in `design/` not referenced above** -- `RUNNER.md`. Add a line for each, or say why not.
 
 <!-- END GENERATED -->
 

@@ -35,6 +35,15 @@ depends on it is marked as such.
 | U10 | **Does `catalog_id` promise more than it delivers?** It hashes `datarepo.__version__` alongside `CATALOG_VERSION`, so **0.10.0 -- which adds an MCP server and changes nothing `build` writes -- gives every catalog a new id from the same bundles.** That is the mirror of the decision that deliberately kept `__version__` OUT of the bundle hash (G29). It is not obviously wrong: a catalog is derived and disposable (D10), so the cost is a rebuild rather than a broken citation, and over-hashing can only be wrong in the safe direction. But aging is the one citing catalog ids, so whether a catalog id should move for a change that cannot reach a catalog is theirs to say. Option (b) is to drop `__version__` and make `CATALOG_VERSION` carry the builder, which would make every future `build` change a deliberate bump exactly as `INGESTER_VERSION` does. | **(a)** leave it, and document what the id does and does not promise. Tracked as G34; not changed without a thread. |
 | U11 | **Does D24 cover a consumer's own science?** D24 says dataRepo RUNS every engine that works on stored results. aging's abundance age-effect fits (`DEF-AGE-EFFECT`, mzLib `Statistics`) are code on stored results, so D24's letter would make them ours. aging would rather keep them, because the trait and the refusals are their science (aging 050 §2). | aging keeps them. D24 covers **generic engines** that no consumer owns; a consumer's own science stays the consumer's to run. Written into charter v0.2 §2 as a proposed reading. **CLOSED, dissolved by D27** (2026-09-24): aging accepted the operator role (aging 055, their D45) and runs its own fits and the generic engines alike. Charter v0.3 §2. |
 
+### The runner (G64, `design/RUNNER.md`; for aging as operator, and for you)
+
+| ID | Question | Our default until answered |
+|---|---|---|
+| U12 | Where does an engine's output live in an instance's store? | `<store>/_engine/<engine>/<artefact id>/`, beside the bundles and never inside one, the way `_study/` works. A search bundle is never rewritten |
+| U13 | What identifies one engine run, for "already done"? | sha256 over the engine, its released version, every input's role and sha256, the definition id, `RUNNER_VERSION` and the schema version. **Not** the bundle id: logs resolves a searched database that fifteen datasets share, so one run serves all of them |
+| U14 | Does the runner fetch reference inputs (Ensembl's xref dump, go.obo), or does the operator supply them? | The operator supplies every file; the runner hashes each and checks it against the engine's published manifest. Fetching would make the runner a second, unrecorded source of inputs |
+| U15 | Where do logs' rows go? | A new core table `gene_resolutions`, keyed as logs keys it (`search_database_sha256, gene_set_release, accession, gene_id`), with `definition_id`. That is a schema change, taken once, together with go's per-row evidence columns |
+
 ## Waiting on aging (thread `design/threads/aging/`)
 
 | ID | Question | Status |

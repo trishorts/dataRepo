@@ -94,3 +94,36 @@ def searched_database(provenance: dict[str, Any]) -> tuple[str | None, str | Non
 def task_names(provenance: dict[str, Any]) -> list[str]:
     """Which MetaMorpheus tasks ran, from the search stage's params."""
     return [str(t) for t in ((provenance.get("params") or {}).get("tasks") or [])]
+
+
+#: MetaMorpheus's `SearchParameters.TCAmbiguity` default (`TaskLayer/SearchTask/SearchParameters.cs:50`).
+TC_AMBIGUITY_DEFAULT = "RemoveContaminant"
+
+
+def tc_ambiguity(task_files: list[Path]) -> str | None:
+    """How the search resolved an accession present in both a target and a contaminant database.
+
+    `SearchParameters.TCAmbiguity` in the search task's `.toml`: `RemoveContaminant` (the default)
+    drops the contaminant entry, `RemoveTarget` drops the target entry, `RenameProtein` keeps both
+    under renamed accessions (MetaMorpheus `DatabaseLoadingEngine.cs:190-278` at `6e152da70`). The
+    setting decides what a protein in both databases IS in the results, so it is read, not assumed.
+
+    Returns:
+        The one value every search task that states it agrees on; the default when a search task
+        exists but does not state it; None when there is no search task or two disagree.
+    """
+    values = set()
+    searched = False
+    for path in task_files:
+        if not path.is_file() or "search" not in path.stem.lower():
+            continue
+        try:
+            doc = tomllib.loads(path.read_text(encoding="utf-8-sig"))
+        except tomllib.TOMLDecodeError:
+            continue
+        searched = True
+        value = (doc.get("SearchParameters") or {}).get("TCAmbiguity")
+        values.add(str(value) if value else TC_AMBIGUITY_DEFAULT)
+    if not searched or len(values) != 1:
+        return None
+    return values.pop()

@@ -896,6 +896,17 @@ gaps:
     INGESTER_VERSION bump and tell aging which bundles to re-ingest. Warned in aging 056 (options a-c
     handed to them).
   - >-
+    G68 pyMzLib `out=` (0.2.0) is a candidate replacement for our windowed large-file read: on
+    PXD032044 (1.83 GB) the whole read still OOMs but `out=` succeeds in 92 s vs ~494 s for 9 windows;
+    on PXD067622 the out= TSV equals the typed read in all 70,527,782 cells (73 columns, None -> empty
+    cell). Told pyMzLib in 012 (the equality result not yet). Asked whether the TSV is a CONTRACT
+    (column names, null and list encoding). Switch only if it is; a proven-identical reader change
+    needs no INGESTER bump (D26). Scripts: scratchpad probe020/.
+  - >-
+    G66 [CLOSED in 0.19.0, 2026-09-24: protein contaminant label is now per accession (database of
+    origin + the search's TCAmbiguity); proteins flag agrees with MetaMorpheus's group label 64,115 +
+    897, 0 disagreements. Same release: upstream provenance sha256 is checked, and aging's shared
+    db/provenance.json had been overwritten for all 24 served datasets (G69).]
     G66 [MEASURED 2026-09-24 on the 0.18.0 scratch corpus (scratchpad g66.py): 116 human and 26 mouse
     primary accessions are in BOTH MetaMorpheusContaminants.xml (264 entries) and the species XML; rat
     0. In stored `proteins` the same accessions are flagged contaminant in 1,192 rows (141 accessions)
@@ -912,6 +923,12 @@ gaps:
     TODO: count accessions present in both DBs across the corpus; decide (with aging, and MetaMorpheus
     for its own rule) what each table should say; check against the source before claiming anything
     about MetaMorpheus.
+  - >-
+    G69 aging's `F:/aging_data/db/provenance.json` is ONE shared file that every database preparation
+    overwrites, so the db_prepare record a search points at is gone for all 24 served datasets (their
+    sha256 no longer matches the search's `upstream[]`). 0.19.0 leaves it out with an
+    upstream_provenance_changed finding. The fix is aging's: write each preparation's provenance to its
+    own content-addressed file (and archive the searched databases, S5). Told in aging 061.
   - >-
     G67 Leftovers from the 0.18.0 blind agent test (scratchpad g63): (a) PXD058611 carries both
     `no_output_sdrf` ("sample metadata comes from the deposited SDRF only") and `no_sdrf` ("No SDRF was
