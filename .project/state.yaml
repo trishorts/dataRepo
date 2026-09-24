@@ -825,6 +825,16 @@ gaps:
     names the rest, not trusted; none -> SDRF unused, flagged sample per run, finding. Cross-check against
     sdrf's `results/benchmark/screen.tsv` (46 SDRFs naming absent files). Needs an INGESTER_VERSION bump
     and an SdrfStatus value.
+  - >-
+    G63 Per-run enrichment, answered to aging in thread 054 (DATAREPO-39 (aging); asks DATAREPO-44 on
+    the manifest shape). Build ONLY after aging answers DATAREPO-44: `runs.enrichment` (multivalued,
+    Enrichment vocab); `datasets.enrichment` stays aging's declaration; derived
+    `datasets.enrichment_mixed`; ingest refuses a non-none run value outside the declaration. Sources:
+    SDRF `comment[enrichment process]` first, else manifest `run_enrichment` (must cover EVERY run;
+    unknown or duplicate names refused); mixed with no per-run source -> NULL on every run.
+    `run_enrichment` is a manifest CONTENT field; INGESTER_VERSION bump; two schema regenerations.
+    Evidence sent (not an assignment): PXD058611 streptavidin P22629 PSMs 6-16 in each of runs 178-198,
+    0 in each of 199-213 (21 vs 15, not "half"); script scratchpad strep.py.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 
