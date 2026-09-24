@@ -726,6 +726,12 @@ gaps:
     INGESTER_VERSION bump -- strip the terminal `-` from base_sequence and give the site a
     C-terminal site type -- and do NOT ship a C-terminal site type before they rule.
   - >-
+    G52 [DIFF DONE 2026-09-24 on pyMzLib 0.2.0 (scratchpad g52.py), AllPeptides of PXD036557,
+    PXD058611, PXD050351: 84,810 of 88,314 distinct peptidoforms (96.0%) identical; 3,504 differ ONLY in
+    tag text at the same positions: 3,357 UniProt-category mods written `[UniProt:<name>]` by mzLib
+    where we write a UNIMOD accession (N-acetylserine UNIMOD:1, dimethyllysine UNIMOD:36); ~135 where
+    ours is a mass tag; 11 `Info:` vs a bare name. DO NOT SWITCH: 4% of peptidoform ids would change
+    and lose UNIMOD. Told pyMzLib 014.]
     G52 [PR D MERGED 2026-09-24 00:22 UTC; waits on an mzLib release, then pyMzLib] mzLib PR D (smith-chem-wisc/mzLib#1346, opened 2026-09-23) computes psmtsv ProForma, but its
     string is NOT byte-identical to `proforma.py`: Calcium on D -> UNIMOD:951 (ours: mass tag); mods mzLib
     does not load stay named `[Common Artifact:...]` (ours resolve from the MetaMorpheus install, e.g.
