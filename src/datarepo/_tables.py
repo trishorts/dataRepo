@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.8"
+SCHEMA_VERSION = "0.0.9"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -37,6 +37,7 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("labelling", pa.string(), nullable=False),
         pa.field("labelling_plex", pa.int64(), nullable=True),
         pa.field("enrichment", pa.list_(pa.string()), nullable=False),
+        pa.field("enrichment_mixed", pa.bool_(), nullable=False),
         pa.field("instrument_vendor", pa.string(), nullable=True),
         pa.field("instruments", pa.list_(pa.string()), nullable=True),
         pa.field("permitted_responses", pa.list_(pa.string()), nullable=True),
@@ -89,6 +90,8 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("qc_pass", pa.bool_(), nullable=True),
         pa.field("instrument_model", pa.string(), nullable=True),
         pa.field("acquisition_datetime", pa.timestamp('us', tz='UTC'), nullable=True),
+        pa.field("enrichment", pa.list_(pa.string()), nullable=True),
+        pa.field("enrichment_source", pa.string(), nullable=True),
     ]),
     "assays": pa.schema([  # Assay
         pa.field("assay_id", pa.string(), nullable=False),
@@ -231,13 +234,13 @@ TABLES: dict[str, pa.Schema] = {
     "protein_localizations": pa.schema([  # ProteinLocalization
         pa.field("protein_accession", pa.string(), nullable=False),
         pa.field("compartment", pa.string(), nullable=False),
-        pa.field("organelle_map_version", pa.string(), nullable=False),
         pa.field("go_release", pa.string(), nullable=False),
         pa.field("evidence", pa.string(), nullable=True),
         pa.field("source_id", pa.string(), nullable=False),
     ]),
     "organelle_term_categories": pa.schema([  # OrganelleTermCategory
         pa.field("compartment", pa.string(), nullable=False),
+        pa.field("category_map_name", pa.string(), nullable=False),
         pa.field("organelle_map_version", pa.string(), nullable=False),
         pa.field("go_release", pa.string(), nullable=False),
         pa.field("organelle_category", pa.string(), nullable=False),

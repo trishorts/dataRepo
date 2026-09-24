@@ -205,6 +205,21 @@ def test_the_summary_mentions_no_warning_when_there_is_none():
     assert "1 run," in text and "whole proteome" in text
 
 
+def test_a_mixed_dataset_is_not_summarised_as_if_every_run_were_enriched():
+    # G63: PXD058611 declares [chemical_probe], and 15 of its 36 runs are whole proteome.
+    ds = {
+        "dataset_id": "PXD058611", "acquisition": "DDA", "quant_method": "label_free",
+        "organism_names": ["Mus musculus"], "n_runs": 36, "n_samples": 36,
+        "enrichment": ["chemical_probe"], "enrichment_mixed": True,
+        "search_engine": "MetaMorpheus", "search_engine_version": "1.1.11",
+        "n_psms_1pct": 10, "n_peptidoforms_1pct": 5, "n_protein_groups_1pct": 2,
+        "n_ptm_sites": 0, "findings": [],
+    }
+    text = summary(ds)
+    assert "runs that differ in enrichment" in text
+    assert "chemical_probe on some runs" in text
+
+
 def test_a_notice_reaches_every_page_and_the_agents_entry_point(tmp_path, catalog):
     notice = "Preview: this data will be regenerated."
     build_site(catalog, tmp_path / "site", notice=notice)

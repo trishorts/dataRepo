@@ -30,6 +30,10 @@ ENUMS: dict[str, dict[str, Any]] = {
         "description": 'Enrichment before MS (aging 003 axis). A dataset can have several. The PTM values describe what was enriched; the four capture values (DATAREPO-34, aging 046) describe HOW proteins were captured, which is what decides whether intensities can be read as whole-cell abundance. An enrichment is not excluded from organelle questions -- a LAMP1-TurboID pulldown is a lysosome proteome -- but it must never be pooled with, or read as, a whole proteome. Where the bait sits (an organelle) is NOT an enrichment value.',
         "values": ['none', 'phospho', 'acetyl', 'ubiquitin_GG', 'succinyl', 'glyco', 'immunoprecipitation', 'proximity_labelling', 'affinity_purification', 'chemical_probe', 'other'],
     },
+    "RunEnrichmentSource": {
+        "description": 'Where a run\'s `enrichment` came from (G63, aging DATAREPO-39/DATAREPO-44). A run whose value is NULL has no source and no row here says otherwise: NULL means nobody told us, never "whole proteome".',
+        "values": ['dataset_declaration', 'manifest_run_enrichment'],
+    },
     "SdrfStatus": {
         "description": "How far the dataset's SDRF could be trusted (P4).",
         "values": ['trusted', 'repaired', 'config_fallback', 'absent'],
@@ -137,7 +141,8 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
             "quant_method": {"description": 'Quantification principle.', "range": 'QuantMethod', "enum": 'QuantMethod'},
             "labelling": {"description": 'Label reagent, if any.', "range": 'Labelling', "enum": 'Labelling'},
             "labelling_plex": {"description": 'e.g. 16 for TMTpro 16-plex.', "range": 'integer'},
-            "enrichment": {"description": 'Enrichment steps before MS; [none] for whole proteome.', "range": 'Enrichment', "enum": 'Enrichment', "multivalued": True},
+            "enrichment": {"description": "Enrichment steps before MS; [none] for whole proteome. The producer's DECLARATION of what the deposit is (aging's S15), not a union of run values: [none, chemical_probe] would read as two steps in sequence. Where runs differ, `enrichment_mixed` is true and each run's own steps are `runs.enrichment`.", "range": 'Enrichment', "enum": 'Enrichment', "multivalued": True},
+            "enrichment_mixed": {"description": "True when this dataset's runs do not all share one enrichment: the producer flagged it `mixed_enrichment`, or the per-run values carry more than one distinct set. An enrichment question on a mixed dataset has to be answered per run (`runs.enrichment`), never from `enrichment` above. Derived at ingest (G63).", "range": 'boolean'},
             "instrument_vendor": {"description": 'Instrument vendor, e.g. Thermo, Bruker, SCIEX.', "range": 'string'},
             "instruments": {"description": 'PSI-MS instrument names or IDs.', "range": 'string', "multivalued": True},
             "permitted_responses": {"description": "Which kinds of measurement this dataset MAY be used for -- an ALLOW-LIST, not a bar (aging 024 section 7). Empty means unrestricted. A deny-list fails open: a response type added later would be silently permitted on a dataset nobody re-examined, so a restriction is stated positively and a new response is excluded until someone says otherwise. The motivating case is PXD060431, whose low-resolution MS2 costs fragment mass accuracy and so bars it from `ptm_stoichiometry` and `ptm_site_localization` while leaving abundance sound (aging D24): `permitted_responses: [abundance]`. It is a real column rather than a `flags` string because a restriction a query cannot honour without parsing prose is not a restriction. The vocabulary is the producing instance's, not an enum here -- the core knows nothing about any one study (U5), and a study layer's own response values must be a subset of what this permits.", "range": 'string', "multivalued": True},
@@ -202,6 +207,8 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
             "qc_pass": {"description": "Whether the run passed the producer's spectra QC gate.", "range": 'boolean'},
             "instrument_model": {"description": 'Instrument model from the raw file header.', "range": 'string'},
             "acquisition_datetime": {"description": 'From the raw file header (J14 batch/date checks, H4).', "range": 'datetime'},
+            "enrichment": {"description": "Enrichment steps before MS for THIS run (G63): an enrichment is done to what was injected, so it belongs on the run. [none] means whole proteome. NULL means unknown -- a dataset the producer flagged `mixed_enrichment` with no per-run source gets NULL on every run, never the dataset value, which is only true of some of them. Every value other than `none` appears in the dataset's `enrichment` declaration, or the ingest refuses.", "range": 'Enrichment', "enum": 'Enrichment', "multivalued": True},
+            "enrichment_source": {"description": 'Where `enrichment` came from. NULL exactly when `enrichment` is NULL.', "range": 'RunEnrichmentSource', "enum": 'RunEnrichmentSource'},
         },
     },
     "assays": {
@@ -364,12 +371,12 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
     },
     "quant_values": {
         "class": "QuantValue",
-        "description": 'One quantity of one feature in one assay. Long format (D5). Missing = no row or NA, never 0.',
+        "description": "One quantity of one feature in one assay. Long format (D5). Missing = no row or NA, never 0. A stored 0 is a MEASURED zero, and occurs only where the value's definition says 0 is a measurement: a spectral count (QuantProject:DEF-PROT-SPC, no qualifying PSM). An intensity of 0 means not measured and is never stored. So count detections with `value > 0`, never by counting rows (0.18.0).",
         "columns": {
             "assay_id": {"description": 'Assay (run x channel) this value was measured in.', "range": 'Assay'},
             "feature_type": {"description": 'Which table feature_id points into.', "range": 'FeatureType', "enum": 'FeatureType'},
             "feature_id": {"description": 'ID in the table named by feature_type.', "range": 'string'},
-            "value": {"description": "The quantity, IN THE UNITS OF ITS `definition_id` AND IN NO OTHER. This column holds several incommensurable quantities at once -- on aging's catalog, FlashLFQ intensities (median 1.2e6) and spectral counts (median 3) sit in the same column, separable only by `definition_id`. Always group or filter by `definition_id`; a median, sum or ratio taken across the bare column mixes units and is meaningless. An agent that did exactly that reported a spurious million-fold protein difference between two of aging's datasets, which is the grain rule (U8) broken inside a single column rather than between tables. Absent row or NA when not measured, never 0.", "range": 'float'},
+            "value": {"description": "The quantity, IN THE UNITS OF ITS `definition_id` AND IN NO OTHER. This column holds several incommensurable quantities at once -- on aging's catalog, FlashLFQ intensities (median 1.2e6) and spectral counts (median 3) sit in the same column, separable only by `definition_id`. Always group or filter by `definition_id`; a median, sum or ratio taken across the bare column mixes units and is meaningless. An agent that did exactly that reported a spurious million-fold protein difference between two of aging's datasets, which is the grain rule (U8) broken inside a single column rather than between tables. Absent row or NA when not measured, never 0. A stored 0 is a measured zero and appears only for a definition that says so -- a spectral count (QuantProject:DEF-PROT-SPC); an intensity is never stored as 0. Count detections with `value > 0`, not by counting rows.", "range": 'float'},
             "detection_type": {"description": 'How the value was obtained: MS/MS or match-between-runs.', "range": 'DetectionType', "enum": 'DetectionType'},
             "pip_q_value": {"description": 'FlashLFQ MBR peak q (PIP Q-Value).', "range": 'float'},
             "mbr_kept": {"description": "Passes the producer's MBR filter (QuantProject DEF-MBR-KEPT).", "range": 'boolean'},
@@ -388,22 +395,22 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
     },
     "protein_localizations": {
         "class": "ProteinLocalization",
-        "description": "Protein -> GO-CC term, as supplied by `go`. Never computed here. One row per (accession, term) for the accessions that carry the term themselves -- go expands its (group, term) row over `accession_used`, never over every group member (go D22) -- so a member that does not carry a term gets no row. The organelle CATEGORY is not on this row: it is a property of the term, not the protein, and lives once in `organelle_term_categories`, joined on (compartment, organelle_map_version, go_release) (go 004, DATAREPO-29/30). There is no leading-protein column and never will be: MetaMorpheus computes none, and member order is alphabetical (go D25). Contract: go's own rulings (D1-D26), not the superseded REQ-GO-2..10.",
+        "description": "Protein -> GO-CC term, as supplied by `go`. Never computed here. One row per (accession, term) for the accessions that carry the term themselves -- go expands its (group, term) row over `accession_used`, never over every group member (go D22) -- so a member that does not carry a term gets no row. The organelle CATEGORY is not on this row: it is a property of the term, not the protein, and lives once in `organelle_term_categories`, joined on (compartment, go_release) (go 004, DATAREPO-29/30). The row carries NO category map: under go D28 an annotation is map-independent and one annotation file serves every consumer map, so the join yields one category row per map and a query names the map it means (schema 0.0.9, go 009 section 4: `organelle_map_version` was `required` here with no true value). There is no leading-protein column and never will be: MetaMorpheus computes none, and member order is alphabetical (go D25). Contract: go's own rulings (D1-D26), not the superseded REQ-GO-2..10.",
         "columns": {
             "protein_accession": {"description": 'UniProt (or custom-database) accession, isoform suffix kept.', "range": 'Protein'},
             "compartment": {"description": "GO-CC term the protein's own entry carries, directly or by propagation (go's `go_id`). Named `compartment` as in `organelle_age_summaries`, and because published queries join on it.", "range": 'uriorcurie'},
-            "organelle_map_version": {"description": "go's organelle map version, from the file header (go D9). Half of the key into organelle_term_categories.", "range": 'string'},
-            "go_release": {"description": "GO ontology release, from the file header (go D9). The other half: an ancestor edge moving between releases moves a term's category with the map unchanged (go 004 section 3).", "range": 'string'},
+            "go_release": {"description": "GO ontology release, from the file header (go D9). With `compartment`, the key into organelle_term_categories: an ancestor edge moving between releases moves a term's category with the map unchanged (go 004 section 3).", "range": 'string'},
             "evidence": {"description": 'Evidence code or note from the source.', "range": 'string'},
             "source_id": {"description": 'Annotation source (owner + version) this row comes from.', "range": 'AnnotationSource'},
         },
     },
     "organelle_term_categories": {
         "class": "OrganelleTermCategory",
-        "description": "Which organelle category a GO-CC term falls in, under one organelle map and one ontology release. One row per (term, category, subcategory): a term in two categories is two rows, and nothing is ever a list paired by position. Stored once per term instead of repeated on every protein row, so two rows cannot disagree (DATAREPO-29). At ingest every row of go's file is checked against this table built from the same header versions, and a file whose rows disagree is refused (go 004 section 3). Producer: go.",
+        "description": "Which organelle category a GO-CC term falls in, under one category map (name and version) and one ontology release. One row per (term, category, subcategory): a term in two categories is two rows, and nothing is ever a list paired by position. Stored once per term instead of repeated on every protein row, so two rows cannot disagree (DATAREPO-29). go writes one category file per consumer map beside each annotation file (go D28). Coverage check, refused on failure: every `compartment` here appears in the paired annotation file with the same `go_release`, since a mismatched pair stored is a join that silently drops categories (go 009 section 4; replaces the per-row cross-check, which lapsed with D28). The map's CONTENT is the consumer's (aging's `aging-organelle-map`, charter S17); go owns only the format. Producer: go.",
         "columns": {
             "compartment": {"description": "GO-CC term (go's `go_id`).", "range": 'uriorcurie'},
-            "organelle_map_version": {"description": "go's organelle map version.", "range": 'string'},
+            "category_map_name": {"description": "The category map's name, from the category file header (`#!category_map <name> <version> <sha256>`), e.g. `aging-organelle-map`. With the version, it names one consumer's map: two consumers' maps can share a version number and mean different things.", "range": 'string'},
+            "organelle_map_version": {"description": "The category map's version, from the same header line (go's `category_map_version`).", "range": 'string'},
             "go_release": {"description": 'GO ontology release. The category is a function of the PAIR (go 004, DATAREPO-30).', "range": 'string'},
             "organelle_category": {"description": "go's organelle category for this term, e.g. `mitochondrion`.", "range": 'string'},
             "organelle_subcategory": {"description": 'Qualified subcategory with its prefix kept, e.g. `mitochondrion:inner_membrane`. NULL when the category has none.', "range": 'string'},

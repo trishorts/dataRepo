@@ -37,6 +37,7 @@ def _dataset(dataset_id: str) -> dict:
         "quant_method": "label_free",
         "labelling": "none",
         "enrichment": ["none"],
+        "enrichment_mixed": False,
         "axis_source": "manifest",
         "search_engine": "MetaMorpheus",
         "search_engine_version": "1.1.11",

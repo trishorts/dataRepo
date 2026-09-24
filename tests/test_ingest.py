@@ -11,6 +11,7 @@ import json
 
 import pytest
 
+from datarepo import definitions as defs
 from datarepo.errors import DatasetExcluded
 from datarepo.ingest import ingest_dataset
 from datarepo.integrity import check
@@ -89,8 +90,22 @@ def test_peptidoforms_are_proforma_with_unimod_accessions(tables):
     assert any("UNIMOD:" in p["peptidoform"] for p in modified)
 
 
-def test_quantities_never_store_a_zero(tables):
-    assert all(q["value"] != 0 for q in tables["quant_values"])
+def test_an_intensity_never_stores_a_zero_and_a_count_may(tables):
+    # Split by DEFINITION in 0.18.0, not one rule for the column: an intensity of 0 is QuantProject's
+    # "no value" and becomes no row (DEF-PEP-INT, DEF-PROT-INT), while a spectral count of 0 is a
+    # measurement (DEF-PROT-SPC). The old blanket rule is what dropped real zero counts.
+    zero_as_na = {defs.PEPTIDE_INTENSITY.definition_id, defs.PROTEIN_INTENSITY.definition_id}
+    assert all(q["value"] != 0 for q in tables["quant_values"] if q["definition_id"] in zero_as_na)
+
+
+def test_every_run_carries_its_enrichment_and_where_it_came_from(tables):
+    # G63. The fixture's dataset declares no enrichment and is not flagged mixed, so every run takes
+    # the declaration and the dataset says its runs agree.
+    (dataset,) = tables["datasets"]
+    assert dataset["enrichment"] == ["none"]
+    assert dataset["enrichment_mixed"] is False
+    assert {tuple(r["enrichment"]) for r in tables["runs"]} == {("none",)}
+    assert {r["enrichment_source"] for r in tables["runs"]} == {"dataset_declaration"}
 
 
 def test_every_quantity_carries_a_definition_that_is_in_the_bundle(tables):

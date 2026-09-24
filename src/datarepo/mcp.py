@@ -344,7 +344,7 @@ class CatalogServer:
         datasets = (
             self.box.dicts(
                 "SELECT dataset_id, title, organisms, acquisition, quant_method, labelling, "
-                "enrichment, instrument_vendor, n_runs, n_samples, n_psms_1pct, "
+                "enrichment, enrichment_mixed, instrument_vendor, n_runs, n_samples, n_psms_1pct, "
                 "n_peptidoforms_1pct, n_protein_groups_1pct, n_ptm_sites, n_open_findings "
                 "FROM dataset_overview ORDER BY dataset_id"
             )
@@ -800,7 +800,7 @@ class CatalogServer:
         rows = self._maybe(
             "dataset_overview",
             "SELECT dataset_id, title, organisms, acquisition, quant_method, labelling, "
-            "enrichment, instrument_vendor, n_runs, n_samples, n_psms_1pct, "
+            "enrichment, enrichment_mixed, instrument_vendor, n_runs, n_samples, n_psms_1pct, "
             "n_protein_groups_1pct FROM dataset_overview "
             "WHERE upper(dataset_id) = upper(?) OR lower(coalesce(title, '')) LIKE ? "
             "OR lower(coalesce(instrument_vendor, '')) LIKE ? "
@@ -1023,15 +1023,17 @@ class CatalogServer:
         if self.box.has_table("organelle_term_categories"):
             rows = self._maybe(
                 "protein_localizations",
-                "SELECT l.dataset_id, l.compartment, c.organelle_category, c.organelle_subcategory, "
+                # An annotation row names no map (go D28, schema 0.0.9), so the join gives one
+                # category row per map; the map is returned so an answer says whose map it used.
+                "SELECT l.dataset_id, l.compartment, c.category_map_name, c.organelle_map_version, "
+                "c.organelle_category, c.organelle_subcategory, "
                 "l.evidence, count(DISTINCT l.protein_accession) AS n_proteins, "
                 "list_sort(list(DISTINCT l.protein_accession))[1:10] AS examples "
                 "FROM protein_localizations l LEFT JOIN organelle_term_categories c "
-                "ON c.compartment = l.compartment AND c.organelle_map_version = l.organelle_map_version "
-                "AND c.go_release = l.go_release "
+                "ON c.compartment = l.compartment AND c.go_release = l.go_release "
                 "WHERE lower(l.compartment) LIKE ? OR lower(coalesce(c.organelle_category, '')) LIKE ? "
                 "OR lower(coalesce(c.organelle_subcategory, '')) LIKE ? "
-                "GROUP BY 1, 2, 3, 4, 5 ORDER BY n_proteins DESC",
+                "GROUP BY 1, 2, 3, 4, 5, 6, 7 ORDER BY n_proteins DESC",
                 [like, like, like],
                 limit,
             )

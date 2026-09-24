@@ -35,7 +35,14 @@ CONTENT_FIELDS: tuple[str, ...] = (
     "quant_method",    # Dataset.quant_method (D5 axis)
     "labelling",       # Dataset.labelling (D5 axis)
     "labelling_plex",  # Dataset.labelling_plex (D5 axis)
-    "enrichment",      # Dataset.enrichment (D5 axis)
+    "enrichment",      # Dataset.enrichment (D5 axis), and every run's when the dataset is not mixed
+    # Run.enrichment, per run (G63, aging DATAREPO-44). Adding it moves the bundle id, and must:
+    # the run rows change (thread 054 section 2).
+    "run_enrichment",
+    # Lifted out of `flags`, which stays prose: this one flag decides whether a run with no per-run
+    # value gets the dataset's enrichment or NULL, so it reaches Run.enrichment and
+    # Dataset.enrichment_mixed. Only this flag -- rewording or adding any other must not re-id.
+    "mixed_enrichment",
     "metamorpheus",    # chooses the modification registry, and is the engine_version fallback
     # Dataset.permitted_responses, and it is CONTENT rather than prose (aging 024 section 7).
     # Two bundles over the same rows, one of which may be used for site localization and one
@@ -58,7 +65,8 @@ NON_CONTENT_FIELDS: dict[str, str] = {
     "status": "gates whether a bundle is written at all; every bundle that exists was 'include'",
     "reason": "the producer's prose for a status; never read into a row",
     "notes": "the producer's prose; never read into a row",
-    "flags": "shown by `datarepo manifest`; nothing in the ingest reads it",
+    "flags": "shown by `datarepo manifest`; the ingest reads none of them except `mixed_enrichment`, "
+             "which is lifted into its own content field so the rest stay prose",
     "provenance_schema": "the producer's declared expectation; the ingest reads the schema from "
                          "provenance.json itself and refuses a version it cannot map",
     "sdrf": "declared but not read -- the SDRF is found under the run folder and hashed as a file",
@@ -83,6 +91,10 @@ class DatasetEntry:
     labelling: str = "none"
     labelling_plex: int | None = None
     enrichment: tuple[str, ...] = ("none",)
+    #: `(run base name, enrichment value)` pairs, sorted, from the manifest's
+    #: `run_enrichment: {value: [run, ...]}`. Empty when the producer gave none.
+    run_enrichment: tuple[tuple[str, str], ...] = ()
+    mixed_enrichment: bool = False
     metamorpheus: str | None = None
     permitted_responses: tuple[str, ...] = ()
     provenance_schema: str | None = None
@@ -164,6 +176,37 @@ def _as_tuple(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(str(v) for v in value)
 
 
+def _run_enrichment(value: Any, where: str) -> tuple[tuple[str, str], ...]:
+    """`{value: [run, ...]}` -> sorted `(run, value)` pairs, refusing a run named twice.
+
+    Whether the names are real runs, whether they cover every run, and whether each value is one
+    the dataset declares are checked at ingest, which is where the runs are known.
+
+    Raises:
+        ManifestError: not a mapping of value to a list of run names, or a run under two values.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        raise ManifestError(f"{where}: run_enrichment must map an enrichment value to a list of runs")
+    seen: dict[str, str] = {}
+    for enrichment, runs in value.items():
+        if isinstance(runs, (str, int)) or not isinstance(runs, (list, tuple)):
+            raise ManifestError(
+                f"{where}: run_enrichment[{enrichment!r}] must be a list of run names, "
+                f"found {type(runs).__name__}"
+            )
+        for run in runs:
+            name = str(run)
+            if name in seen:
+                raise ManifestError(
+                    f"{where}: run {name!r} appears twice in run_enrichment "
+                    f"(under {seen[name]!r} and {str(enrichment)!r}). Each run has one entry."
+                )
+            seen[name] = str(enrichment)
+    return tuple(sorted(seen.items()))
+
+
 def _resolve(value: Any, manifest_path: Path) -> Path:
     """A manifest path, with relative ones taken against the manifest's own directory.
 
@@ -214,6 +257,7 @@ def load_manifest(path: str | Path) -> Manifest:
             raise ManifestError(f"{path}: {accession} has status '{status}' but no 'run'")
         if accession in entries:
             raise ManifestError(f"{path}: {accession} appears twice")
+        flags = _as_tuple(row.get("flags"), ())
         entries[accession] = DatasetEntry(
             accession=str(accession),
             status=status,
@@ -228,10 +272,12 @@ def load_manifest(path: str | Path) -> Manifest:
             labelling=str(row.get("labelling", "none")),
             labelling_plex=row.get("labelling_plex"),
             enrichment=_as_tuple(row.get("enrichment"), ("none",)),
+            run_enrichment=_run_enrichment(row.get("run_enrichment"), f"{path}: {accession}"),
+            mixed_enrichment="mixed_enrichment" in flags,
             metamorpheus=row.get("metamorpheus"),
             permitted_responses=_as_tuple(row.get("permitted_responses"), ()),
             provenance_schema=row.get("provenance_schema"),
-            flags=_as_tuple(row.get("flags"), ()),
+            flags=flags,
             sdrf=row.get("sdrf"),
             reason=row.get("reason"),
             notes=row.get("notes"),

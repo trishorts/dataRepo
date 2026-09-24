@@ -69,6 +69,7 @@ def _minimal(tmp_path, source_text="a"):
     writer.add("datasets", [{
         "dataset_id": "PXD000001", "organisms": ["NCBITaxon:9606"], "acquisition": "DDA",
         "quant_method": "label_free", "labelling": "none", "enrichment": ["none"],
+        "enrichment_mixed": False,
         "axis_source": "provenance", "search_engine": "MetaMorpheus", "search_engine_version": "1.1.11",
     }])
     return writer

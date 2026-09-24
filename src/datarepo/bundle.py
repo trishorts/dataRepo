@@ -43,7 +43,7 @@ QPX_VERSION = "unpinned"
 #: writes.** It lags `__version__` on purpose; they are not meant to agree. The catalog's equivalent
 #: is `catalog.CATALOG_VERSION`, and `catalog_id` carries `__version__` as well because a catalog is
 #: rebuilt cheaply and a bundle is not.
-INGESTER_VERSION = "0.11.0"
+INGESTER_VERSION = "0.12.0"
 
 BUNDLE_MANIFEST = "bundle.json"
 SOURCES_DIR = "sources"

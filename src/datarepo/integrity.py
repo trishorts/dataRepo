@@ -82,7 +82,8 @@ COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
     # Keyed while empty, for the reason `STUDY_COMPOSITE_IDENTIFIERS` gives below.
     ("organelle_term_categories", (
-        "compartment", "organelle_map_version", "go_release", "organelle_category", "organelle_subcategory",
+        "compartment", "category_map_name", "organelle_map_version", "go_release", "organelle_category",
+        "organelle_subcategory",
     )),
     ("trait_effects", ("feature_type", "feature_key", "trait_id", "response", "scope", "definition_id")),
     ("ptm_pairs", (

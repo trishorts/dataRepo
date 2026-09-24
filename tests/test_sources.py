@@ -297,7 +297,109 @@ def test_intensity_and_spectral_count_are_told_apart_by_their_definition():
         SEARCH_RESULTS / "AllQuantifiedProteinGroups.tsv", "PXD999999", run_names=names
     )
     definitions = {q["definition_id"] for q in quants}
-    assert definitions == {"PROVISIONAL:PROTEIN-INTENSITY", "PROVISIONAL:PROTEIN-SPECTRAL-COUNT"}
+    assert definitions == {"QuantProject:DEF-PROT-INT", "QuantProject:DEF-PROT-SPC"}
+
+
+def test_a_zero_spectral_count_is_a_measurement_and_a_zero_intensity_is_not(tmp_path):
+    """QuantProject:DEF-PROT-SPC: "0 is a real zero here". DEF-PROT-INT: blank or 0 is no value.
+
+    Until 0.18.0 both columns went through the intensity rule, so every zero spectral count was
+    stored as missing -- a real "no qualifying PSM" turned into "unknown".
+    """
+    header = [
+        "Protein Accession", "Gene", "Number of Peptides", "Number of Unique Peptides",
+        "Sequence Coverage Fraction", "SpectralCount_run_a", "Intensity_run_a",
+        "SpectralCount_run_b", "Intensity_run_b", "Protein Decoy/Contaminant/Target", "Protein QValue",
+    ]
+    rows = [["P05141", "SLC25A5", "10", "4", "0.33", "0", "", "3", "0", "T", "0.001"]]
+    path = tmp_path / "AllQuantifiedProteinGroups.tsv"
+    path.write_text("\n".join("\t".join(r) for r in [header, *rows]) + "\n", encoding="utf-8")
+    _groups, quants, _count = quant.protein_group_rows(
+        path, "PXD1", run_names=RunNameMap(("run_a", "run_b"))
+    )
+    got = sorted((q["assay_id"], q["definition_id"], q["value"]) for q in quants)
+    assert got == [
+        ("PXD1:run_a:label_free", "QuantProject:DEF-PROT-SPC", 0.0),
+        ("PXD1:run_b:label_free", "QuantProject:DEF-PROT-SPC", 3.0),
+    ]
+
+
+def test_the_three_quant_definitions_are_quantprojects_and_state_their_zero_rule():
+    from datarepo import definitions as defs
+
+    for d in (defs.PEPTIDE_INTENSITY, defs.PROTEIN_INTENSITY, defs.PROTEIN_SPECTRAL_COUNT):
+        assert d.definition_id.startswith("QuantProject:DEF-")
+        assert d.owner_project == "QuantProject"
+        assert "f4bb910" in d.text, "the text says which revision of the owner's file it copies"
+    assert "Read 0 as NA" in defs.PEPTIDE_INTENSITY.text
+    assert "0 is a real zero here" in defs.PROTEIN_SPECTRAL_COUNT.text
+    assert not [d for d in defs.ALL if d.definition_id.startswith("PROVISIONAL:")]
+
+
+# --- per-run enrichment (G63) -----------------------------------------------------------------
+
+def _runs(*names):
+    return [{"file_name": f"{n}.raw"} for n in names]
+
+
+def test_a_dataset_that_is_not_mixed_gives_every_run_its_declaration():
+    runs = _runs("a", "b")
+    mixed = runs_source.assign_enrichment(
+        runs, "PXD1", declared=("affinity_purification", "chemical_probe"), mixed=False, run_enrichment=()
+    )
+    assert mixed is False
+    assert [r["enrichment"] for r in runs] == [["affinity_purification", "chemical_probe"]] * 2
+    assert {r["enrichment_source"] for r in runs} == {"dataset_declaration"}
+
+
+def test_a_mixed_dataset_with_no_per_run_source_gets_null_never_the_dataset_value():
+    runs = _runs("a", "b")
+    mixed = runs_source.assign_enrichment(
+        runs, "PXD1", declared=("chemical_probe",), mixed=True, run_enrichment=()
+    )
+    assert mixed is True
+    assert [(r["enrichment"], r["enrichment_source"]) for r in runs] == [(None, None)] * 2
+
+
+def test_a_per_run_map_fills_every_run_and_marks_the_dataset_mixed():
+    # PXD058611's shape (aging 058): probe captures and whole-proteome runs in one deposit.
+    runs = _runs("178", "179", "199")
+    mixed = runs_source.assign_enrichment(
+        runs, "PXD058611", declared=("chemical_probe",), mixed=True,
+        run_enrichment=(("178", "chemical_probe"), ("179", "chemical_probe"), ("199", "none")),
+    )
+    assert mixed is True
+    assert [r["enrichment"] for r in runs] == [["chemical_probe"], ["chemical_probe"], ["none"]]
+    assert {r["enrichment_source"] for r in runs} == {"manifest_run_enrichment"}
+
+
+def test_a_per_run_map_with_two_values_marks_the_dataset_mixed_even_unflagged():
+    runs = _runs("a", "b")
+    assert runs_source.assign_enrichment(
+        runs, "PXD1", declared=("phospho",), mixed=False,
+        run_enrichment=(("a", "phospho"), ("b", "none")),
+    ) is True
+
+
+@pytest.mark.parametrize(
+    ("run_enrichment", "mixed", "message"),
+    [
+        ((("a", "chemical_probe"),), True, "covers 1 of 2 runs"),
+        ((("a", "chemical_probe"), ("b", "none"), ("zz", "none")), True, "not runs of this dataset"),
+        ((("a", "phospho"), ("b", "none")), True, "does not include"),
+        ((("a", "pulldown"), ("b", "none")), True, "vocabulary"),
+        ((("a", "chemical_probe"), ("b", "chemical_probe")), True, "contradict"),
+    ],
+    ids=["partial", "unknown-run", "undeclared-value", "not-in-vocabulary", "flag-contradicts-map"],
+)
+def test_a_per_run_map_that_does_not_add_up_is_refused(run_enrichment, mixed, message):
+    from datarepo.errors import IngestError
+
+    with pytest.raises(IngestError, match=message):
+        runs_source.assign_enrichment(
+            _runs("a", "b"), "PXD1", declared=("chemical_probe",), mixed=mixed,
+            run_enrichment=run_enrichment,
+        )
 
 
 # --- search parameters ------------------------------------------------------------------------
@@ -729,3 +831,28 @@ def test_the_collapsed_case_reaches_contaminants_too():
     by_acc = {r["protein_accession"]: r for r in rows_out}
     assert by_acc["A2I7N2"]["organism_name"] == "Bos taurus"
     assert by_acc["A2I7N2"]["organism"] is None  # still no taxon: contaminant panel
+
+
+def test_a_mixed_dataset_gets_a_finding_that_says_how_its_runs_split():
+    from datarepo.ingest import _enrichment_findings
+
+    runs = [{"enrichment": ["chemical_probe"]}] * 21 + [{"enrichment": ["none"]}] * 15
+    (finding,) = _enrichment_findings(runs, "PXD058611", True)
+    assert finding["code"] == "mixed_enrichment" and finding["severity"] == "warning"
+    assert "21 run(s) [chemical_probe]" in finding["message"]
+    assert "15 run(s) [none]" in finding["message"]
+    unknown = _enrichment_findings([{"enrichment": None}] * 4, "PXD1", True)
+    assert "NULL on all 4 runs" in unknown[0]["message"]
+    assert _enrichment_findings(runs, "PXD1", False) == []
+
+
+def test_text_only_annotation_is_not_reported_as_absent():
+    from datarepo.ingest import _uncoded_annotation
+
+    rows = [
+        {"name": "characteristics[organism part]", "value": "Urine"},
+        {"name": "characteristics[disease]", "value": "not available"},
+        {"name": "characteristics[age]", "value": "63"},
+    ]
+    assert _uncoded_annotation(rows) == "organism part: Urine"
+    assert _uncoded_annotation(rows[1:]) == ""

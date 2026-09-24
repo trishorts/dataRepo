@@ -170,3 +170,58 @@ def test_changing_what_a_dataset_may_be_used_for_DOES_move_the_bundle_id(tmp_pat
     assert before != after
     assert before["permitted_responses"] == ("abundance",)
     assert after["permitted_responses"] == ("abundance", "occupancy")
+
+
+RUN_MAP = """manifest_version: 1
+work_root: .
+store: .
+datasets:
+  - accession: PXD058611
+    status: include
+    run: run_x/PXD058611
+    enrichment: [chemical_probe]
+    flags: [{flags}]
+{run_enrichment}
+"""
+
+
+def _entry(tmp_path, name, flags="enriched, mixed_enrichment", run_enrichment=""):
+    path = tmp_path / name
+    path.write_text(RUN_MAP.format(flags=flags, run_enrichment=run_enrichment), encoding="utf-8")
+    return load_manifest(path).dataset("PXD058611")
+
+
+def test_run_enrichment_is_read_as_sorted_run_value_pairs(tmp_path):
+    entry = _entry(tmp_path, "m.yaml", run_enrichment=(
+        "    run_enrichment:\n      none: ['199', '200']\n      chemical_probe: ['178', 179]"
+    ))
+    assert entry.run_enrichment == (
+        ("178", "chemical_probe"), ("179", "chemical_probe"), ("199", "none"), ("200", "none"),
+    )
+    assert entry.mixed_enrichment is True
+
+
+def test_a_run_named_under_two_enrichments_is_refused(tmp_path):
+    with pytest.raises(ManifestError, match="appears twice"):
+        _entry(tmp_path, "m.yaml", run_enrichment=(
+            "    run_enrichment:\n      none: ['178']\n      chemical_probe: ['178']"
+        ))
+
+
+def test_run_enrichment_must_map_values_to_lists(tmp_path):
+    with pytest.raises(ManifestError, match="list of run names"):
+        _entry(tmp_path, "m.yaml", run_enrichment="    run_enrichment:\n      none: '178'")
+
+
+def test_adding_a_run_map_or_the_mixed_flag_moves_the_bundle_id_and_other_flags_do_not(tmp_path):
+    # G63: both reach Run.enrichment, so both are content. `flags` stays prose apart from the one
+    # flag lifted out of it: adding an unrelated flag must not re-id a bundle.
+    base = _entry(tmp_path, "a.yaml").content_declaration()
+    with_map = _entry(tmp_path, "b.yaml", run_enrichment=(
+        "    run_enrichment:\n      chemical_probe: ['178']\n      none: ['199']"
+    )).content_declaration()
+    unflagged = _entry(tmp_path, "c.yaml", flags="enriched").content_declaration()
+    extra_flag = _entry(tmp_path, "d.yaml", flags="enriched, mixed_enrichment, low_id_rate")
+    assert base != with_map
+    assert base != unflagged
+    assert base == extra_flag.content_declaration()

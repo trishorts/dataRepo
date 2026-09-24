@@ -17,6 +17,12 @@ from pathlib import Path
 from typing import Any
 
 from .. import definitions as defs
+from .._schema_docs import ENUMS
+from ..errors import IngestError
+
+#: Where a run's enrichment came from (the schema's `RunEnrichmentSource`).
+FROM_DATASET = "dataset_declaration"
+FROM_MANIFEST = "manifest_run_enrichment"
 
 
 def load_fetch_manifest(path: Path) -> dict[str, Any]:
@@ -87,6 +93,9 @@ def build(
                 "qc_pass": qc_entry.get("pass"),
                 "instrument_model": facts.get("instrument_model"),
                 "acquisition_datetime": None,
+                # Filled by `assign_enrichment`, which needs every run at once to check coverage.
+                "enrichment": None,
+                "enrichment_source": None,
             }
         )
         for name, value, definition in (
@@ -105,3 +114,93 @@ def build(
                     }
                 )
     return runs, metrics
+
+
+def _examples(names: list[str], n: int = 5) -> str:
+    shown = ", ".join(names[:n])
+    return shown + (f" and {len(names) - n} more" if len(names) > n else "")
+
+
+def assign_enrichment(
+    runs: list[dict[str, Any]],
+    dataset_id: str,
+    *,
+    declared: tuple[str, ...],
+    mixed: bool,
+    run_enrichment: tuple[tuple[str, str], ...],
+) -> bool:
+    """Fill each run's `enrichment` and `enrichment_source`, and say whether the runs differ (G63).
+
+    The rules are the ones agreed with aging (thread 054 section 2, their 058), and each failure
+    refuses the ingest rather than writing a guess:
+
+    - **A per-run map must cover every run.** A partial map would leave some runs NULL beside some
+      filled, and NULL would come to mean "probably the other one".
+    - **A name that is not a run is refused**, and so is an enrichment value outside the schema's
+      vocabulary. (A run named twice is refused when the manifest is read.)
+    - **Every run value other than `none` must be in the dataset's declaration.** A run that says
+      `chemical_probe` in a dataset declared `[immunoprecipitation]` is a curation error.
+    - **A map with one value on a dataset flagged mixed** contradicts the flag, and is refused.
+    - **No map:** a dataset not flagged mixed gives its declaration to every run, because it is true
+      of every run. A mixed dataset gives NULL to every run, never its declaration, which is true of
+      only some of them.
+
+    Args:
+        runs: Run rows from `build`, modified in place.
+        dataset_id: for messages.
+        declared: the dataset's `enrichment` from the manifest.
+        mixed: the producer's `mixed_enrichment` flag.
+        run_enrichment: the manifest's sorted `(run base name, value)` pairs.
+
+    Returns:
+        `Dataset.enrichment_mixed`: the flag, or more than one distinct per-run value.
+
+    Raises:
+        IngestError: any rule above.
+    """
+    if not run_enrichment:
+        for run in runs:
+            run["enrichment"] = None if mixed else list(declared)
+            run["enrichment_source"] = None if mixed else FROM_DATASET
+        return mixed
+
+    vocabulary = set(ENUMS["Enrichment"]["values"])
+    given = dict(run_enrichment)
+    bad_values = sorted({v for v in given.values() if v not in vocabulary})
+    if bad_values:
+        raise IngestError(
+            f"{dataset_id}: run_enrichment uses {', '.join(bad_values)}, which the schema's Enrichment "
+            f"vocabulary does not have ({', '.join(sorted(vocabulary))})."
+        )
+    base_names = {Path(str(run["file_name"])).stem: run for run in runs}
+    unknown = sorted(set(given) - set(base_names))
+    if unknown:
+        raise IngestError(
+            f"{dataset_id}: run_enrichment names {len(unknown)} run(s) that are not runs of this "
+            f"dataset: {_examples(unknown)}. Runs are the deposited raw file names without their "
+            f"extension, e.g. {_examples(sorted(base_names), 3)}."
+        )
+    missing = sorted(set(base_names) - set(given))
+    if missing:
+        raise IngestError(
+            f"{dataset_id}: run_enrichment covers {len(given)} of {len(base_names)} runs and must cover "
+            f"every one. Missing: {_examples(missing)}. A partial map would leave NULL meaning "
+            f"'probably the other one'."
+        )
+    undeclared = sorted({v for v in given.values() if v != "none" and v not in declared})
+    if undeclared:
+        raise IngestError(
+            f"{dataset_id}: run_enrichment assigns {', '.join(undeclared)}, which the dataset's "
+            f"enrichment declaration ({', '.join(declared)}) does not include. Either the run map or "
+            f"the declaration is wrong, and the producer has to say which."
+        )
+    distinct = set(given.values())
+    if mixed and len(distinct) == 1:
+        raise IngestError(
+            f"{dataset_id}: flagged mixed_enrichment, but run_enrichment gives every run "
+            f"{next(iter(distinct))!r}. The flag and the map contradict each other."
+        )
+    for base, run in base_names.items():
+        run["enrichment"] = [given[base]]
+        run["enrichment_source"] = FROM_MANIFEST
+    return mixed or len(distinct) > 1

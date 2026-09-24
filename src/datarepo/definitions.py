@@ -10,8 +10,8 @@ IDs are namespaced `<owner>:<ID>` because two registers can and do use the same 
 the schema's example is ambiguous the moment a second register appears; U7 in OPEN_QUESTIONS.md
 records the namespacing as the default.
 
-`PROVISIONAL:` entries are placeholders where no owner has published a definition yet. They say so
-in their own text, so an agent that reads one is told the number's meaning is not yet fixed.
+`PROVISIONAL:` IDs were placeholders where no owner had published a definition yet, and said so in
+their own text. The last three were replaced by QuantProject's in 0.18.0; none remains.
 """
 
 from __future__ import annotations
@@ -107,29 +107,78 @@ CONTAM_INTENSITY_SHARE = Def(
     "(aging thread 014).",
 )
 
-#: The three that stay provisional, and should. QuantProject owns them and has not ruled; an ID
-#: implying they had would be worse than the placeholder (DATAREPO-11).
+#: QuantProject's three quant definitions, which replaced the `PROVISIONAL:` placeholders in 0.18.0
+#: (QuantProject 003 section 1, DATAREPO-11, G15). The text is theirs, copied verbatim from
+#: `QuantProject/design/DATA-DEFINITIONS.md` at `f4bb910` (definitions v3.5), with the row of their
+#: grain table appended because they asked for grain and unit to travel with the number. Never pool
+#: two of these in one statistic: they differ in unit, grain and what "nothing" looks like.
+_QP_SOURCE = " [Source: QuantProject design/DATA-DEFINITIONS.md at f4bb910, definitions v3.5.]"
 PEPTIDE_INTENSITY = Def(
-    "PROVISIONAL:PEPTIDE-INTENSITY",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL, not an owner's definition. FlashLFQ's per-run peptide intensity as written in "
-    "AllQuantifiedPeptides.tsv, stored verbatim. Awaiting QuantProject's definition of the "
-    "summarisation from peak apexes to a peptide intensity (DATAREPO-11).",
+    "QuantProject:DEF-PEP-INT",
+    "v1",
+    "QuantProject",
+    "DEF-PEP-INT — `Intensity_<file>`. "
+    "Unit: one peptide in one spectra file (`<file>` is the file name without its extension). "
+    "Value: the intensity of the most intense peak kept for that peptide in that file. It's the "
+    "maximum over peaks, not a sum (`FlashLFQResults.cs:191`). "
+    "A peak's intensity is its apex isotopic envelope: the single MS1 scan, in a single charge "
+    "state, where the envelope's summed isotope intensity is highest (`ChromatographicPeak.cs:85-93`). "
+    "It is not an area under the elution curve, because MetaMorpheus leaves FlashLFQ's `Integrate` off. "
+    "Normalization: with `Normalize` off (the default), this is the raw value. "
+    "Which peaks count: MS/MS-identified peaks, plus MBR peaks that pass `DEF-MBR-KEPT`. Nothing else. "
+    "0 means \"no value\". It can mean not detected, identified but without a quantifiable peak, or "
+    "shared with another peptide (see `DEF-PEP-DT`). Read 0 as NA, never as a measured zero. "
+    "Grain and unit (v3.5): intensity, arbitrary units, apex isotopic envelope (not an area); one "
+    "value per peptide × spectra file; without a design: file; with an LFQ design: file, one column "
+    "per raw file, fractions not summed (mzLib `FlashLFQ/Peptide.cs:78`). "
+    "[dataRepo stores no row for a 0, so every stored value is a measurement.]" + _QP_SOURCE,
 )
 PROTEIN_INTENSITY = Def(
-    "PROVISIONAL:PROTEIN-INTENSITY",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL, not an owner's definition. FlashLFQ's per-run protein-group intensity as written "
-    "in AllQuantifiedProteinGroups.tsv, stored verbatim (DATAREPO-11).",
+    "QuantProject:DEF-PROT-INT",
+    "v1 as corrected by v3.3",
+    "QuantProject",
+    "DEF-PROT-INT — `Intensity_<file>` in `AllQuantifiedProteinGroups.tsv`. "
+    "Two bullets below are CORRECTED by v3.3. At 1.1.9+ the not-quantified cell is blank, not `0` "
+    "(`DEF-PROT-ENCODING`); and with a design the fractions of one sample do not share a value — one "
+    "file carries it and the rest are 0 (`FlashLFQResults.cs:609`). The rest stands. "
+    "Method: FlashLFQ's median polish over the protein group's peptides (`FlashLFQResults.cs:407`, "
+    "unchanged at 1.0.591). It isn't a sum and it isn't top-3. "
+    "Which peptides count: only peptides unique to the group (`UseSharedPeptidesForLFQ` = false by "
+    "default), and only those with an unambiguous quantification. "
+    "Unit: one sample, i.e. one (condition, biological replicate). Without a design file each file is "
+    "its own sample. With a design, fractions of one sample share a value. "
+    "0 means no value. Read it as NA. "
+    "Grain and unit (v3.5): intensity, arbitrary units, median polish; one value per protein group × "
+    "sample group; without a design: file; with an LFQ design: (condition, biological replicate), one "
+    "fraction's column carries the value, the others are 0 (v3.3); TMT: file × channel. "
+    "The protein table is written unfiltered (decoys, contaminants, groups above 1% FDR); a statistic "
+    "over it needs `DEF-PROTSET-1PCT` first. "
+    "[dataRepo stores no row for a blank or a 0, so every stored value is a measurement.]" + _QP_SOURCE,
 )
 PROTEIN_SPECTRAL_COUNT = Def(
-    "PROVISIONAL:PROTEIN-SPECTRAL-COUNT",
-    "v0",
-    "dataRepo (provisional)",
-    "PROVISIONAL, not an owner's definition. Spectral count per protein group per run as written "
-    "in AllQuantifiedProteinGroups.tsv, stored verbatim (DATAREPO-11).",
+    "QuantProject:DEF-PROT-SPC",
+    "v3.5",
+    "QuantProject",
+    "DEF-PROT-SPC — `SpectralCount_<label>` in `AllQuantifiedProteinGroups.tsv` (and "
+    "`AllProteinGroups.tsv`). "
+    "Value: the number of distinct PSMs assigned to the protein group, in the files of that sample "
+    "group. An integer. "
+    "Which PSMs: those passing the search's PSM-level q-value filter (`filterAtPeptideLevel: false`, "
+    "high-q PSMs excluded; `ProteinScoringAndFdrEngine.cs:62-66`) whose best-matching peptides include "
+    "any peptide of the group (`:67-87`). "
+    "Shared peptides count. A PSM matching a peptide shared by two groups counts in both. This is the "
+    "opposite of `DEF-PROT-INT`, which uses unique peptides only. The two columns of one block do not "
+    "describe the same evidence, and a ratio of intensity to spectral count mixes them. "
+    "Modified forms: with `ModPeptidesAreDifferent` off (the default, `SearchParameters.cs:22`) a PSM "
+    "needs only a resolved base sequence, so a PSM whose modification is ambiguous still counts. "
+    "0 is a real zero here: no qualifying PSM in that sample group. Unlike an intensity cell, it is a "
+    "measurement. "
+    "Grain: summed over a sample group's fractions and technical replicates. Grain and unit (v3.5): "
+    "count of PSMs, dimensionless integer; one value per protein group × sample group; without a "
+    "design: file; with an LFQ design: (condition, biological replicate), fractions and technical "
+    "replicates summed; TMT: file -- every channel of a file carries the same value, written once per "
+    "file. "
+    "[dataRepo stores a 0 as a row with value 0, because it is a measurement.]" + _QP_SOURCE,
 )
 #: aging's five, published in their thread 008 section 4 (their D20) and copied verbatim here. They
 #: were placeholders for nine minutes longer than they needed to be: the first bundle was written

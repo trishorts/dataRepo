@@ -227,12 +227,16 @@ def protein_group_rows(
                 ),
             }
         )
-        for columns, definition in (
-            (intensity_cols, defs.PROTEIN_INTENSITY.definition_id),
-            (count_cols, defs.PROTEIN_SPECTRAL_COUNT.definition_id),
+        # The two columns of a block encode "nothing" differently, and reading both one way was a
+        # defect until 0.18.0: an intensity of 0 (or blank) means NOT measured and is no row, but a
+        # spectral count of 0 IS a measurement -- no qualifying PSM in that sample group
+        # (QuantProject:DEF-PROT-SPC, "0 is a real zero here"). Dropping it stored a real zero as NA.
+        for columns, definition, parse in (
+            (intensity_cols, defs.PROTEIN_INTENSITY.definition_id, _intensity),
+            (count_cols, defs.PROTEIN_SPECTRAL_COUNT.definition_id, _number),
         ):
             for reported, column in columns.items():
-                value = _intensity(row.get(column, ""))
+                value = parse(row.get(column, ""))
                 if value is None:
                     continue
                 run = run_names.resolve(reported) or reported

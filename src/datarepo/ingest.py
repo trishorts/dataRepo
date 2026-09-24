@@ -8,6 +8,7 @@ parsed. Nothing is inferred from directory names, and nothing the producer marke
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -234,6 +235,13 @@ def ingest_dataset(
             f"under {run_dir}, so there is nothing to attach measurements to."
         )
     metrics += run_metrics
+    enrichment_mixed = runs_source.assign_enrichment(
+        run_rows,
+        dataset_id,
+        declared=entry.enrichment,
+        mixed=entry.mixed_enrichment,
+        run_enrichment=entry.run_enrichment,
+    )
 
     samples = list(sdrf.samples)
     assays = list(sdrf.assays)
@@ -270,6 +278,29 @@ def ingest_dataset(
                 "message": (
                     "No SDRF was found for this dataset, so each run was given a synthetic sample "
                     "of its own. There is no sample metadata: treat every sample as unannotated."
+                ),
+                "source": "datarepo ingest",
+            }
+        )
+    elif not any(
+        s.get(column) for s in samples for column in ("organism_part", "cell_type", "disease", "individual_id")
+    ) and (uncoded := _uncoded_annotation(sdrf.characteristics)):
+        # The curated columns want an ontology term; an SDRF that writes `Blood serum` with no term
+        # leaves them empty while the text sits in sample_characteristics. Calling that "absent" was
+        # false for PXD010115 and PXD034432 -- found by an agent reading both tables (0.18.0).
+        findings.append(
+            {
+                "finding_id": f"{dataset_id}:sdrf_uncoded",
+                "dataset_id": dataset_id,
+                "run_id": None,
+                "code": "sdrf_uncoded",
+                "severity": "warning",
+                "status": "open",
+                "message": (
+                    "The deposited SDRF describes its samples only as text with no ontology term, so "
+                    "the curated organism part, cell type, disease and individual columns are empty. "
+                    f"The text is in sample_characteristics: {uncoded}. Match on it as text; it has "
+                    "not been mapped to a term."
                 ),
                 "source": "datarepo ingest",
             }
@@ -408,6 +439,7 @@ def ingest_dataset(
         "labelling": entry.labelling,
         "labelling_plex": entry.labelling_plex,
         "enrichment": list(entry.enrichment),
+        "enrichment_mixed": enrichment_mixed,
         "instrument_vendor": _vendor(instruments),
         "instruments": instruments,
         # An allow-list, so an empty declaration means unrestricted and a response type invented
@@ -470,6 +502,7 @@ def ingest_dataset(
     findings += metric_conflicts(metrics, dataset_id)
     findings += _modification_findings(proforma, dataset_id)
     findings += _usi_findings(run_names, dataset_id)
+    findings += _enrichment_findings(run_rows, dataset_id, enrichment_mixed)
     findings += _unplaced_site_findings(unplaced, sequences, dataset_id)
     findings += _site_residue_findings(site_check, dataset_id)
 
@@ -723,6 +756,72 @@ def _site_residue_findings(check: dict[str, int], dataset_id: str) -> list[dict[
                 f"are in bundle.json under protein_databases.site_residue_check."
             ),
             "source": "datarepo ingest (DATAREPO-32 self-check)",
+        }
+    ]
+
+
+#: The SDRF characteristics behind the four curated sample columns an `sdrf_skeleton` finding names.
+_ANNOTATION_CHARACTERISTICS = (
+    "characteristics[organism part]",
+    "characteristics[cell type]",
+    "characteristics[disease]",
+    "characteristics[individual]",
+)
+
+
+def _uncoded_annotation(characteristics: list[dict[str, Any]]) -> str:
+    """The distinct text values of the four annotation characteristics, e.g. `organism part: Urine`.
+
+    Empty when the SDRF holds none, which is when `sdrf_skeleton` is true.
+    """
+    from .sources.sdrf import NOT_AVAILABLE  # noqa: PLC0415
+
+    seen: dict[str, set[str]] = {}
+    for row in characteristics:
+        name = str(row.get("name", "")).strip().lower()
+        value = str(row.get("value") or "").strip()
+        if name in _ANNOTATION_CHARACTERISTICS and value.lower() not in NOT_AVAILABLE:
+            seen.setdefault(name[len("characteristics["):-1], set()).add(value)
+    return "; ".join(f"{name}: {', '.join(sorted(values)[:5])}" for name, values in sorted(seen.items()))
+
+
+def _enrichment_findings(runs: list[dict[str, Any]], dataset_id: str, mixed: bool) -> list[dict[str, Any]]:
+    """A finding when a dataset's runs differ in enrichment (G63).
+
+    `datasets.enrichment` is the producer's declaration, and on a mixed deposit it is true of only
+    some runs: PXD058611 declares `[chemical_probe]` and 15 of its 36 runs are whole proteome. A
+    filter on the dataset row alone gets both halves wrong, and `enrichment_mixed` is a column a
+    caller has to know to read. A finding reaches every answer that cites the dataset (D19), so the
+    fact is carried where it cannot be skipped rather than where it is easiest to write.
+    """
+    if not mixed:
+        return []
+    known = Counter(", ".join(r["enrichment"]) for r in runs if r["enrichment"] is not None)
+    unknown = sum(1 for r in runs if r["enrichment"] is None)
+    if known:
+        split = "; ".join(f"{n} run(s) [{value}]" for value, n in sorted(known.items()))
+        message = (
+            f"The runs of this dataset differ in enrichment: {split}. The dataset's own `enrichment` "
+            f"is the producer's declaration and is true of only some runs, so answer any "
+            f"enrichment-dependent question per run from `runs.enrichment`, and never pool its runs "
+            f"as one kind."
+        )
+    else:
+        message = (
+            f"The producer flagged this dataset as mixing enrichments but did not say which run is "
+            f"which, so `runs.enrichment` is NULL on all {unknown} runs. Do not use it for any "
+            f"question that depends on whether a run was enriched."
+        )
+    return [
+        {
+            "finding_id": f"{dataset_id}:mixed_enrichment",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "mixed_enrichment",
+            "severity": "warning",
+            "status": "open",
+            "message": message,
+            "source": "datarepo ingest",
         }
     ]
 

@@ -350,7 +350,7 @@ gaps:
   - "G12 D8 instance role: CLOSED 2026-09-19 by aging 006. aging accepted populating and hosting the instance including the running service (their D18). Data at F:\\aging_data\\repo\\ (store/<PXD>/<bundle-hash>/, releases/<version>/), CC BY 4.0, credit 'NCEMS Aging Proteome Working Group', releases and DOIs in aging/instance/RELEASES.md. U6 answered yes. First release target: v0.1, PXD036557 alone, private to the working group."
   - "G13 QPX version is unpinned. Bundles record qpx_version: 'unpinned' (src/datarepo/bundle.py) because the column mapping has never been checked against a QPX release. D4 requires every file to record the QPX version it matches. Next: pin a release of github.com/bigbio/qpx, map our column names onto its views, and set QPX_VERSION."
   - "G14 pyMzLib reader gaps. SDRF CLOSED 2026-09-19: src/datarepo/readers.py now calls pymzlib.sdrf.read, the in-house SDRF read is deleted, and the four SDRF-derived tables are byte-identical to what it produced on real PXD036557 data. Characteristics are copied by position, so a repeated column name is kept (pyMzLib's own caveat; comment[modification parameters] repeats in that file). STILL OPEN at 0.1.1, re-tested on real data: pro_forma is present but 0 of 42,958 and 0 of 12,653 records populated, so src/datarepo/proforma.py stays (DATAREPO-12); AllQuantifiedPeaks.tsv fails with \"Header with name 'MBR Score'[0] was not found\" and AllQuantifiedPeptides/ProteinGroups.tsv with 'Tsv file type not supported' (DATAREPO-13b, pyMzLib 005). WITHDRAWN: matched-ion columns are deliberately excluded, listed in NativeRecords.excluded_fields with reasons. Residual to relay: the generic read_records() path on a .sdrf.tsv is unchanged and still joins header and cells with ';', so only pymzlib.sdrf.read is safe for an SDRF. All of this is in thread 010."
-  - "G15 Provisional definitions (DATAREPO-11, thread 007). Eight numbers the ingester stores have no published definition and carry PROVISIONAL:<NAME> IDs whose own text says so: FlashLFQ peptide and protein intensity and protein spectral count (QuantProject's), and peptide/protein-group counts at 1% FDR, MS2 count, run minutes, precursor count (aging's). Swap them for the owners' IDs when published. Namespacing of definition IDs as <owner>:<ID> is U7."
+  - "G15 [CLOSED in 0.18.0, 2026-09-24: the last three PROVISIONAL ids replaced by QuantProject:DEF-PEP-INT v1, DEF-PROT-INT v1-as-corrected-by-v3.3, DEF-PROT-SPC v3.5, text verbatim from f4bb910. Filling the SPC text found that zero spectral counts were dropped as NA; fixed, +1,146,906 rows on the corpus.] Provisional definitions (DATAREPO-11, thread 007). Eight numbers the ingester stores have no published definition and carry PROVISIONAL:<NAME> IDs whose own text says so: FlashLFQ peptide and protein intensity and protein spectral count (QuantProject's), and peptide/protein-group counts at 1% FDR, MS2 count, run minutes, precursor count (aging's). Swap them for the owners' IDs when published. Namespacing of definition IDs as <owner>:<ID> is U7."
   - "G16 ptm_sites coverage of the occupancy sites. LARGELY CLOSED 2026-09-19. DATAREPO-17 answered by aging 013 with QuantProject's DEF-OCC-PSMS text: the occupancy population is every PSM passing the q-value threshold AT PSM LEVEL, with no ambiguity-level filter, on a protein group whose definition includes contaminants. Both of our filters were wrong. Dropping the level-1 requirement and keeping non-decoy instead of target-only took ptm_sites 1,370 -> 1,997 and the uncovered occupancy sites 217 -> 29 (93%). PtmSite.best_ambiguity_level and PtmSite.target_decoy keep the old derivation available as a WHERE clause: level '1' + target reproduces the old 1,370 ids exactly, though 25 of them now carry a higher n_psms because n_psms counts every accepted PSM that placed the site (which is what the occupancy denominator is built from). RESIDUAL 29: 13 are at position 0, i.e. protein N-terminal, which ptm_site_rows skips by construction while DEF-OCC-CELL encodes the N-terminus as 0 - representing them means deciding how a terminal modification is keyed. All 13 position-0 sites are N-acetylmethionine on M, and there are no N-acetylmethionine sites anywhere else, so the cause is exact. Asked as DATAREPO-18 (thread 014): how should a protein-terminal modification be keyed? Default: position 0, residue 'N-term', giving <acc>:N-term0:<UNIMOD>, matching DEF-OCC-CELL so the tables join. It is a join key, so changing it later is expensive. The other 16 are scattered internal positions with no explanation yet. CAVEAT from aging: the no-level-filter reading is their interpretation of QuantProject's text, not QuantProject's ruling; they are confirming it. The relaxation is additive and cheap to reverse."
   - >-
     G17 CLOSED 2026-09-21 in datarepo 0.8.0 / schema 0.0.5, after aging had to ask twice (their
@@ -843,7 +843,12 @@ gaps:
     sdrf's `results/benchmark/screen.tsv` (46 SDRFs naming absent files). Needs an INGESTER_VERSION bump
     and an SdrfStatus value.
   - >-
-    G63 Per-run enrichment, answered to aging in thread 054 (DATAREPO-39 (aging); asks DATAREPO-44 on
+    G63 [MANIFEST PATH BUILT in 0.18.0, 2026-09-24 (aging said yes in 058): runs.enrichment,
+    runs.enrichment_source, datasets.enrichment_mixed, manifest run_enrichment + mixed_enrichment as
+    content fields, all refusal rules, a mixed_enrichment finding, site wording. Verified on the corpus:
+    PXD058611 178-198 chemical_probe, 199-213 none. STILL OPEN: the SDRF source
+    (`comment[enrichment process]`, precedence over the manifest), waiting for a real SDRF with it.]
+    Per-run enrichment, answered to aging in thread 054 (DATAREPO-39 (aging); asks DATAREPO-44 on
     the manifest shape). Build ONLY after aging answers DATAREPO-44: `runs.enrichment` (multivalued,
     Enrichment vocab); `datasets.enrichment` stays aging's declaration; derived
     `datasets.enrichment_mixed`; ingest refuses a non-none run value outside the declaration. Sources:
@@ -887,6 +892,22 @@ gaps:
     record it (D26, no bump) and consider recording the pyMzLib version in the reader log; different ->
     INGESTER_VERSION bump and tell aging which bundles to re-ingest. Warned in aging 056 (options a-c
     handed to them).
+  - >-
+    G66 Human albumin P02768 (and possibly other accessions) is in BOTH MetaMorpheusContaminants.xml and
+    the human proteome XML. MetaMorpheus labels its protein group `T` (target, Homo sapiens) in
+    AllQuantifiedProteinGroups.tsv, while our proteins row says is_contaminant=true, source_db
+    contaminants. So a caller reading protein_groups sees a target and one reading proteins sees a
+    contaminant, for the same thing. Found by the 0.18.0 blind agent (its #7). Not caused by 0.18.0.
+    TODO: count accessions present in both DBs across the corpus; decide (with aging, and MetaMorpheus
+    for its own rule) what each table should say; check against the source before claiming anything
+    about MetaMorpheus.
+  - >-
+    G67 Leftovers from the 0.18.0 blind agent test (scratchpad g63): (a) PXD058611 carries both
+    `no_output_sdrf` ("sample metadata comes from the deposited SDRF only") and `no_sdrf` ("No SDRF was
+    found") -- the producer's flag text presumes an SDRF exists; reword FLAG_MESSAGE or suppress when
+    no SDRF; (b) every sql response repeats the full 23-bundle provenance block, burying the rows
+    (D20 wants it from the engine, but it could be compacted); (c) PXD050351 title says mice, organism
+    human -- known, aging's metadata.
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
 

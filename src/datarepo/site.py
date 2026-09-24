@@ -253,8 +253,13 @@ def _join(items: Sequence[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _enrichment_words(values: Sequence[str] | None) -> str:
+def _enrichment_words(values: Sequence[str] | None, mixed: bool = False) -> str:
     values = list(values or [])
+    if mixed:
+        # A mixed deposit's declaration is true of some runs only (G63): saying "enrichment:
+        # chemical_probe" alone would present its whole-proteome runs as captures.
+        declared = _join(values) or "an unrecorded enrichment"
+        return f"runs that differ in enrichment ({declared} on some runs; see each run's own)"
     if not values:
         return "no recorded enrichment"
     if values == ["none"]:
@@ -262,6 +267,12 @@ def _enrichment_words(values: Sequence[str] | None) -> str:
     if values == ["other"]:
         return "an enrichment step outside the controlled list (recorded as `other`)"
     return "enrichment: " + _join(values)
+
+
+def _enrichment_cell(ds: dict[str, Any]) -> str:
+    """The declared enrichment, saying so when the runs differ (G63)."""
+    text = ", ".join(ds.get("enrichment") or [])
+    return f"{text} (on some runs only; runs differ)" if ds.get("enrichment_mixed") else text
 
 
 def summary(ds: dict[str, Any]) -> str:
@@ -280,7 +291,7 @@ def summary(ds: dict[str, Any]) -> str:
     parts = [
         f"{ds['dataset_id']} is a {kind} dataset ({organisms}) "
         f"with {_plural(ds['n_runs'], 'run')}, {_plural(ds['n_samples'], 'sample')} and "
-        f"{_enrichment_words(ds.get('enrichment'))}."
+        f"{_enrichment_words(ds.get('enrichment'), bool(ds.get('enrichment_mixed')))}."
     ]
     engine = " ".join(x for x in (ds.get("search_engine"), ds.get("search_engine_version")) if x)
     if engine:
@@ -714,7 +725,7 @@ def _index_html(
             f'<td><a href="{_page_path(ds["dataset_id"])}">{_e(ds["dataset_id"])}</a></td>'
             f"<td>{_e(ds.get('title') or '')}</td>"
             f"<td>{_e(', '.join(ds['organism_names']))}</td>"
-            f"<td>{_e(', '.join(ds.get('enrichment') or []))}</td>"
+            f"<td>{_e(_enrichment_cell(ds))}</td>"
             f'<td class="num">{_n(ds["n_runs"])}</td>'
             f'<td class="num">{_n(ds["n_psms_1pct"])}</td>'
             f'<td class="num">{_n(ds["n_protein_groups_1pct"])}</td>'
@@ -882,7 +893,7 @@ modification has no UNIMOD term in the registry that searched it, not that it is
 <dt>Acquisition</dt><dd>{_e(ds.get('acquisition'))}</dd>
 <dt>Quantification</dt><dd>{_e(ds.get('quant_method'))}</dd>
 <dt>Labelling</dt><dd>{_e(ds.get('labelling'))}</dd>
-<dt>Enrichment</dt><dd>{_e(', '.join(ds.get('enrichment') or []))}</dd>
+<dt>Enrichment</dt><dd>{_e(_enrichment_cell(ds))}</dd>
 <dt>Instrument vendor</dt><dd>{_e(ds.get('instrument_vendor') or 'not recorded')}</dd>
 <dt>Runs / samples</dt><dd>{_n(ds['n_runs'])} / {_n(ds['n_samples'])}</dd>
 <dt>Sample metadata</dt><dd>{_e(ds.get('sdrf_status') or 'not recorded')}</dd>

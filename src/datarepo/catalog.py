@@ -48,10 +48,11 @@ from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 #: `__version__` on purpose: a change to what `build` writes must re-id catalogs, and must NOT re-id
 #: bundles holding byte-identical rows from an unchanged ingest path. "2" added the study layer's
 #: tables; "3" fills them -- a study bundle's rows, their two provenance columns and
-#: `catalog_study_bundles`; "4" adds `search_modifications_placed`. Same principle as
+#: `catalog_study_bundles`; "4" adds `search_modifications_placed`; "5" adds
+#: `dataset_overview.enrichment_mixed` (G63). Same principle as
 #: `manifest.CONTENT_FIELDS` one level down -- an id moves when its own content moves, and not
 #: otherwise.
-CATALOG_VERSION = "4"
+CATALOG_VERSION = "5"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -814,6 +815,7 @@ def _build_derived(con: Any) -> None:
             d.quant_method,
             d.labelling,
             d.enrichment,
+            d.enrichment_mixed,
             d.instrument_vendor,
             d.search_engine,
             d.search_engine_version,
