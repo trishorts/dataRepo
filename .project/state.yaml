@@ -734,7 +734,10 @@ gaps:
     DIFF the two on the corpus and report on pyMzLib thread before switching (G14 path). Told pyMzLib 005,
     ptmQtl 003 (join on `engine_full_sequences` meanwhile).
   - >-
-    G53 go reader not built. `organelle_term_categories` + reworked `protein_localizations` are shapes in
+    G53 [READER BUILT in 0.18.1, 2026-09-24: `sources/go.py`, all checks, tested on go's pre-release
+    files (PXD036557: 24,997 localization rows, 230 category rows; 64,228 BP/MF rows counted, not stored).
+    STILL OPEN: storage (with G64) and go's D22 per-row columns (schema bump); the released file.]
+    go reader not built. `organelle_term_categories` + reworked `protein_localizations` are shapes in
     0.0.8; the ingest cross-check (refuse a file whose categories disagree with the term table from its own
     header; recompute go D26's five header counts) is COMMITTED TO in go 005 and lives in the reader. go's
     D22 columns (n_members, n_with, accession_used, propagated) and annotation_status are deliberately not
@@ -893,6 +896,14 @@ gaps:
     INGESTER_VERSION bump and tell aging which bundles to re-ingest. Warned in aging 056 (options a-c
     handed to them).
   - >-
+    G66 [MEASURED 2026-09-24 on the 0.18.0 scratch corpus (scratchpad g66.py): 116 human and 26 mouse
+    primary accessions are in BOTH MetaMorpheusContaminants.xml (264 entries) and the species XML; rat
+    0. In stored `proteins` the same accessions are flagged contaminant in 1,192 rows (141 accessions)
+    and species in 1,177; albumin itself flips by dataset. Per (dataset, accession), proteins flag vs
+    MetaMorpheus's single-protein group label: agree 923 (568 target/target, 355 contam/contam),
+    DISAGREE 76 (proteins contaminant, group target). Next: read MetaMorpheus's rule for a protein
+    present in both databases AT THE SOURCE before proposing anything; then tell aging (operator,
+    owns the contaminant DB choice, S5).]
     G66 Human albumin P02768 (and possibly other accessions) is in BOTH MetaMorpheusContaminants.xml and
     the human proteome XML. MetaMorpheus labels its protein group `T` (target, Homo sapiens) in
     AllQuantifiedProteinGroups.tsv, while our proteins row says is_contaminant=true, source_db

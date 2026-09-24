@@ -13,6 +13,7 @@ so the in-house reading below is deletable rather than permanent.
 | `*.sdrf.tsv` | pyMzLib `sdrf.read` | covered since 0.1.1 |
 | `results.txt`, `*.toml`, `Mods/*.txt`, `*.json` | in-house | not file formats pyMzLib owns |
 | the searched protein database (`.xml`, `.fasta`) | in-house, `sources/protein_db.py` | pyMzLib has no protein-database reader; only `(accession, sequence)` is read, to place PTM sites (DATAREPO-32) |
+| go's `*_go_annotation.tsv`, `*_go_category_*.tsv` | in-house, `sources/go.py` | go's writer (mzLib PR B, draft #1353) is unreleased, so pyMzLib has no verb for it yet (pyMzLib 009, S9). The reader is a contract check more than a parser -- header guard, recount, coverage -- and moves to the verb when one ships |
 
 `*.sdrf.tsv` is the one that has already gone the other way. dataRepo read it as plain TSV because
 pyMzLib's *generic* projection joined header and cells with `;`, which SDRF values contain
