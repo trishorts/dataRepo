@@ -6,8 +6,9 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.19.0** (`708102b`; CHANGELOG fix `c26eba9`), core schema
-  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.13.0**,
+- **Pick up at:** code is datarepo **0.19.1** (`5a09da7`, DATAREPO-51: an excluded file is not a
+  run; aging owes DATAREPO-52 on `id_rate.ms2`; aging's corpus is on 0.19.0, catalog `d2318e0d2d4450a4`), core schema
+  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.14.0**,
   `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **5**. **D27: dataRepo SHIPS,
   the instance operator (aging) RUNS**; charter **v0.3** (`22c319c`) is out (G61 closed). Public site:
   https://trishorts.github.io/aging-pipeline/. **First thing: run the thread checker.**
