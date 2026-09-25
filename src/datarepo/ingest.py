@@ -251,8 +251,9 @@ def ingest_dataset(
     else:
         sdrf = sdrf_source.SdrfTable([], [], [], {}, {}, ())
 
+    excluded, excluded_reason = runs_source.excluded_files(search_provenance)
     run_rows, run_metrics = runs_source.build(
-        dataset_id, fetch=fetch, qc=qc, run_facts=sdrf.run_facts
+        dataset_id, fetch=fetch, qc=qc, run_facts=sdrf.run_facts, excluded=excluded
     )
     if not run_rows:
         raise IngestError(
@@ -260,16 +261,21 @@ def ingest_dataset(
             f"under {run_dir}, so there is nothing to attach measurements to."
         )
     metrics += run_metrics
+    findings += _excluded_file_findings(excluded, excluded_reason, fetch, qc, dataset_id)
+    # A file the search left out is not a run, so a run map or SDRF assay naming it is dropped
+    # with it rather than refused: both were written about the deposit, before the search chose.
+    excluded_stems = {Path(n).stem for n in excluded}
     enrichment_mixed = runs_source.assign_enrichment(
         run_rows,
         dataset_id,
         declared=entry.enrichment,
         mixed=entry.mixed_enrichment,
-        run_enrichment=entry.run_enrichment,
+        run_enrichment=tuple((b, v) for b, v in entry.run_enrichment if b not in excluded_stems),
     )
 
     samples = list(sdrf.samples)
-    assays = list(sdrf.assays)
+    excluded_run_ids = {f"{dataset_id}:{stem}" for stem in excluded_stems}
+    assays = [a for a in sdrf.assays if a["run_id"] not in excluded_run_ids]
     if not samples:
         # No SDRF at all: one synthetic sample per run, clearly flagged, so quantities still have
         # something to hang on. Nothing biological is invented, only the identity of the sample.
@@ -913,6 +919,47 @@ def _enrichment_findings(runs: list[dict[str, Any]], dataset_id: str, mixed: boo
             "source": "datarepo ingest",
         }
     ]
+
+
+def _excluded_file_findings(
+    excluded: frozenset[str],
+    reason: str | None,
+    fetch: dict[str, Any] | None,
+    qc: dict[str, Any] | None,
+    dataset_id: str,
+) -> list[dict[str, Any]]:
+    """One finding per deposited file the search left out, so a query can find it (DATAREPO-51)."""
+    by_name = {Path(str(f.get("name", ""))).name: f for f in (fetch or {}).get("files", [])}
+    rows = []
+    for name in sorted(excluded):
+        entry = by_name.get(name) or {}
+        known = name in by_name or name in (qc or {})
+        rows.append(
+            {
+                "finding_id": f"{dataset_id}:excluded_from_search:{name}",
+                "dataset_id": dataset_id,
+                "run_id": None,
+                "code": "excluded_from_search",
+                "severity": "info",
+                "status": "open",
+                "message": (
+                    f"The deposited file {name} was left out of the search, so it has no run row, "
+                    f"no PSMs and no quantities here. Producer's reason: {reason or 'not given'}. "
+                    + (
+                        f"Deposited sha256: {entry['sha256']}."
+                        if entry.get("sha256")
+                        else "Its checksum is not in the fetch manifest."
+                    )
+                    + (
+                        ""
+                        if known
+                        else " The name matches no file in the fetch manifest or the QC report."
+                    )
+                ),
+                "source": "search provenance.json: excluded_files",
+            }
+        )
+    return rows
 
 
 def _usi_findings(run_names: RunNameMap, dataset_id: str) -> list[dict[str, Any]]:

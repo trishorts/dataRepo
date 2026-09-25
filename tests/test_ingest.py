@@ -249,3 +249,47 @@ def test_no_ordinary_site_id_moved(tables):
     residue_sites = [s for s in tables["ptm_sites"] if s["site_type"] == "residue"]
     assert residue_sites
     assert all("@" not in s["ptm_site_id"] for s in residue_sites)
+
+
+def test_a_file_the_search_excluded_is_not_a_run_but_is_findable(tmp_path):
+    """DATAREPO-51 (aging 064, their D52): a blank injection that QC passed over is deposited and in
+    the QC report, but not searched. A run for it would describe a measurement not in the data, and
+    `runs` would disagree with the producer's file count."""
+    import shutil
+
+    from conftest import DATA
+    from datarepo.manifest import load_manifest
+
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    run = root / "work_root/run_test/PXD999999"
+    blank = "QE-002108_blank.raw"
+
+    fetch_path = run / "02_fetch/fetch_manifest.json"
+    fetch = json.loads(fetch_path.read_text(encoding="utf-8"))
+    fetch["files"].append(dict(fetch["files"][0], name=blank, sha256="sha256-blank"))
+    fetch_path.write_text(json.dumps(fetch), encoding="utf-8")
+    qc_path = run / "02b_qc/qc_report.json"
+    qc = json.loads(qc_path.read_text(encoding="utf-8"))
+    qc[blank] = dict(qc["QE-002106_GM1_a.raw"], ms2=3, **{"pass": False})
+    qc_path.write_text(json.dumps(qc), encoding="utf-8")
+    prov_path = run / "04_search/provenance.json"
+    prov = json.loads(prov_path.read_text(encoding="utf-8"))
+    prov["excluded_files"] = {"files": [blank], "reason": "D52: too_few_ms2"}
+    prov_path.write_text(json.dumps(prov), encoding="utf-8")
+
+    manifest = load_manifest(root / "manifest.yaml")
+    result = ingest_dataset(
+        manifest, manifest.dataset("PXD999999"), store=tmp_path / "s", mm_settings=MM_SETTINGS
+    )
+    import pyarrow.parquet as pq
+
+    tables = {p.stem: pq.read_table(p).to_pylist() for p in result.bundle_path.glob("*.parquet")}
+    assert sorted(r["file_name"] for r in tables["runs"]) == ["QE-002106_GM1_a.raw", "QE-002107_GM1_b.raw"]
+    assert not any(m["scope_id"] == "PXD999999:QE-002108_blank" for m in tables["metrics"])
+    assert [c for c in result.checks if not c["ok"]] == []
+    assert check(tables) == []
+    (finding,) = [f for f in tables["findings"] if f["code"] == "excluded_from_search"]
+    assert finding["finding_id"] == f"PXD999999:excluded_from_search:{blank}"
+    assert blank in finding["message"] and "D52: too_few_ms2" in finding["message"]
+    assert "sha256-blank" in finding["message"]

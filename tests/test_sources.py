@@ -948,3 +948,20 @@ def test_an_upstream_provenance_file_changed_after_the_search_is_left_out(tmp_pa
     assert [m["stage"] for m in mismatches] == ["db_prepare"]
     (finding,) = _lineage_findings(mismatches, "PXD1")
     assert finding["code"] == "upstream_provenance_changed" and recorded_db in finding["message"]
+
+
+def test_a_file_the_search_excluded_gets_no_run_and_no_run_metrics():
+    fetch = runs_source.load_fetch_manifest(RUN / "02_fetch/fetch_manifest.json")
+    qc = runs_source.load_qc_report(RUN / "02b_qc/qc_report.json")
+    excluded, reason = runs_source.excluded_files(
+        {"excluded_files": {"files": ["/work/QE-002107_GM1_b.raw"], "reason": "D52"}}
+    )
+    assert excluded == {"QE-002107_GM1_b.raw"} and reason == "D52"
+    rows, metrics = runs_source.build("PXD999999", fetch=fetch, qc=qc, run_facts={}, excluded=excluded)
+    assert [r["file_name"] for r in rows] == ["QE-002106_GM1_a.raw"]
+    assert {m["scope_id"] for m in metrics} == {"PXD999999:QE-002106_GM1_a"}
+
+
+def test_no_excluded_files_block_excludes_nothing():
+    assert runs_source.excluded_files({}) == (frozenset(), None)
+    assert runs_source.excluded_files({"excluded_files": None}) == (frozenset(), None)

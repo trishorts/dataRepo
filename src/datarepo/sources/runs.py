@@ -33,6 +33,22 @@ def load_qc_report(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def excluded_files(search_provenance: dict[str, Any]) -> tuple[frozenset[str], str | None]:
+    """The raw files the search left out, and the producer's reason (DATAREPO-51, aging D52).
+
+    aging excludes a file that fails QC only on `too_few_ms2` (a blank or failed injection) and
+    records it in the search's `excluded_files`. The QC report still lists it, truthfully, so a run
+    built from the QC report would describe a measurement that is not in the data.
+
+    Returns:
+        `(file names, reason)`. Names are bare file names; empty when nothing was excluded.
+    """
+    block = search_provenance.get("excluded_files") or {}
+    names = frozenset(Path(str(f)).name for f in (block.get("files") or []) if str(f).strip())
+    reason = block.get("reason")
+    return names, (str(reason) if reason else None)
+
+
 def _dissociation(qc: dict[str, Any]) -> list[str]:
     """`{"Orbitrap/HCD": 16197}` -> `["HCD"]`."""
     modes = []
@@ -50,6 +66,7 @@ def build(
     fetch: dict[str, Any] | None,
     qc: dict[str, Any] | None,
     run_facts: dict[str, dict[str, Any]],
+    excluded: frozenset[str] = frozenset(),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build Run rows and their Metric rows.
 
@@ -58,6 +75,8 @@ def build(
         fetch: parsed `fetch_manifest.json`, or None when the stage was not kept.
         qc: parsed `qc_report.json`, keyed by raw file name, or None.
         run_facts: per-run instrument/fraction facts from the SDRF.
+        excluded: file names the search left out (`excluded_files`). They are deposited and QC'd
+            but not searched, so they are not runs of this dataset's results.
 
     Returns:
         `(runs, metrics)`. Runs are ordered by file name so a bundle is byte-stable.
@@ -68,6 +87,8 @@ def build(
         files = [f for f in fetch.get("files", []) if str(f.get("category", "RAW")).upper() == "RAW"]
 
     names = {Path(str(f.get("name", ""))).name for f in files} | set(qc)
+    excluded_stems = {Path(n).stem for n in excluded}
+    names = {n for n in names if n not in excluded and Path(n).stem not in excluded_stems}
     by_name = {Path(str(f.get("name", ""))).name: f for f in files}
 
     runs: list[dict[str, Any]] = []
