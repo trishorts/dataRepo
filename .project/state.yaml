@@ -342,6 +342,33 @@ decisions:
       new core table `gene_resolutions` keyed (search_database_sha256, gene_set_release, accession,
       gene_id), added in ONE schema change together with go's per-row evidence columns. Building still
       waits on aging's review as operator (DATAREPO-50).
+  - id: D29
+    date: 2026-09-25
+    text: >-
+      PTM site occupancy (`ptm_stoichiometry`) is filled by OUR INGESTER from MetaMorpheus's own
+      per-run occupancy (`CountOccupancy_` / `IntensityOccupancy_` cells in
+      AllQuantifiedProteinGroups.tsv, read with pyMzLib `read_occupancy`), not from ptmQtl's recomputed
+      table (user decision, 2026-09-25; QuantProject 006: every design-less search already writes it).
+      KEEP AS MUCH AS POSSIBLE, in the user's words, "since this is such an important measurement in the
+      repo": both bases (count and intensity), each basis's exact numerator and denominator (the written
+      fraction is rounded to 2 decimals), the fraction as written, whether the denominator covers one
+      run or a pooled sample group (QuantProject DEF-OCC-GROUPING), explicit floor AND ceiling flags,
+      the sample label, is_n_terminus, and the group member the site belongs to (checked against the
+      searched sequence, never trusted by position).
+  - id: D30
+    date: 2026-09-25
+    text: >-
+      ptmQtl's first bundle (121,798 occupancy / 70,578 pair rows, engine = draft mzLib #1369) is TEST
+      DATA ONLY: used to build and check table shapes, never served, until the engine is released and
+      the operator runs it through the runner (D27). User decision, 2026-09-25 (ptmQtl P12).
+  - id: D31
+    date: 2026-09-25
+    text: >-
+      `ptm_pairs` takes ptmQtl's site grain and per-species pooling (user decision, 2026-09-25; ptmQtl
+      P9, P10): a `feature_type` column says what each side is (as in `trait_effects`); `scope` may be
+      a dataset, `meta`, or `meta:<species>`; pooled rows list their `datasets`; the dataset count gets
+      its own column `n_datasets`, and `n` ALWAYS means runs (total over the pooled datasets, or NULL) --
+      one column never holds two units (the spectral-count lesson, 0.18.0).
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
