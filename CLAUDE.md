@@ -15,10 +15,8 @@ This folder is a `/project`-managed research project. **You are de facto working
   aging's corpus is on **0.19.0** (catalog `d2318e0d2d4450a4`, 26 datasets). 0.19.1 (DATAREPO-51,
   excluded files are not runs) and 0.20.0 (schema 0.0.10) both re-id; 0.20.0 needs one re-ingest
   of everything, and it covers 0.19.1's change too. **aging owes DATAREPO-52** (`id_rate.ms2`
-  counts the excluded file). Next: tell aging 0.20.0 exists and how to run logs through it
-  (served runs are THEIRS); tell logs their rows are now stored, and go that its columns exist;
-  tell aging the rat gene-view number (48.6% of rat accessions have no primary-assembly gene,
-  promised in logs 020). Waiting on: go DATAREPO-45 (answered in go 012; charter fixes owed by us), logs
+  counts the excluded file). 0.20.0 announced (`bb2b365`, CI green) in aging 066 (how to run logs;
+  served runs are THEIRS; rat gene-view number passed on), logs 021, go 013. Waiting on: go DATAREPO-45 (answered in go 012; charter fixes owed by us), logs
   DATAREPO-46, sdrf's drafted SDRF (G62), ptmQtl P8-P12 (schema questions + their bundle), QuantProject
   occupancy ingest (their 006), pep's cross-dataset `pep` guard (pep 002), pyMzLib on G68.
   Other builds: G52 ProForma diff; G67 leftovers. Each change that reaches rows needs an
