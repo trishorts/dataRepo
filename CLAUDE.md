@@ -26,6 +26,11 @@ This folder is a `/project`-managed research project. **You are de facto working
   **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43).
   **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
+- **PR board: smith-chem-wisc project #16 "dataRepo"** (https://github.com/orgs/smith-chem-wisc/projects/16,
+  created 2026-09-25 at pride's PRIDE-G1). **Every PR this project opens goes on it**, in any repo:
+  add it when opened (`gh project item-add 16 --owner smith-chem-wisc --url <pr>`, Status "In review"),
+  move it to "Shipped" when merged. Status options: Planned / In progress / In review / Shipped. Use Bash,
+  not PowerShell, for `gh ... --jq`. Today it holds mzLib #1345 (PR E) and #1346 (PR D), both Shipped.
 - **Every question for the user goes in `design/OPEN_QUESTIONS.md`** (D7), with a default. They take it to NCEMS and working-group meetings. Work proceeds on the defaults.
 - **The benchmark questions belong to aging** (D6). Don't write domain questions here.
 
