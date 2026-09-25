@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.10"
+SCHEMA_VERSION = "0.0.11"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -186,11 +186,21 @@ TABLES: dict[str, pa.Schema] = {
     "ptm_stoichiometry": pa.schema([  # PtmStoichiometry
         pa.field("ptm_site_id", pa.string(), nullable=False),
         pa.field("assay_id", pa.string(), nullable=False),
+        pa.field("denominator_grouping", pa.string(), nullable=False),
+        pa.field("sample_label", pa.string(), nullable=False),
+        pa.field("protein_group_id", pa.string(), nullable=False),
+        pa.field("mm_position", pa.int64(), nullable=False),
+        pa.field("mm_modification", pa.string(), nullable=False),
+        pa.field("occupancy_state", pa.string(), nullable=False),
         pa.field("modified_fraction_count", pa.float64(), nullable=True),
-        pa.field("modified_fraction_intensity", pa.float64(), nullable=True),
-        pa.field("intensity_is_floor", pa.bool_(), nullable=True),
         pa.field("n_modified_psms", pa.int64(), nullable=True),
         pa.field("n_covering_psms", pa.int64(), nullable=True),
+        pa.field("count_is_ceiling", pa.bool_(), nullable=True),
+        pa.field("modified_fraction_intensity", pa.float64(), nullable=True),
+        pa.field("intensity_modified", pa.float64(), nullable=True),
+        pa.field("intensity_total", pa.float64(), nullable=True),
+        pa.field("intensity_is_floor", pa.bool_(), nullable=True),
+        pa.field("intensity_is_ceiling", pa.bool_(), nullable=True),
         pa.field("definition_id", pa.string(), nullable=False),
     ]),
     "glycopeptides": pa.schema([  # Glycopeptide
@@ -361,6 +371,10 @@ TABLES: dict[str, pa.Schema] = {
     "ptm_pairs": pa.schema([  # PtmPair
         pa.field("result_type", pa.string(), nullable=False),
         pa.field("scope", pa.string(), nullable=False),
+        pa.field("feature_type", pa.string(), nullable=False),
+        pa.field("datasets", pa.list_(pa.string()), nullable=True),
+        pa.field("n_datasets", pa.int64(), nullable=True),
+        pa.field("n_datasets_agreeing", pa.int64(), nullable=True),
         pa.field("feature_key_a", pa.string(), nullable=False),
         pa.field("protein_accessions_a", pa.list_(pa.string()), nullable=False),
         pa.field("feature_key_b", pa.string(), nullable=False),
@@ -372,8 +386,8 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("stratum", pa.string(), nullable=True),
         pa.field("sign", pa.string(), nullable=True),
         pa.field("statistic", pa.string(), nullable=False),
-        pa.field("value", pa.float64(), nullable=False),
-        pa.field("n", pa.int64(), nullable=False),
+        pa.field("value", pa.float64(), nullable=True),
+        pa.field("n", pa.int64(), nullable=True),
         pa.field("p", pa.float64(), nullable=True),
         pa.field("q", pa.float64(), nullable=True),
         pa.field("fdr_family", pa.string(), nullable=True),

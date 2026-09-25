@@ -210,6 +210,31 @@ def read_psmtsv(
     return columns
 
 
+def read_occupancy(path: Path, log: ReaderLog | None = None) -> Any:
+    """MetaMorpheus's PTM site occupancy cells, one record per site entry, through pyMzLib.
+
+    pyMzLib `read_occupancy` parses both `CountOccupancy_` and `IntensityOccupancy_` cells with
+    mzLib's own `ModificationOccupancyCell` (#1347), so the delimiter traps QuantProject documents
+    (DEF-OCC-DELIMITERS) are mzLib's to get right, not ours. A protein-group table is small, so it is
+    read whole.
+
+    Returns:
+        pyMzLib's `OccupancyRecords`: `records` (one dict per entry, with `basis`), and
+        `truncated_cell_count` / `failed_fields`, which the caller must report.
+
+    Raises:
+        ReaderUnavailable: pyMzLib is missing, or it returned fewer groups than the file holds.
+    """
+    readers = require_pymzlib()
+    path = Path(path)
+    result = readers.read_occupancy(str(path), timeout=None)
+    if getattr(result, "returned_count", result.record_count) != result.record_count:
+        raise ReaderUnavailable(f"pyMzLib returned part of {path}'s occupancy")
+    if log is not None:
+        log.record(path, "pymzlib", len(result.records), "read_occupancy: one record per site entry")
+    return result
+
+
 def read_tsv(path: Path, log: ReaderLog | None = None, note: str | None = None) -> tuple[list[str], list[list[str]]]:
     """Read a tab-separated file as a header and a list of rows, with no interpretation."""
     with path.open("r", encoding="utf-8-sig", newline="") as handle:

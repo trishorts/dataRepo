@@ -26,6 +26,7 @@ from .reconcile import build as build_checks
 from .reconcile import finding_rows as reconciliation_findings
 from .reconcile import metric_conflicts
 from .sources import identifications, provenance as prov, quant, runs as runs_source, sdrf as sdrf_source
+from .sources import occupancy
 from .sources import protein_db, search_params
 from .usi import RunNameMap
 
@@ -530,6 +531,55 @@ def ingest_dataset(
         protein_group_count = quant.accepted_group_count(protein_groups)
         findings += _duplicate_findings(collapsed, dataset_id)
 
+    # --- PTM site occupancy (D29) ----------------------------------------------------------------
+    # After the collapse, so it keys on the sites and groups the bundle will actually hold. Only a
+    # label-free search: MetaMorpheus computes no intensity occupancy for TMT or SILAC, and its TMT
+    # count cell is per file repeated on every channel (DEF-OCC-INT), which has no assay to sit on.
+    stoichiometry: list[dict[str, Any]] = []
+    occupancy_note: dict[str, Any] = {"read": False}
+    if pg_path.is_file() and entry.quant_method == "label-free":
+        occ = occupancy.rows(
+            pg_path,
+            dataset_id,
+            run_names=run_names,
+            sequences=sequences,
+            site_ids={s["ptm_site_id"] for s in ptm_sites},
+            group_ids={g["protein_group_id"] for g in protein_groups},
+            assay_ids={a["assay_id"] for a in assays},
+            log=log,
+        )
+        stoichiometry = occ.rows
+        occupancy_note = {
+            "read": True,
+            "entries": occ.entries,
+            "rows": len(occ.rows),
+            "not_stored": dict(occ.not_stored),
+            "truncated_cells": occ.truncated_cells,
+            "failed_fields": occ.failed_fields,
+            "realigned_cells": occ.realigned_cells,
+        }
+        findings += _occupancy_findings(occ, dataset_id)
+    elif pg_path.is_file():
+        occupancy_note = {"read": False, "reason": f"quant_method {entry.quant_method}"}
+        findings.append(
+            {
+                "finding_id": f"{dataset_id}:occupancy_not_ingested",
+                "dataset_id": dataset_id,
+                "run_id": None,
+                "code": "occupancy_not_ingested",
+                "severity": "info",
+                "status": "open",
+                "message": (
+                    f"PTM site occupancy was not stored: this is a {entry.quant_method} dataset, and "
+                    f"MetaMorpheus computes intensity occupancy for label-free searches only; its "
+                    f"count occupancy is per file, repeated on every channel (QuantProject DEF-OCC-INT). "
+                    f"`ptm_stoichiometry` has no rows here because of that, not because no site was "
+                    f"modified."
+                ),
+                "source": "datarepo ingest",
+            }
+        )
+
     # --- reconciliation ------------------------------------------------------------------------
     checks = build_checks(
         psm_count_1pct=identifications.producer_counts(psm_columns),
@@ -565,6 +615,7 @@ def ingest_dataset(
     writer.add("protein_groups", protein_groups)
     writer.add("proteins", proteins)
     writer.add("ptm_sites", ptm_sites)
+    writer.add("ptm_stoichiometry", stoichiometry)
     writer.add("quant_values", quant_values)
     writer.add("search_modifications_declared", search_modifications)
     writer.add("metrics", metrics)
@@ -573,7 +624,11 @@ def ingest_dataset(
     # A definition is carried when something in the bundle depends on it. That is every metric and
     # quantity, plus the notch rule: `Psm.notch_ambiguous` is a stored conclusion, so the text
     # behind it has to travel with the rows rather than live only in aging's thread.
-    used = {m["definition_id"] for m in metrics} | {q["definition_id"] for q in quant_values}
+    used = (
+        {m["definition_id"] for m in metrics}
+        | {q["definition_id"] for q in quant_values}
+        | {s["definition_id"] for s in stoichiometry}
+    )
     if psm_rows:
         used.add(defs.NOTCH_AMBIGUOUS.definition_id)
     writer.add("definitions", defs.rows(used))
@@ -599,6 +654,7 @@ def ingest_dataset(
             "unplaced_site_pairs": unplaced,
             "site_residue_check": site_check,
         },
+        "occupancy": occupancy_note,
         "reconciliation": [c.as_dict() for c in checks],
         "collapsed_duplicates": [c.as_dict() for c in collapsed],
     }
@@ -960,6 +1016,82 @@ def _excluded_file_findings(
             }
         )
     return rows
+
+
+def _occupancy_findings(occ: "occupancy.OccupancyResult", dataset_id: str) -> list[dict[str, Any]]:
+    """Every occupancy entry the ingest read and did not store, said once, by reason (D29).
+
+    A decoy group's entries are expected -- MetaMorpheus computes occupancy for decoy groups and
+    `ptm_sites` holds no decoy site -- so they alone are `info`. A cut cell is an `error`: the whole
+    cell was replaced by a sentence, and the sites in it are unrecoverable from this file
+    (DEF-OCC-TRUNCATE).
+    """
+    findings: list[dict[str, Any]] = []
+    if occ.truncated_cells:
+        findings.append({
+            "finding_id": f"{dataset_id}:occupancy_cells_truncated",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "occupancy_cells_truncated",
+            "severity": "error",
+            "status": "open",
+            "message": (
+                f"{occ.truncated_cells} occupancy cell(s) were replaced by MetaMorpheus's 'Output too "
+                f"long for Excel' sentence (the machine's WriteExcelCompatibleTSVs setting). Every site "
+                f"in such a cell is missing from ptm_stoichiometry, and it is the largest groups that "
+                f"lose them. Re-run the search with the setting off (QuantProject DEF-OCC-TRUNCATE)."
+            ),
+            "source": "datarepo ingest",
+        })
+    if occ.failed_fields:
+        findings.append({
+            "finding_id": f"{dataset_id}:occupancy_cells_unparsed",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "occupancy_cells_unparsed",
+            "severity": "error",
+            "status": "open",
+            "message": (
+                f"pyMzLib could not parse some occupancy cells ({', '.join(occ.failed_fields)}), so the "
+                f"sites in them are missing from ptm_stoichiometry. The cell does not follow "
+                f"MetaMorpheus's grammar (QuantProject DEF-OCC-CELL); report it with the file."
+            ),
+            "source": "datarepo ingest",
+        })
+    lost = {k: v for k, v in occ.not_stored.items() if k != "decoy group"}
+    if lost:
+        detail = "; ".join(f"{v} {k}" for k, v in sorted(lost.items()))
+        findings.append({
+            "finding_id": f"{dataset_id}:occupancy_not_stored",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "occupancy_not_stored",
+            "severity": "warning",
+            "status": "open",
+            "message": (
+                f"Of {occ.entries} occupancy entries MetaMorpheus wrote, some are not in "
+                f"ptm_stoichiometry: {detail}. 'site not in ptm_sites' means the entry's site has no "
+                f"ptm_sites row to key on; 'not determinable' means a cell's segments could not be "
+                f"assigned to its accessions from the sequences (QuantProject DEF-OCC-ACCESSION), "
+                f"which is never guessed. Absence of a row for these sites is therefore not NA."
+            ),
+            "source": "datarepo ingest",
+        })
+    if occ.not_stored.get("decoy group"):
+        findings.append({
+            "finding_id": f"{dataset_id}:occupancy_decoy_groups",
+            "dataset_id": dataset_id,
+            "run_id": None,
+            "code": "occupancy_decoy_groups",
+            "severity": "info",
+            "status": "open",
+            "message": (
+                f"{occ.not_stored['decoy group']} occupancy entries on decoy protein groups were not "
+                f"stored: MetaMorpheus computes them, and they are FDR machinery, not biology."
+            ),
+            "source": "datarepo ingest",
+        })
+    return findings
 
 
 def _usi_findings(run_names: RunNameMap, dataset_id: str) -> list[dict[str, Any]]:

@@ -293,3 +293,38 @@ def test_a_file_the_search_excluded_is_not_a_run_but_is_findable(tmp_path):
     assert finding["finding_id"] == f"PXD999999:excluded_from_search:{blank}"
     assert blank in finding["message"] and "D52: too_few_ms2" in finding["message"]
     assert "sha256-blank" in finding["message"]
+
+
+def test_occupancy_is_stored_from_metamorpheus_with_every_state_and_both_halves(tables):
+    """D29: MetaMorpheus's own occupancy, keyed on ptm_sites, one row per (site, run)."""
+    rows = {(r["ptm_site_id"].split(":")[1], r["sample_label"]): r for r in tables["ptm_stoichiometry"]}
+    quantified = rows[("P68363", "QE-002106_GM1_a-calib")]
+    assert quantified["occupancy_state"] == "quantified"
+    assert (quantified["n_modified_psms"], quantified["n_covering_psms"]) == (2, 3)
+    assert quantified["modified_fraction_count"] == 0.67  # as written; 2/3 is the exact value
+    assert (quantified["intensity_modified"], quantified["intensity_total"]) == (1000.0, 4000.0)
+    assert quantified["denominator_grouping"] == "run"
+    assert quantified["assay_id"] == "PXD999999:QE-002106_GM1_a:label_free"
+    floor = rows[("Q71U36", "QE-002106_GM1_a-calib")]
+    assert floor["occupancy_state"] == "floor" and floor["intensity_is_floor"] is True
+    assert floor["count_is_ceiling"] is True  # 2 of 2 covering PSMs modified
+    # Run b's intensity cell exists but has one segment and both members carry C129: unassignable.
+    # Its rows must not claim "nothing was quantified" (count_only).
+    for acc in ("P68363", "Q71U36"):
+        row = rows[(acc, "QE-002107_GM1_b-calib")]
+        assert row["occupancy_state"] == "intensity_unassigned"
+        assert row["modified_fraction_intensity"] is None
+    assert len(tables["ptm_stoichiometry"]) == 4
+
+
+def test_occupancy_entries_not_stored_are_reported_not_dropped(bundle, tables):
+    codes = {f["code"]: f for f in tables["findings"]}
+    assert "1 segment's accession not determinable" in codes["occupancy_not_stored"]["message"]
+    assert codes["occupancy_decoy_groups"]["severity"] == "info"
+    doc = json.loads((bundle.bundle_path / "bundle.json").read_text(encoding="utf-8"))
+    note = doc["occupancy"]
+    assert note["entries"] == 8
+    assert note["not_stored"] == {"decoy group": 1, "segment's accession not determinable from the sequences": 1}
+    # Every entry is accounted for: 6 stored entries fill 4 rows (2 rows carry both bases).
+    assert sum(note["not_stored"].values()) + 6 == note["entries"]
+    assert "QuantProject:DEF-OCC-CELL" in {d["definition_id"] for d in tables["definitions"]}

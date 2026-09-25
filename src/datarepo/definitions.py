@@ -180,6 +180,42 @@ PROTEIN_SPECTRAL_COUNT = Def(
     "file. "
     "[dataRepo stores a 0 as a row with value 0, because it is a measurement.]" + _QP_SOURCE,
 )
+#: QuantProject's occupancy definitions (register v3-v3.5), condensed to what a reader of a
+#: `ptm_stoichiometry` row needs; the register carries the source line references.
+OCCUPANCY = Def(
+    "QuantProject:DEF-OCC-CELL",
+    "v3.2",
+    "QuantProject",
+    "DEF-OCC-CELL (v3, grammar superseded by v3.2) with DEF-OCC-COUNT, DEF-OCC-INT, DEF-OCC-PSMS, "
+    "DEF-OCC-ABSENT, DEF-OCC-INT-ZERO, DEF-OCC-COUNTONLY, DEF-OCC-KEY, DEF-OCC-ACCESSION, "
+    "DEF-OCC-GROUPING and DEF-OCC-MINIMUM. "
+    "Cells: `CountOccupancy_<label>` and `IntensityOccupancy_<label>` of the protein-group table, one "
+    "entry `pos{p}[{mod},info:fraction={f}({numerator}/{denominator})]` per (position, modification), "
+    "`;` within a protein, `|` between proteins; a protein with no entry is skipped with no placeholder, "
+    "so the `|` segments are a SUBSEQUENCE of the accession column and cannot be zipped with it by index. "
+    "`p` is 1-based in that accession's own sequence, 0 for the protein N-terminus, Length + 1 for the "
+    "C-terminus. <label> is the sample group; with no design each raw file is its own group, so every "
+    "denominator is a single-injection denominator. "
+    "Evidence (DEF-OCC-PSMS): the group's PSMs passing the PSM-level q-value filter (default 0.01), in "
+    "the group's files; modification types `Common Variable` and `Common Fixed` are excluded, and so "
+    "are peptide-terminal modifications; an ambiguous PSM counts in the denominator of every position "
+    "its base sequence covers and marks no site. "
+    "Count (DEF-OCC-COUNT): numerator = PSMs whose resolved form carries the modification at the "
+    "position; denominator = PSMs covering the position. The integers are exact; the fraction is "
+    "written to 2 decimals. Written for every site with at least one modified PSM. "
+    "Intensity (DEF-OCC-INT): the same sums weighted by each PSM's intensity share (a peptidoform's "
+    "DEF-PEP-INT apex intensity in that file, split over its PSMs there). MBR transfers do not enter. "
+    "The fraction is written to 4 decimals and is authoritative; the pair is rounded to 4 significant "
+    "figures. Written only when the denominator > 0; not computed for TMT or SILAC. "
+    "States (DEF-OCC-COUNTONLY): quantified (both entries, intensity numerator > 0); floor (intensity "
+    "entry 0.0000 with numerator 0: modified form identified, never quantified -- censored, not a zero, "
+    "DEF-OCC-INT-ZERO); count-only (count entry, no intensity entry: nothing covering the site was "
+    "quantified); absent (no entry: no modified form seen -- NA, never 0, DEF-OCC-ABSENT). "
+    "No minimum evidence is applied by the writer; N = 5 covering PSMs is the recommended reporting "
+    "floor (DEF-OCC-MINIMUM). No uncertainty is reported. "
+    "[dataRepo resolves each `|` segment to its accession against the searched sequence, maps `p` to "
+    "`ptm_sites` coordinates, and stores both bases, both halves of each cell and the state.]" + _QP_SOURCE,
+)
 #: aging's five, published in their thread 008 section 4 (their D20) and copied verbatim here. They
 #: were placeholders for nine minutes longer than they needed to be: the first bundle was written
 #: just before 008 arrived.
@@ -237,6 +273,7 @@ ALL: tuple[Def, ...] = (
     PEPTIDE_INTENSITY,
     PROTEIN_INTENSITY,
     PROTEIN_SPECTRAL_COUNT,
+    OCCUPANCY,
     PEPTIDE_COUNT_1PCT,
     PROTEIN_GROUP_COUNT_1PCT,
     MS2_COUNT,

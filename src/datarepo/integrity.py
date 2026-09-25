@@ -38,6 +38,10 @@ REFERENCES: tuple[tuple[str, str, str, str], ...] = (
     ("protein_groups", "protein_accessions[]", "proteins", "protein_accession"),
     ("ptm_sites", "dataset_id", "datasets", "dataset_id"),
     ("ptm_sites", "protein_accession", "proteins", "protein_accession"),
+    ("ptm_stoichiometry", "ptm_site_id", "ptm_sites", "ptm_site_id"),
+    ("ptm_stoichiometry", "assay_id", "assays", "assay_id"),
+    ("ptm_stoichiometry", "protein_group_id", "protein_groups", "protein_group_id"),
+    ("ptm_stoichiometry", "definition_id", "definitions", "definition_id"),
     ("quant_values", "assay_id", "assays", "assay_id"),
     ("quant_values", "definition_id", "definitions", "definition_id"),
     ("metrics", "definition_id", "definitions", "definition_id"),
@@ -80,6 +84,8 @@ IDENTIFIERS = (
 #: sources (provenance and results.txt), which `reconcile.metric_conflicts` compares instead.
 COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("quant_values", ("assay_id", "feature_type", "feature_id", "definition_id")),
+    # One row per (site, run or sample group): both bases live on the one row (D29).
+    ("ptm_stoichiometry", ("ptm_site_id", "assay_id")),
     # Keyed while empty, for the reason `STUDY_COMPOSITE_IDENTIFIERS` gives below.
     ("organelle_term_categories", (
         "compartment", "category_map_name", "organelle_map_version", "go_release", "organelle_category",
@@ -87,7 +93,7 @@ COMPOSITE_IDENTIFIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("trait_effects", ("feature_type", "feature_key", "trait_id", "response", "scope", "definition_id")),
     ("ptm_pairs", (
-        "result_type", "scope", "feature_key_a", "feature_key_b", "trait_id", "stratum", "statistic",
+        "result_type", "scope", "feature_type", "feature_key_a", "feature_key_b", "trait_id", "stratum", "statistic",
         "definition_id",
     )),
 )

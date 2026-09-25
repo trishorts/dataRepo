@@ -965,3 +965,63 @@ def test_a_file_the_search_excluded_gets_no_run_and_no_run_metrics():
 def test_no_excluded_files_block_excludes_nothing():
     assert runs_source.excluded_files({}) == (frozenset(), None)
     assert runs_source.excluded_files({"excluded_files": None}) == (frozenset(), None)
+
+
+# --- occupancy (D29) ---------------------------------------------------------------------------
+
+def _seqs(**by_accession):
+    from datarepo.sources.protein_db import ProteinSequences
+
+    seqs = ProteinSequences()
+    for acc, seq in by_accession.items():
+        seqs.add(acc, seq)
+    return seqs
+
+
+def _entry(p, mod, index=0):
+    return {"position": p, "modification": mod, "entity_index": index, "is_n_terminus": p == 0}
+
+
+def test_occupancy_segments_are_realigned_when_a_member_has_no_site():
+    """DEF-OCC-ACCESSION: segments skip members with no entry, so segment 0 here is B, not A."""
+    from datarepo.sources import occupancy
+
+    seqs = _seqs(A="MKKKKKK", B="MSSSSSS", C="MTTTTTT")
+    segments = {0: [_entry(3, "Phosphorylation on S")], 1: [_entry(2, "Phosphorylation on T")]}
+    assert occupancy._assign(segments, ["A", "B", "C"], seqs) == ["B", "C"]
+
+
+def test_occupancy_segments_are_never_guessed_when_two_members_fit():
+    from datarepo.sources import occupancy
+
+    seqs = _seqs(A="MSSS", B="MSSS")
+    assert occupancy._assign({0: [_entry(2, "Phosphorylation on S")]}, ["A", "B"], seqs) is None
+
+
+def test_occupancy_positions_map_onto_ptm_sites_coordinates():
+    from datarepo.sources import occupancy
+
+    seq = "MASKR"
+    key = lambda e: occupancy._site_key("D", "P1", seq, e)  # noqa: E731
+    assert key(_entry(3, "Phosphorylation on S")) == "D:P1:S3:Phosphorylation on S"
+    assert key(_entry(0, "Acetylation on X")) == "D:P1:M1:Acetylation on X@protein_n_term"
+    assert key(_entry(6, "Amidation on X")) == "D:P1:R5:Amidation on X@protein_c_term"
+
+
+def test_ptm_pairs_take_site_grain_and_per_species_pooling_with_n_kept_as_runs():
+    """D31: `feature_type`, `meta:<species>`, `datasets` / `n_datasets`, and `n` never a dataset count."""
+    from datarepo.bundle import table_from_rows
+    from datarepo._tables import TABLES
+
+    pooled = {
+        "result_type": "P", "scope": "meta:human", "feature_type": "ptm_site_canonical",
+        "feature_key_a": "P62805:K13:UNIMOD:1", "protein_accessions_a": ["P62805"],
+        "feature_key_b": "P62805:K17:UNIMOD:1", "protein_accessions_b": ["P62805"],
+        "same_protein": True, "class_pair": "biological x biological", "statistic": "recurrence",
+        "value": None, "n": None, "datasets": ["PXD1", "PXD2"], "n_datasets": 2,
+        "n_datasets_agreeing": 2, "definition_id": "ptmQtl:DEF-PTM-PAIR v1",
+    }
+    table = table_from_rows("ptm_pairs", [pooled])
+    assert table.num_rows == 1
+    assert TABLES["ptm_pairs"].field("n").nullable  # NULL on a pooled row whose run total is unknown
+    assert TABLES["ptm_pairs"].field("feature_type").nullable is False
