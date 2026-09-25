@@ -1,9 +1,26 @@
 # The runner: how an instance operator runs a released engine on stored data (G64)
 
-**Status: DECIDED BY THE USER, 2026-09-24 (D28, U12-U15). Not built.** D27 decided that dataRepo ships
-a runner and the instance operator (today aging) runs it; charter v0.3 §2 lists what it must do. The
-user accepted this page's four choices as written. aging, as the operator, is asked to review it
-(DATAREPO-50) before a line is written.
+**Status: BUILT in datarepo 0.20.0 (2026-09-25), logs first.** Decided by the user 2026-09-24 (D28,
+U12-U15); reviewed by aging as operator (their 063, DATAREPO-50), whose two notes are built in: every
+artefact records the datarepo install (version plus commit or wheel sha256), and an editable install
+is refused. Code: `src/datarepo/runner.py`, `src/datarepo/engines/logs.py`, catalog loading in
+`catalog.select_artefacts`. Where the build differs from the proposal below, the proposal is kept as
+written and the difference is listed here:
+
+- **One artefact per searched TARGET database**, not per bundle or per set of databases. A set would
+  have made two artefacts carry the same proteome rows whenever two datasets searched the proteome
+  with different extra databases, and a catalog would hold them twice.
+- **The contaminant database is never resolved** (our logs 018), so it has no role here.
+- **`logs_manifest` is an input by role but is NOT hashed.** It is used only to check the run, and a
+  reworded manifest must not re-identify an artefact (the rule: what reaches a row is hashed, and
+  nothing else is).
+- **The catalog key adds `gene_set_sha256`** beside `gene_set_release`, because two gene sets can
+  share a release number.
+- **Two derived tables** make the join usable: `dataset_databases` (every database each search read;
+  `datasets` names only the proteome) and `protein_genes` (target proteins joined to their gene rows,
+  with contaminants excluded).
+- go and ptmQtl engines are not built. They wait on their releases. go's per-row columns are in schema
+  0.0.10 as D28 decided.
 
 ## What it is for
 

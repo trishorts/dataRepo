@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.9"
+SCHEMA_VERSION = "0.0.10"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -237,6 +237,12 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("go_release", pa.string(), nullable=False),
         pa.field("evidence", pa.string(), nullable=True),
         pa.field("source_id", pa.string(), nullable=False),
+        pa.field("protein_group", pa.string(), nullable=True),
+        pa.field("q_value", pa.float64(), nullable=True),
+        pa.field("n_members", pa.int64(), nullable=True),
+        pa.field("n_with", pa.int64(), nullable=True),
+        pa.field("inherited", pa.bool_(), nullable=True),
+        pa.field("propagated", pa.bool_(), nullable=True),
     ]),
     "organelle_term_categories": pa.schema([  # OrganelleTermCategory
         pa.field("compartment", pa.string(), nullable=False),
@@ -246,6 +252,28 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("organelle_category", pa.string(), nullable=False),
         pa.field("organelle_subcategory", pa.string(), nullable=True),
         pa.field("source_id", pa.string(), nullable=False),
+    ]),
+    "gene_resolutions": pa.schema([  # GeneResolution
+        pa.field("definition_id", pa.string(), nullable=False),
+        pa.field("accession", pa.string(), nullable=False),
+        pa.field("entry_accession", pa.string(), nullable=True),
+        pa.field("isoform", pa.int64(), nullable=True),
+        pa.field("namespace", pa.string(), nullable=False),
+        pa.field("outcome", pa.string(), nullable=False),
+        pa.field("n_genes", pa.int64(), nullable=False),
+        pa.field("gene_id", pa.string(), nullable=True),
+        pa.field("versioned_gene_id", pa.string(), nullable=True),
+        pa.field("gene_symbol", pa.string(), nullable=True),
+        pa.field("gene_biotype", pa.string(), nullable=True),
+        pa.field("off_primary_genes", pa.int64(), nullable=False),
+        pa.field("uniprot_gene_name", pa.string(), nullable=True),
+        pa.field("source", pa.string(), nullable=False),
+        pa.field("search_database_sha256", pa.string(), nullable=False),
+        pa.field("gene_set_release", pa.string(), nullable=True),
+        pa.field("gene_set_sha256", pa.string(), nullable=False),
+        pa.field("ensembl_xref_agrees", pa.bool_(), nullable=True),
+        pa.field("ensembl_xref_info_type", pa.string(), nullable=True),
+        pa.field("ensembl_xref_sha256", pa.string(), nullable=False),
     ]),
     "protein_annotations": pa.schema([  # ProteinAnnotation
         pa.field("protein_accession", pa.string(), nullable=False),
@@ -390,6 +418,7 @@ TABLE_CLASS: dict[str, str] = {
     "annotation_sources": "AnnotationSource",
     "protein_localizations": "ProteinLocalization",
     "organelle_term_categories": "OrganelleTermCategory",
+    "gene_resolutions": "GeneResolution",
     "protein_annotations": "ProteinAnnotation",
     "feature_sets": "FeatureSet",
     "feature_set_members": "FeatureSetMember",

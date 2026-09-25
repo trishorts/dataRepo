@@ -26,10 +26,11 @@ What it does NOT store, and says so in the result rather than dropping it silent
 
 - **Terms outside cellular_component.** ``protein_localizations`` is GO-CC by definition; go's file
   also carries biological_process and molecular_function rows.
-- **go's per-row evidence fields** (``n_members``, ``n_with``, ``propagated``, ``inherited``,
-  ``annotation_status``, ``q_value``, ``protein_group``). Schema 0.0.9 has no columns for them, and
-  where go's output is stored at all waits on the runner (G64), so adding them is one schema decision
-  taken with that one, not before it.
+- **``annotation_status``.** Every stored row carries a term, so it would always read ``annotated``;
+  a group with no term has no ``protein_localizations`` row at all and is counted in ``not_stored``.
+  go's other per-row evidence (``protein_group``, ``q_value``, ``n_members``, ``n_with``,
+  ``inherited``, ``propagated``) IS stored, from schema 0.0.10 (D28: one schema change with the
+  runner's ``gene_resolutions``).
 """
 
 from __future__ import annotations
@@ -144,6 +145,15 @@ def _require_release(path: Path, header: dict[str, str], allow_prerelease: bool)
 
 def _split(cell: str) -> list[str]:
     return [x for x in cell.split(";") if x]
+
+
+def _flag(cell: str) -> bool | None:
+    """go's `true`/`false`; anything else is refused, and empty is NULL (unknown, not false)."""
+    if cell == "":
+        return None
+    if cell in ("true", "false"):
+        return cell == "true"
+    raise IngestError(f"expected `true` or `false`, found {cell!r}")
 
 
 def read_annotation(path: str | Path, *, allow_prerelease: bool = False) -> GoAnnotation:
@@ -301,6 +311,12 @@ def localization_rows(annotation: GoAnnotation) -> list[dict[str, Any]]:
                 "go_release": annotation.go_release,
                 "evidence": row["evidence"] or None,
                 "source_id": src,
+                "protein_group": row["protein_group"],
+                "q_value": float(row["q_value"]),
+                "n_members": int(row["n_members"]),
+                "n_with": int(row["n_with"]),
+                "inherited": _flag(row["inherited"]),
+                "propagated": _flag(row["propagated"]),
             }
     return [out[k] for k in sorted(out)]
 

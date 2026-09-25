@@ -50,3 +50,8 @@ class QueryRefused(DataRepoError):
 
 class QueryTimeout(DataRepoError):
     """The query was still running at the deadline and the watchdog interrupted it (D14)."""
+
+
+class RunnerError(DataRepoError):
+    """`datarepo run` refused: an unreleased engine or datarepo, an input that does not hash to its
+    record, or engine output that fails the engine's own acceptance checks. Nothing is written."""

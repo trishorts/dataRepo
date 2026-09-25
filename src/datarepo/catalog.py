@@ -40,6 +40,8 @@ from .integrity import (
     STUDY_REFERENCES,
 )
 from .manifest import Manifest
+from .runner import ENGINE_TABLES, ArtefactRef, discover_artefacts
+from .sources.protein_db import is_contaminant_database
 from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 
 #: Bumped when the shape of the catalog changes in a way a caller would notice. It is part of the
@@ -49,10 +51,11 @@ from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 #: bundles holding byte-identical rows from an unchanged ingest path. "2" added the study layer's
 #: tables; "3" fills them -- a study bundle's rows, their two provenance columns and
 #: `catalog_study_bundles`; "4" adds `search_modifications_placed`; "5" adds
-#: `dataset_overview.enrichment_mixed` (G63). Same principle as
+#: `dataset_overview.enrichment_mixed` (G63); "6" loads engine artefacts (`gene_resolutions`, G64)
+#: and `catalog_engine_artefacts`. Same principle as
 #: `manifest.CONTENT_FIELDS` one level down -- an id moves when its own content moves, and not
 #: otherwise.
-CATALOG_VERSION = "5"
+CATALOG_VERSION = "6"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -65,12 +68,18 @@ PROVENANCE_COLUMNS = ("dataset_id", "bundle_id")
 #: row instead.
 STUDY_PROVENANCE_COLUMNS = ("study_layer", "study_bundle_id")
 
+#: Provenance columns prepended to every ENGINE table (G64). Not `dataset_id`: an engine artefact is
+#: keyed on its inputs, not on a dataset -- one logs resolution serves every dataset that searched
+#: the same database -- so stating a dataset would be false. Join through the table's own keys.
+ENGINE_PROVENANCE_COLUMNS = ("engine", "artefact_id")
+
 #: Tables the catalog builds itself. They are not in the schema: they describe the catalog, not the
 #: science, and a caller can tell them apart by this prefix.
 CATALOG_TABLES = (
     "catalog_meta",
     "catalog_bundles",
     "catalog_study_bundles",
+    "catalog_engine_artefacts",
     "catalog_tables",
     "catalog_checks",
 )
@@ -82,6 +91,8 @@ DERIVED_TABLES = (
     "protein_datasets",
     "peptide_index",
     "search_modifications_placed",
+    "dataset_databases",
+    "protein_genes",
 )
 
 #: Views that apply the producing search engine's acceptance rule, so no caller has to restate it.
@@ -270,6 +281,42 @@ DERIVED_DOCS: dict[str, dict[str, Any]] = {
             "modification": "Set when the tag is a UNIMOD accession. NOT comparable row-for-row "
             "with `search_modifications_declared`, which names chemistries: one accession spans "
             "entries with different position rules.",
+        },
+    },
+    "dataset_databases": {
+        "description": (
+            "One row per database each dataset's search read, from the bundle's own record "
+            "(`bundle.json`), with its sha256. `datasets.search_database` names only the proteome; "
+            "a search that also read an isoform or custom database has more rows here, and a join "
+            "through `datasets` alone would miss the proteins that came from them."
+        ),
+        "columns": {
+            "role": "`target` or `contaminant`, by MetaMorpheus's own rule (a path containing "
+            "'contaminant' or 'CRAP'). Engines such as logs resolve target databases only.",
+            "sha256": "The database file's sha256 as the ingest hashed it. Engine tables key on it "
+            "(`gene_resolutions.search_database_sha256`).",
+        },
+    },
+    "protein_genes": {
+        "description": (
+            "Each dataset's TARGET proteins joined to logs' gene resolution for a database that "
+            "dataset searched: the join done once, correctly, so no caller rebuilds it. One row "
+            "per (dataset, protein, gene) -- a `multi_gene` protein has several and is never "
+            "reduced to one. Contaminant proteins are EXCLUDED, never mapped (logs 002 section 0: "
+            "bovine albumin mapped to human ALB is a lie about the sample), and so is a protein whose "
+            "`is_contaminant` is NULL, because unknown is not safe to map. Like `proteins`, it "
+            "spans the search DATABASE, so a row is not evidence of identification: join "
+            "`protein_groups_1pct` for that. A protein with no row here was not resolved (its "
+            "database has no artefact yet: see `catalog_checks` kind `engine-coverage`)."
+        ),
+        "columns": {
+            "outcome": "logs' outcome for the protein: `resolved`, `multi_gene`, "
+            "`off_primary_only`, `not_in_source` or `unrecognized_accession`. Only the first two "
+            "carry a `gene_id`; count genes over those, and report the others as unresolved, "
+            "never as absent.",
+            "gene_id": "Stable Ensembl gene id, or NULL when the outcome has none.",
+            "gene_symbol": "The pinned Ensembl release's symbol, for display. Group on `gene_id`.",
+            "artefact_id": "The engine artefact the row came from (`catalog_engine_artefacts`).",
         },
     },
     "psms_1pct": {
@@ -627,7 +674,9 @@ def select_study_bundles(
 
 
 def catalog_id(
-    bundles: Sequence[BundleRef], study_bundles: Sequence[StudyBundleRef] = ()
+    bundles: Sequence[BundleRef],
+    study_bundles: Sequence[StudyBundleRef] = (),
+    artefacts: Sequence[ArtefactRef] = (),
 ) -> str:
     """Content hash of the bundles, the schema, the study layers and the builder.
 
@@ -650,6 +699,10 @@ def catalog_id(
     # indistinguishable to anyone citing one of them.
     for ref in sorted(study_bundles, key=lambda r: (r.layer, r.bundle_id)):
         digest.update(f"study-bundle/{ref.layer}\t{ref.bundle_id}\n".encode())
+    # And an engine's: a catalog serving one gene resolution and one serving another (a newer
+    # Ensembl release, say) answer a gene question differently, so they must not share an id.
+    for ref in sorted(artefacts, key=lambda r: (r.engine, r.artefact_id)):
+        digest.update(f"engine/{ref.engine}\t{ref.artefact_id}\n".encode())
     return digest.hexdigest()[:16]
 
 
@@ -662,6 +715,7 @@ class CatalogResult:
     datasets: list[str]
     bundles: list[BundleRef]
     study_bundles: list[StudyBundleRef] = field(default_factory=list)
+    artefacts: list[ArtefactRef] = field(default_factory=list)
     row_counts: dict[str, int] = field(default_factory=dict)
     checks: list[dict[str, Any]] = field(default_factory=list)
     indexes: int = 0
@@ -769,10 +823,195 @@ def _create_study_tables(
     return row_counts
 
 
+def _target_databases(bundles: Sequence[BundleRef]) -> dict[str, list[str]]:
+    """`{sha256: [dataset ids]}` for every target database the bundles searched."""
+    found: dict[str, list[str]] = {}
+    for ref in bundles:
+        for db in ((ref.manifest.get("protein_databases") or {}).get("read")) or []:
+            if is_contaminant_database(Path(str(db["path"]))):
+                continue
+            found.setdefault(str(db["sha256"]), []).append(ref.dataset_id)
+    return found
+
+
+def select_artefacts(
+    store: Path, bundles: Sequence[BundleRef]
+) -> tuple[list[ArtefactRef], list[dict[str, Any]]]:
+    """The engine artefacts that belong in a catalog of these bundles, and a coverage check each.
+
+    An artefact belongs when it was run on a database one of the bundles searched (design/RUNNER.md,
+    "Catalog"). Artefacts load without being asked for, unlike study bundles, because their
+    relevance is decided by their inputs rather than by a producer's delivery -- and the catalog id
+    hashes every artefact loaded, so what was served is always named.
+
+    Refused rather than guessed: two artefacts of one engine for the same database (a re-run on a
+    newer Ensembl release, say). Which resolution a catalog serves is the operator's decision; move
+    the other out of `<store>/_engine/` to make it.
+
+    A database with NO artefact is not a failure: the catalog builds without it, as an empty study
+    layer does, and the coverage check -- which always passes -- says which databases lack one.
+    Artefacts written against another schema version are skipped the same way and named.
+    """
+    databases = _target_databases(bundles)
+    chosen: list[ArtefactRef] = []
+    checks: list[dict[str, Any]] = []
+    for engine in sorted({e for e in ENGINE_TABLES.values()}):
+        by_db: dict[str, list[ArtefactRef]] = {}
+        stale: list[str] = []
+        for ref in discover_artefacts(store, engine):
+            sha = ref.inputs.get("search_database")
+            if sha not in databases:
+                continue
+            if ref.schema_version != SCHEMA_VERSION:
+                stale.append(f"{ref.artefact_id} (schema {ref.schema_version})")
+                continue
+            by_db.setdefault(sha, []).append(ref)
+        for sha, refs in sorted(by_db.items()):
+            if len(refs) > 1:
+                listing = ", ".join(r.artefact_id for r in refs)
+                raise CatalogError(
+                    f"{engine}: {len(refs)} artefacts ({listing}) resolve the database {sha[:12]}... "
+                    f"searched by {', '.join(sorted(set(databases[sha])))}. A catalog serves one. "
+                    f"Move the ones it should not serve out of {Path(store) / '_engine' / engine}."
+                )
+            chosen.append(refs[0])
+        uncovered = sorted(sha for sha in databases if sha not in by_db)
+        detail = None
+        if uncovered:
+            detail = "no artefact for " + "; ".join(
+                f"{sha[:12]} ({', '.join(sorted(set(databases[sha])))})" for sha in uncovered
+            )
+        if stale:
+            detail = (detail + "; " if detail else "") + "skipped, other schema: " + ", ".join(stale)
+        checks.append({
+            "name": f"{engine} coverage (databases with an artefact)",
+            "kind": "engine-coverage",
+            "ok": True,
+            "observed": len(databases) - len(uncovered),
+            "expected": len(databases),
+            "detail": detail,
+        })
+    return chosen, checks
+
+
+def _build_engine_derived(con: Any, bundles: Sequence[BundleRef]) -> None:
+    """`dataset_databases` from the bundle manifests, then `protein_genes` over it (G64)."""
+    con.execute(
+        "CREATE TABLE dataset_databases (dataset_id VARCHAR, bundle_id VARCHAR, "
+        "database VARCHAR, role VARCHAR, sha256 VARCHAR, entries BIGINT)"
+    )
+    for ref in bundles:
+        for db in ((ref.manifest.get("protein_databases") or {}).get("read")) or []:
+            path = Path(str(db["path"]))
+            con.execute(
+                "INSERT INTO dataset_databases VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    ref.dataset_id,
+                    ref.bundle_id,
+                    path.name,
+                    "contaminant" if is_contaminant_database(path) else "target",
+                    str(db["sha256"]),
+                    db.get("entries"),
+                ],
+            )
+    con.execute(
+        """
+        CREATE TABLE protein_genes AS
+        SELECT p.dataset_id, p.bundle_id, p.protein_accession, dd.database,
+               g.outcome, g.n_genes, g.gene_id, g.gene_symbol, g.gene_biotype, g.source,
+               g.ensembl_xref_agrees, g.gene_set_release, g.search_database_sha256,
+               g.definition_id, g.artefact_id
+        FROM proteins p
+        JOIN dataset_databases dd ON dd.dataset_id = p.dataset_id AND dd.role = 'target'
+        JOIN gene_resolutions g
+          ON g.accession = p.protein_accession AND g.search_database_sha256 = dd.sha256
+        WHERE NOT p.is_contaminant AND p.protein_accession NOT LIKE 'DECOY\\_%' ESCAPE '\\'
+        """
+    )
+
+
+def _engine_schema(schema: Any) -> Any:
+    import pyarrow as pa  # noqa: PLC0415
+
+    return pa.schema(
+        [pa.field("engine", pa.string()), pa.field("artefact_id", pa.string()), *schema]
+    )
+
+
+def _create_engine_tables(con: Any, artefacts: Sequence[ArtefactRef]) -> dict[str, int]:
+    """Create every engine table, filled from the chosen artefacts or empty with the right columns."""
+    row_counts: dict[str, int] = {}
+    for table, engine in ENGINE_TABLES.items():
+        parts = [
+            f"SELECT {_quote(ref.engine)} AS engine, {_quote(ref.artefact_id)} AS artefact_id, * "
+            f"FROM read_parquet({_quote(path.as_posix())})"
+            for ref in artefacts
+            if ref.engine == engine and (path := ref.table_path(table)) is not None
+        ]
+        if not parts:
+            con.register("_empty_engine", _engine_schema(TABLES[table]).empty_table())
+            con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM _empty_engine')
+            con.unregister("_empty_engine")
+            row_counts[table] = 0
+            continue
+        union = "\nUNION ALL BY NAME\n".join(parts)
+        con.execute(f'CREATE TABLE "{table}" AS\n{union}')
+        row_counts[table] = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+    return row_counts
+
+
+#: The key an engine table's rows are unique on, checked across every artefact loaded. For logs it
+#: is logs' own key (D28 U15) with the gene set's sha256 beside its release, because two gene sets
+#: can share a release number and must not collapse.
+ENGINE_KEYS: dict[str, tuple[str, ...]] = {
+    "gene_resolutions": (
+        "search_database_sha256", "gene_set_sha256", "gene_set_release", "accession", "gene_id",
+    ),
+}
+
+
+def _check_engines(con: Any, artefacts: Sequence[ArtefactRef]) -> list[dict[str, Any]]:
+    """Each artefact's rows are all there, and an engine table's key is unique across artefacts."""
+    checks: list[dict[str, Any]] = []
+    for ref in sorted(artefacts, key=lambda r: (r.engine, r.artefact_id)):
+        for table, expected in sorted(ref.row_counts.items()):
+            observed, _ = _count(
+                con, f'SELECT count(*), NULL FROM "{table}" WHERE artefact_id = ?', [ref.artefact_id]
+            )
+            checks.append({
+                "name": f"{ref.engine}/{ref.artefact_id}/{table}",
+                "kind": "row_count",
+                "ok": observed == expected,
+                "observed": observed,
+                "expected": expected,
+                "detail": f"engine artefact {ref.artefact_id}",
+            })
+    for table, key in sorted(ENGINE_KEYS.items()):
+        # A NULL gene_id is a real key value here (one outcome row per protein with no gene), so
+        # it is compared as a value rather than skipped the way the core checks skip NULLs.
+        columns = ", ".join(f'coalesce(CAST("{c}" AS VARCHAR), \'\')' for c in key)
+        duplicates, example = _count(
+            con,
+            f"SELECT count(*), min(k) FROM (SELECT {columns}, min(accession) AS k "
+            f'FROM "{table}" GROUP BY {columns} HAVING count(*) > 1)',
+        )
+        checks.append({
+            "name": f"{table} ({', '.join(key)})",
+            "kind": "engine-unique",
+            "ok": duplicates == 0,
+            "observed": duplicates,
+            "expected": 0,
+            "detail": None if duplicates == 0 else f"e.g. {example}",
+        })
+    return checks
+
+
 def _load_tables(con: Any, bundles: Sequence[BundleRef]) -> dict[str, int]:
     """Materialise every schema table as the union of the bundles that hold it."""
     row_counts: dict[str, int] = {}
     for table in TABLES:
+        if table in ENGINE_TABLES:
+            continue  # never in a bundle; `_create_engine_tables` fills it from artefacts
         parts = [
             _select_from_parquet(ref, table, path)
             for ref in bundles
@@ -1165,6 +1404,7 @@ def _write_catalog_tables(
     notes: dict[str, Any] | None,
     study_bundles: Sequence["StudyBundleRef"] = (),
     study_counts: dict[str, int] | None = None,
+    artefacts: Sequence[ArtefactRef] = (),
 ) -> None:
     """The catalog's account of itself: what went in, what came out, and what was checked."""
     con.execute(
@@ -1249,12 +1489,43 @@ def _write_catalog_tables(
             ],
         )
 
+    # One row per engine artefact loaded, with the record a stranger needs to reproduce it:
+    # which release ran, on which inputs, and from which datarepo install.
+    con.execute(
+        """
+        CREATE TABLE catalog_engine_artefacts (
+            engine VARCHAR, artefact_id VARCHAR, definition_id VARCHAR, path VARCHAR,
+            written_utc VARCHAR, schema_version VARCHAR, runner_version VARCHAR,
+            release JSON, inputs JSON, datarepo_install JSON, engine_summary JSON
+        )
+        """
+    )
+    for ref in artefacts:
+        rec = ref.record
+        con.execute(
+            "INSERT INTO catalog_engine_artefacts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ref.engine,
+                ref.artefact_id,
+                rec.get("definition_id"),
+                ref.path.as_posix(),
+                rec.get("written_utc"),
+                ref.schema_version,
+                rec.get("runner_version"),
+                json.dumps(rec.get("release") or {}),
+                json.dumps(rec.get("inputs") or {}),
+                json.dumps(rec.get("datarepo_install") or {}),
+                json.dumps(rec.get("engine_summary") or {}),
+            ],
+        )
+
     con.execute(
         "CREATE TABLE catalog_tables (table_name VARCHAR, rows BIGINT, kind VARCHAR)"
     )
     for name in TABLES:
+        kind = f"engine:{ENGINE_TABLES[name]}" if name in ENGINE_TABLES else "bundle"
         con.execute(
-            "INSERT INTO catalog_tables VALUES (?, ?, 'bundle')", [name, row_counts.get(name, 0)]
+            "INSERT INTO catalog_tables VALUES (?, ?, ?)", [name, row_counts.get(name, 0), kind]
         )
     for name in (*DERIVED_TABLES, *ACCEPTED_VIEWS, *GRAIN_VIEWS):
         rows = con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
@@ -1308,6 +1579,8 @@ def build_catalog(
     instance: str | None = None,
     notes: dict[str, Any] | None = None,
     study_bundles: Sequence[StudyBundleRef] = (),
+    artefacts: Sequence[ArtefactRef] = (),
+    engine_checks: Sequence[dict[str, Any]] = (),
 ) -> CatalogResult:
     """Load bundles into one DuckDB catalog at `out`.
 
@@ -1321,6 +1594,8 @@ def build_catalog(
         study_bundles: at most one delivery per study layer, as `select_study_bundles` returns.
             Empty is the normal case and leaves the study tables empty, which is an answer rather
             than an omission.
+        artefacts: engine artefacts to load, as `select_artefacts` returns.
+        engine_checks: the coverage checks `select_artefacts` returned, recorded with the rest.
 
     Returns:
         A `CatalogResult`. `skipped` is True when the catalog was already current.
@@ -1378,8 +1653,16 @@ def build_catalog(
                 f"`datarepo study`, or build with the version that wrote it."
             )
 
+    artefacts = list(artefacts)
+    for ref in artefacts:
+        if ref.schema_version != SCHEMA_VERSION:
+            raise CatalogError(
+                f"engine artefact {ref.artefact_id} ({ref.engine}) was written against schema "
+                f"{ref.schema_version}, and this build writes {SCHEMA_VERSION}. Re-run it."
+            )
+
     out = Path(out)
-    cid = catalog_id(bundles, study_bundles)
+    cid = catalog_id(bundles, study_bundles, artefacts)
     if not overwrite and read_catalog_id(out) == cid:
         return CatalogResult(
             path=out,
@@ -1387,6 +1670,7 @@ def build_catalog(
             datasets=sorted(seen),
             bundles=bundles,
             study_bundles=study_bundles,
+            artefacts=artefacts,
             skipped=True,
         )
 
@@ -1399,10 +1683,15 @@ def build_catalog(
             row_counts = _load_tables(con, bundles)
             _build_derived(con)
             study_counts = _create_study_tables(con, study_bundles)
+            engine_counts = _create_engine_tables(con, artefacts)
+            row_counts.update(engine_counts)
+            _build_engine_derived(con, bundles)
             checks = (
                 _check_row_counts(con, bundles)
                 + _check_integrity(con)
                 + _check_study(con, study_bundles)
+                + _check_engines(con, artefacts)
+                + list(engine_checks)
             )
             failed = [c for c in checks if not c["ok"]]
             if failed:
@@ -1426,6 +1715,7 @@ def build_catalog(
                 notes=notes,
                 study_bundles=study_bundles,
                 study_counts=study_counts,
+                artefacts=artefacts,
             )
     except BaseException:
         staging.unlink(missing_ok=True)
@@ -1439,6 +1729,7 @@ def build_catalog(
         datasets=sorted(seen),
         bundles=bundles,
         study_bundles=study_bundles,
+        artefacts=artefacts,
         row_counts={**row_counts, **{k: v for k, v in study_counts.items() if v}},
         checks=checks,
         indexes=indexes,

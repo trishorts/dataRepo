@@ -880,7 +880,10 @@ gaps:
     Evidence sent (not an assignment): PXD058611 streptavidin P22629 PSMs 6-16 in each of runs 178-198,
     0 in each of 199-213 (21 vs 15, not "half"); script scratchpad strep.py.
   - >-
-    G64 The runner (D27, charter v0.3 section 2) is NOT BUILT. It is the command through which an
+    G64 [BUILT 2026-09-25 in 0.20.0: `datarepo run logs.resolve_genes`, one artefact per target database,
+    schema 0.0.10 gene_resolutions + go per-row columns, catalog dataset_databases/protein_genes; scratch
+    run reproduced LOGS-D1 (20,899 human, 9,048 rat). STILL OPEN: aging's SERVED runs; go and ptmQtl
+    engines (wait on releases); telling aging the rat gene-view number.] The runner (D27, charter v0.3 section 2). It is the command through which an
     instance operator runs a released engine on stored data: takes a bundle + a released engine version
     (never a working tree); refuses a repeat (bundle, engine version, inputs) as "already done"; writes a
     new artefact BESIDE the bundle, never into it; records engine, version, every input's sha256 and the

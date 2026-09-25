@@ -5,6 +5,7 @@
     datarepo ingest <manifest.yaml> <PXD...>     build the bundle(s)
     datarepo study <study.yaml>                  write a study layer's delivered rows as a bundle
     datarepo inspect <bundle-dir>                what is in a bundle, and did it reconcile?
+    datarepo run <engine> <PXD...> --store ...   run a released engine on stored data
     datarepo build <manifest.yaml> <PXD...>      load bundles into one DuckDB catalog
     datarepo catalog <catalog.duckdb>            what is in a catalog, and did it check out?
     datarepo query <catalog.duckdb> <sql>        run one read-only query against a catalog
@@ -29,14 +30,17 @@ from .catalog import (
     available_study_layers,
     build_catalog,
     describe_catalog,
+    discover_bundles,
     format_rows,
     run_query,
+    select_artefacts,
     select_bundles,
     select_study_bundles,
 )
 from .errors import CatalogError, DataRepoError, DatasetExcluded
 from .ingest import ingest_dataset
 from .manifest import load_manifest
+from .runner import ENGINES
 from .study import STUDY_BUNDLE_MANIFEST, load_study_manifest, write_study_bundle
 
 
@@ -220,6 +224,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         release=args.release,
     )
 
+    artefacts, engine_checks = select_artefacts(store, bundles)
+
     notes = {"manifest": str(manifest.path)}
     if args.release:
         notes["release"] = args.release
@@ -233,6 +239,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         instance=manifest.instance,
         notes=notes,
         study_bundles=study_bundles,
+        artefacts=artefacts,
+        engine_checks=engine_checks,
     )
 
     print(f"catalog  {result.path}")
@@ -244,6 +252,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"  dataset  {ref.dataset_id:<12} bundle {ref.bundle_id}")
     for ref in result.study_bundles:
         print(f"  study    {ref.layer:<12} bundle {ref.bundle_id}  ({ref.layer_version})")
+    for ref in result.artefacts:
+        print(f"  engine   {ref.engine:<20} artefact {ref.artefact_id}")
+    for check in engine_checks:
+        if check["detail"]:
+            print(f"  note     {check['name']}: {check['observed']} of {check['expected']}; {check['detail']}")
     if not result.study_bundles:
         # Study bundles are opt-in, so a store holding one and a build not asking for it is a
         # legitimate choice -- but a silent one, and this is the only place to make it visible.
@@ -260,6 +273,59 @@ def cmd_build(args: argparse.Namespace) -> int:
     if args.verbose:
         for check in result.checks:
             print(f"    ok     {check['kind']:<10} {check['name']}")
+    return 0
+
+
+def _pick_bundles(store: Path, accessions: list[str], pins: dict[str, str], latest: bool):
+    """One bundle per accession from the store: pinned, the only one, or the newest with --latest."""
+    chosen = []
+    for accession in accessions:
+        candidates = discover_bundles(store, accession)
+        if not candidates:
+            raise CatalogError(f"{accession} has no bundle under {store}")
+        pin = pins.get(accession)
+        if pin:
+            matches = [c for c in candidates if c.bundle_id.startswith(pin)]
+            if len(matches) != 1:
+                raise CatalogError(f"{accession}: --bundle {pin} matches {len(matches)} bundles")
+            chosen.append(matches[0])
+        elif len(candidates) == 1 or latest:
+            chosen.append(candidates[-1])
+        else:
+            raise CatalogError(
+                f"{accession} has {len(candidates)} bundles; pin one with --bundle "
+                f"{accession}=<id>, or pass --latest"
+            )
+    return chosen
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    from .engines import logs  # noqa: PLC0415
+
+    store = Path(args.store)
+    inputs: dict[str, Path] = {}
+    for item in args.input or []:
+        role, sep, path = item.partition("=")
+        if not sep or not role or not path:
+            print(f"--input {item!r}: expected ROLE=PATH", file=sys.stderr)
+            return 2
+        if role in inputs:
+            print(f"--input {role} given twice", file=sys.stderr)
+            return 2
+        inputs[role] = Path(path)
+    bundles = _pick_bundles(store, args.accession, _parse_pins(args.bundle), args.latest)
+    result = logs.run(store, bundles, inputs)
+    for ref in result.written:
+        counts = ref.record.get("engine_summary", {}).get("outcome_counts", {})
+        print(f"written  {ref.engine} artefact {ref.artefact_id}  {ref.path}")
+        print(f"  rows     {ref.row_counts}")
+        print(f"  outcomes {counts}")
+        for caveat in ref.record.get("engine_summary", {}).get("caveats") or []:
+            print(f"  caveat   {caveat}")
+    for ref in result.already_done:
+        print(f"done     {ref.engine} artefact {ref.artefact_id} already exists; nothing re-run")
+    for name in result.skipped_contaminant:
+        print(f"skipped  {name}: a contaminant database is never resolved")
     return 0
 
 
@@ -448,6 +514,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("bundle", help="bundle directory or its bundle.json")
     p.add_argument("--json", action="store_true", help="print the manifest verbatim")
     p.set_defaults(func=cmd_inspect)
+
+    p = sub.add_parser("run", help="run a released engine on stored data (the instance operator's step)")
+    p.add_argument("engine", choices=ENGINES, help="the engine to run")
+    p.add_argument("accession", nargs="+", help="datasets whose searched databases to run on")
+    p.add_argument("--store", required=True, help="the instance's bundle store")
+    p.add_argument("--input", action="append", metavar="ROLE=PATH", help="an input file by role; repeatable")
+    p.add_argument("--bundle", action="append", metavar="PXD=ID", help="pin a dataset to one bundle id")
+    p.add_argument("--latest", action="store_true", help="take each dataset's newest bundle")
+    p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("build", help="load bundles into one DuckDB catalog")
     p.add_argument("manifest", help="the producing instance's manifest.yaml")

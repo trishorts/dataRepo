@@ -54,6 +54,31 @@ def test_localizations_are_cellular_component_only_and_expand_over_accession_use
     assert len({r["source_id"] for r in rows}) == 1
 
 
+def test_gos_per_row_evidence_is_stored_as_go_wrote_it():
+    # Schema 0.0.10 (D28): the columns go's D22/D29 rows carry, taken with gene_resolutions.
+    from datarepo.bundle import table_from_rows
+
+    annotation = go.read_annotation(ANNOTATION, allow_prerelease=True)
+    rows = go.localization_rows(annotation)
+    source = {(a, r["go_id"]): r for r in annotation.rows if r["aspect"] == "cellular_component"
+              for a in r["accession_used"].split(";") if a}
+    for row in rows:
+        want = source[(row["protein_accession"], row["compartment"])]
+        assert row["protein_group"] == want["protein_group"]
+        assert row["q_value"] == float(want["q_value"])
+        assert (row["n_members"], row["n_with"]) == (int(want["n_members"]), int(want["n_with"]))
+        assert row["propagated"] == (want["propagated"] == "true")
+        assert row["inherited"] == (want["inherited"] == "true")
+    assert any(r["propagated"] for r in rows) and any(not r["propagated"] for r in rows)
+    assert table_from_rows("protein_localizations", rows).num_rows == len(rows)
+
+
+def test_a_flag_that_is_not_true_or_false_is_refused():
+    assert go._flag("") is None
+    with pytest.raises(IngestError, match="expected `true` or `false`"):
+        go._flag("yes")
+
+
 def test_categories_pair_with_their_annotation_file_and_carry_the_map():
     annotation = go.read_annotation(ANNOTATION, allow_prerelease=True)
     categories = go.read_categories(CATEGORIES, allow_prerelease=True)

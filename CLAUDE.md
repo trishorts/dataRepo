@@ -6,24 +6,24 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.19.1** (`5a09da7`, DATAREPO-51: an excluded file is not a
-  run; aging owes DATAREPO-52 on `id_rate.ms2`; aging's corpus is on 0.19.0, catalog `d2318e0d2d4450a4`), core schema
-  **0.0.9**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.14.0**,
-  `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **5**. **D27: dataRepo SHIPS,
-  the instance operator (aging) RUNS**; charter **v0.3** (`22c319c`) is out (G61 closed). Public site:
-  https://trishorts.github.io/aging-pipeline/. **First thing: run the thread checker.**
-  aging's corpus is on **0.18.1** (all 24 re-ingested, catalog `bff2ddb866c033c8`, their 061); 0.19.0
-  re-ids again (per-accession contaminant label, G66 closed; overwritten upstream provenance left
-  out with a finding) and, schema unchanged, can be adopted dataset by dataset (aging 062). Asked of
-  aging: **DATAREPO-49** (one provenance file per database preparation, G69) and **DATAREPO-50**
-  (review `design/RUNNER.md`; the user already accepted its shape as **D28**). Also waiting: go DATAREPO-45, logs DATAREPO-46, sdrf
-  DATAREPO-47 + the drafted SDRF (G62), QuantProject DATAREPO-48, ptmQtl DATAREPO-P7, pyMzLib on
-  whether the `out=` TSV is a contract (G68). Done this session: LOGS-D1 (all three species
-  identical), G63 manifest path, G15, G53 reader (`sources/go.py`, storage waits on G64), G65.
-  Next builds: **G64** the runner once aging answers DATAREPO-50, exactly as D28 says (logs first;
-  `gene_resolutions` is a schema change -- take it once, with go's per-row columns); G52 ProForma diff now that 0.2.0 fills
-  `pro_forma`; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the
-  same commit. Standing items: G48, G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13.
+- **Pick up at:** code is datarepo **0.20.0** (THE RUNNER, G64: `datarepo run logs.resolve_genes`;
+  sha in the CHANGELOG), core schema **0.0.10** (`gene_resolutions`, go's per-row columns on
+  `protein_localizations`), aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.14.0**,
+  `runner.RUNNER_VERSION` **1**, `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION`
+  **6**. **D27: dataRepo SHIPS, the instance operator (aging) RUNS.** Charter **v0.3** (`22c319c`).
+  Public site: https://trishorts.github.io/aging-pipeline/. **First thing: run the thread checker.**
+  aging's corpus is on **0.19.0** (catalog `d2318e0d2d4450a4`, 26 datasets). 0.19.1 (DATAREPO-51,
+  excluded files are not runs) and 0.20.0 (schema 0.0.10) both re-id; 0.20.0 needs one re-ingest
+  of everything, and it covers 0.19.1's change too. **aging owes DATAREPO-52** (`id_rate.ms2`
+  counts the excluded file). Next: tell aging 0.20.0 exists and how to run logs through it
+  (served runs are THEIRS); tell logs their rows are now stored, and go that its columns exist;
+  tell aging the rat gene-view number (48.6% of rat accessions have no primary-assembly gene,
+  promised in logs 020). Waiting on: go DATAREPO-45 (answered in go 012; charter fixes owed by us), logs
+  DATAREPO-46, sdrf's drafted SDRF (G62), ptmQtl P8-P12 (schema questions + their bundle), QuantProject
+  occupancy ingest (their 006), pep's cross-dataset `pep` guard (pep 002), pyMzLib on G68.
+  Other builds: G52 ProForma diff; G67 leftovers. Each change that reaches rows needs an
+  `INGESTER_VERSION` bump in the same commit (a runner change: `RUNNER_VERSION`). Standing items:
+  G48, G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13.
   **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43).
   **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
@@ -303,6 +303,9 @@ This folder is a `/project`-managed research project. **You are de facto working
     aging accepted (055, their D45). Charter v0.2 still reads the D24 way until v0.3 is written.
     dataRepo still makes scratch runs on real data to TEST its software, never to serve. Who does
     what is in `design/CHARTER.md`, which is **not in force until all eight parties sign**.
+- **`datarepo run` refuses THIS tree, by design** (editable install; aging 063). To test the runner on
+  real data, call `engines.logs.run(..., install={...stand-in...})` from Python and say it is a scratch
+  run, or install a clean clone at a commit into a venv. Never soften the refusal to make a test pass.
 - **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
 
 **Sibling project: `E:\CodeReview\aging`** (the NCEMS pipeline). aging *produces* results under
