@@ -2,14 +2,14 @@
 
 <!-- BEGIN GENERATED -- render_resume.py owns this block; edit state.yaml, not here -->
 
-**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-24
+**dataRepo** &middot; phase **INCEPTION** (1/10) &middot; created 2026-09-19 &middot; rendered 2026-09-25
 
 | | |
 |---|---|
-| Commits | 241 |
+| Commits | 270 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 28 |
-| Open gaps | 67 |
+| Locked decisions | 31 |
+| Open gaps | 71 |
 | Gate items skipped | 4 |
 
 <!-- END GENERATED -->
@@ -22,7 +22,38 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-24, nineteenth session): 0.18.0, 0.18.1, 0.19.0, and the runner's shape decided (D28)
+## Latest (2026-09-25, twentieth session): 0.19.1, 0.20.0 (the runner), 0.21.0 (PTM occupancy), charter v0.4
+
+**Code is datarepo 0.21.0 (`c163b15`, CI green), schema 0.0.11, `INGESTER_VERSION` 0.15.0,
+`RUNNER_VERSION` 1, `CATALOG_VERSION` 6.** aging's corpus is on **0.19.0** (catalog
+`d2318e0d2d4450a4`, 26 datasets). aging was asked (067, 068) to re-ingest ONCE on 0.21.0, which carries
+0.19.1 and 0.20.0 too, and then to run logs' gene resolution through the runner.
+
+- **Pick up at:** run the thread checker, then **G70**: answer pep 002 with a guard against comparing
+  raw `pep` across datasets, then reply (pep next=003). Then **G71**, ack qc 004.
+- **Shipped:**
+  - 0.19.1: files the search excluded are not runs (DATAREPO-51);
+  - 0.20.0: **the runner** (G64). `datarepo run logs.resolve_genes`, one artefact per searched
+    target database, `gene_resolutions`, go's per-row columns, and `dataset_databases` /
+    `protein_genes` in the catalog;
+  - 0.21.0: **PTM site occupancy** stored from MetaMorpheus's own cells (D29), and `ptm_pairs` at
+    site grain (D31);
+  - charter v0.4 (`874bf61`); PR board smith-chem-wisc #16.
+- **Decided by the user:** D29 (occupancy from MetaMorpheus; keep everything), D30 (ptmQtl's bundle is
+  test data until their engine is released), D31 (pairs at site grain; `n` always runs).
+- **Measured:**
+  - LOGS-D1 reproduced through the runner (20,899 human rows);
+  - PXD036557's occupancy is 1,528 / 69 / 57 (quantified / floor / count-only), aging's hand count
+    exactly;
+  - ptmQtl's intensity occupancy equals ours to 4 dp on 97.7-100% of shared sites;
+  - aging's `id_rate.ms2` counts the excluded file (DATAREPO-52).
+- **Found by filling:** the fixture's occupancy cells were placeholders, so the path was untested;
+  `intensity_unassigned` replaced a false `count_only`; `ptm_pairs.value` became nullable; CI had been
+  red since 0.18.0 on a stale example.
+- **Waiting on:** aging (the 0.21.0 re-ingest, DATAREPO-52); ptmQtl P13/P14 (G72); go, QuantProject
+  and ptmQtl checking the v0.4 wording; logs DATAREPO-46; sdrf's drafted SDRF (G62); pyMzLib on G68.
+
+## 2026-09-24 (nineteenth session): 0.18.0, 0.18.1, 0.19.0, and the runner's shape decided (D28)
 
 **Code is datarepo 0.19.0 (`708102b`), schema 0.0.9, `INGESTER_VERSION` 0.13.0, `CATALOG_VERSION` 5.**
 aging's corpus is on **0.18.1** (all 24 re-ingested, catalog `bff2ddb866c033c8`); 0.19.0 re-ids again
@@ -721,36 +752,28 @@ from a single query.
 **No server yet.** The code is the schema (YAML), the ingester and catalog builder (`src/datarepo/`), the generators (`tools/`) and the tests. The public GitHub repo is https://github.com/trishorts/dataRepo.
 ## Pick up at
 
-**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet). **aging accepted
-DATAREPO-43 in 055** (their D45): aging operates the instance, engine runs included. DATAREPO-44
-(the `run_enrichment` shape, 054) is still open.
+**First, always:** run the thread checker (`CLAUDE.md`'s threads bullet).
 
 ### The next action
 
-1. **Charter v0.3** (`design/CHARTER.md`): the RUN column and S1 become "the instance operator,
-   today aging, via datarepo's runner". U11 closes. S17 loses "proposed", because aging owns the
-   organelle map (their D46). Fold in aging's runner wish list from 055 §1: a bundle and a released
-   engine version in, idempotent, output beside the bundle and never inside it. Then send **one**
-   message each to go, logs, ptmQtl, sdrf and QuantProject covering v0.2 and v0.3 together, including
-   GO-A3's held half (the operator picks the go.obo release) (G61).
-2. **Tell pyMzLib, and logs for #1338, that the PRs merged** (G60). Retire
-   `code/mzLib_prD_proforma` and `code/mzLib_prE_peaks` (`code/PINNED.md`).
-3. **If 055 answers DATAREPO-44:** build **G63** (per-run enrichment) as specified there. It needs an
-   `INGESTER_VERSION` bump, two schema regenerations, and aging told before it lands.
-4. **Ask the user whether the `localization` project** joins the charter (G56). Do not write to it
-   before they answer.
+1. **G70, pep 002.** Raw `pep` is retrained per search, so it is not comparable across datasets, even
+   within one MetaMorpheus version. Add the refusal where it cannot be skipped (D19: the envelope and
+   the column descriptions, not only `describe`). Key a `pep` definition on (MetaMorpheus release, PEP
+   regime), marked run-relative. Consider ingesting results.txt's PEP training block. Then reply to
+   pep (next=003).
+2. **G71:** a short ack to qc 004 (payload keys held stable; go by `definitions`, not key names).
+3. When aging reports the 0.21.0 re-ingest: check the new catalog's `ptm_stoichiometry` counts and
+   `catalog_checks` kind `engine-coverage`. Served engine runs are aging's, not ours (D27).
 
 **In flight (re-check each):**
-- **mzLib release** carrying #1338/#1345/#1346: `gh release list -R smith-chem-wisc/mzLib -L 2`
-  (1.0.591 at close). Then pyMzLib: `pip index versions mzlib` (0.1.1 at close). **G52** (diff
-  mzLib's ProForma against `proforma.py` on the corpus before switching) and logs' S9 both start
-  there.
-- **pyMzLib:** DATAREPO-40 (charter), -41 (`MBRScore` `double?` in the bridge), -42 (payload limit).
-- **go:** the pre-release PXD036557 file for the reader (**G53**, which lists three schema fixes).
-- **sdrf:** a reply to 010. **G62** (SDRF `source` column, data-file gate) builds from the first
-  real SDRF that carries source columns.
-- **ptmQtl, phred:** charter rows. **logs:** its S4 namespace, and LOGS-DR1 (our first run's diff).
-- **PXD032044's first real ingest on 0.17.2** (G59).
+- **aging:** re-ingest on 0.21.0 and the first served logs runs (their thread, next=069); DATAREPO-52.
+- **ptmQtl:** P13 (what a NULL pair `value` means; write the answer into the column description) and
+  P14 (their occupancy rows MetaMorpheus did not write). G72.
+- **Charter v0.4:** go 014, QuantProject 008, ptmQtl 011 asked to check the wording. logs
+  (DATAREPO-46) and phred have not signed (G73).
+- **go:** PR B (mzLib#1353) review, then release; the D32 entrapment amendment to D18. The go engine
+  enters the runner only after the release.
+- **sdrf:** the drafted SDRF for PXD049018 (G62), after aging's SDRF-A14.
 
 **Standing:** G48 (explain `ERVK-6` for `P63135`; never back-fill `Protein.gene`), G42, G35 (do NOT
 claim D15's bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.**

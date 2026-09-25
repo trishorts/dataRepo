@@ -6,24 +6,24 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** code is datarepo **0.21.0** (PTM site occupancy stored from MetaMorpheus, D29;
-  `ptm_pairs` at site grain, D31; before it 0.20.0 = THE RUNNER, G64), core schema **0.0.11**
-  (`ptm_stoichiometry` reshaped; before it 0.0.10 `gene_resolutions` + go's per-row columns),
-  aging study layer **0.3.0**, `bundle.INGESTER_VERSION` **0.15.0**,
-  `runner.RUNNER_VERSION` **1**, `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION`
-  **6**. **D27: dataRepo SHIPS, the instance operator (aging) RUNS.** Charter **v0.3** (`22c319c`).
-  Public site: https://trishorts.github.io/aging-pipeline/. **First thing: run the thread checker.**
-  aging's corpus is on **0.19.0** (catalog `d2318e0d2d4450a4`, 26 datasets). 0.19.1 (DATAREPO-51,
-  excluded files are not runs) and 0.20.0 (schema 0.0.10) both re-id; 0.20.0 needs one re-ingest
-  of everything, and it covers 0.19.1's change too. **aging owes DATAREPO-52** (`id_rate.ms2`
-  counts the excluded file). 0.20.0 announced (`bb2b365`, CI green) in aging 066 (how to run logs;
-  served runs are THEIRS; rat gene-view number passed on), logs 021, go 013. Waiting on: go DATAREPO-45 (answered in go 012; charter fixes owed by us), logs
-  DATAREPO-46, sdrf's drafted SDRF (G62), ptmQtl P8-P12 (schema questions + their bundle), QuantProject
-  occupancy ingest (their 006), pep's cross-dataset `pep` guard (pep 002), pyMzLib on G68.
-  Other builds: G52 ProForma diff; G67 leftovers. Each change that reaches rows needs an
-  `INGESTER_VERSION` bump in the same commit (a runner change: `RUNNER_VERSION`). Standing items:
-  G48, G42, G35 (do NOT claim D15's bar), G32, G46, G33/G26/G36, G13.
-  **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build `accession_is_leading` (G43).
+- **Pick up at:** **First thing: run the thread checker.** Then **G70, answer pep 002**: add a guard
+  that refuses comparing raw `pep` across datasets (describe/sql envelope + the column descriptions;
+  a definition keyed on MetaMorpheus release + PEP regime, marked run-relative), then reply to pep
+  (next=003). Then **G71**, a short ack to qc 004. Code is datarepo **0.21.0** (`c163b15`, CI green):
+  PTM site occupancy from MetaMorpheus (D29), `ptm_pairs` at site grain (D31); 0.20.0 (`bb2b365`) is
+  THE RUNNER (G64). Core schema **0.0.11**, aging study layer **0.3.0**, `bundle.INGESTER_VERSION`
+  **0.15.0**, `runner.RUNNER_VERSION` **1**, `study.STUDY_INGESTER_VERSION` **0.4.0**,
+  `catalog.CATALOG_VERSION` **6**. **D27: dataRepo SHIPS, the instance operator (aging) RUNS.**
+  Charter **v0.4** (`874bf61`); logs (DATAREPO-46) and phred unsigned (G73). Public site:
+  https://trishorts.github.io/aging-pipeline/. **In flight:** aging's corpus is on 0.19.0 (catalog
+  `d2318e0d2d4450a4`) and was told (068) to re-ingest ONCE on 0.21.0, then run logs through the
+  runner (066 §1) -- check their thread for the new catalog id. Theirs to answer: aging DATAREPO-52
+  (`id_rate.ms2` counts the excluded file), ptmQtl P13/P14 (G72), go/QuantProject/ptmQtl checking
+  v0.4 wording, logs DATAREPO-46, sdrf's drafted SDRF (G62), pyMzLib on G68. Other builds: G52
+  ProForma diff; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the
+  same commit (a runner change: `RUNNER_VERSION`). Standing items: G48, G42, G35 (do NOT claim D15's
+  bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build
+  `accession_is_leading` (G43).
   **D1-D21 locked.**
 - **GitHub:** public at https://github.com/trishorts/dataRepo (`origin`, branch `master`). The user created it on 2026-09-19, which closed G8.
 - **PR board: smith-chem-wisc project #16 "dataRepo"** (https://github.com/orgs/smith-chem-wisc/projects/16,
@@ -305,6 +305,12 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **`datarepo run` refuses THIS tree, by design** (editable install; aging 063). To test the runner on
   real data, call `engines.logs.run(..., install={...stand-in...})` from Python and say it is a scratch
   run, or install a clean clone at a commit into a venv. Never soften the refusal to make a test pass.
+- **A fixture that does not follow the producer's grammar hides the whole path.** The test fixture's
+  occupancy cells were `0.5` placeholders, so pyMzLib refused them, no occupancy test ever ran, and
+  the first real one found a false label within minutes (0.21.0). Fixture cells must be in the
+  producer's real format, covering each state the definition names.
+- **`gh run list --commit` needs the FULL sha.** A short sha matches nothing and returns empty, so a
+  watcher loop waits forever and reports nothing. Use `git rev-parse <short>`.
 - **The .gitignore template ignores `bin/`.** Add a `!/<dir>/bin/` exception before putting code in any bin folder (G4).
 
 **Sibling project: `E:\CodeReview\aging`** (the NCEMS pipeline). aging *produces* results under

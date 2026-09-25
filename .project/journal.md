@@ -1602,3 +1602,46 @@ the typed read in 70.5M cells (G68); mzLib's ProForma matches ours for 96% of 88
 being `[UniProt:...]` where UNIMOD exists, so we do not switch (G52); 6.6% of protein intensities are
 outside QuantProject's 1% set; all 10 corpus SDRFs are community-annotated (pride). The user accepted
 the runner proposal's four choices (D28); building waits on aging's review as operator (DATAREPO-50).
+
+## 2026-09-25 - Twentieth: the runner, PTM occupancy, three releases in a day, and the user answers five questions
+
+Resumed with 13 unread messages across eight peers. Worked the triage in five steps, in order. Step 1
+confirmed sdrf's SDRF-DR9 (`default` as the sixth `source` value) and, at pride's request, created
+the smith-chem-wisc PR board #16 "dataRepo" holding our two PRs (mzLib #1345, #1346, both Shipped);
+CLAUDE.md now names the board. Step 2 was aging's DATAREPO-51: 0.19.1 (`5a09da7`) leaves files the
+search excluded out of `runs`, recorded as `excluded_from_search` findings. Filling it on PXD051644
+showed aging's `id_rate.ms2` still counts the excluded file's 101 scans (381,923 vs MetaMorpheus's
+381,822), asked as DATAREPO-52.
+
+Step 3 built the runner, G64, as 0.20.0 (`bb2b365`). `datarepo run logs.resolve_genes` writes one
+content-addressed artefact per searched TARGET database under `<store>/_engine/`, refuses an editable
+or dirty-clone datarepo (aging 063) and an unreleased pyMzLib, and checks every row against logs'
+manifest. The unit changed from the proposal on contact with the catalog: an artefact per SET of
+databases would have put the proteome's rows in twice whenever two datasets searched it with
+different extras. Filling the join found that `datasets.search_database` names only the proteome, so
+`dataset_databases` and `protein_genes` exist; the scratch run reproduced LOGS-D1 exactly (20,899
+human rows) and the same artefact id came out of the dev tree and a clean clone. I first planned to
+defer go's per-row columns and caught that D28 had locked them into the same schema change; they went
+in. CI had been red since 0.18.0 on a stale example file that no session had looked at.
+
+Step 4 was the user's to decide, so the questions went to them in plain language, and they answered
+five (D29-D31). The pooling question needed a second, longer explanation: `n` meaning runs on one row
+and datasets on the next is the same trap as the spectral-count column, and the user chose one unit
+per column. For occupancy the user said "keep as much info as you can since this is such an important
+measurement". 0.21.0 (`c163b15`) fills `ptm_stoichiometry` from MetaMorpheus's own cells with both
+bases, both halves of each cell, grouping, state and flags. PXD036557 gave 1,528 quantified / 69
+floor / 57 count-only, which is aging's hand count exactly. Two findings came from filling rather than
+reviewing: the test fixture's occupancy cells were placeholders ("0.5"), so no test had ever run the
+path; and once they were real, the first version labelled a row whose intensity cell existed but
+could not be assigned `count_only`, a claim that nothing was quantified. It is now
+`intensity_unassigned`. Loading ptmQtl's pairs (test data only, D30) made `value` nullable (1,065
+rows have none) and found three rows out of their own order. aging was warned before the build to
+hold the 0.20.0 re-ingest, so one re-ingest on 0.21.0 covers all three releases.
+
+Step 5 merged go 012, QuantProject 006 and ptmQtl 006 into charter v0.4 (`874bf61`); each was asked
+to check the merged wording. logs and phred have still not signed.
+
+Owed at close: pep 002 (the cross-dataset `pep` guard, G70) and a qc 004 ack (G71) were never
+answered this session; ptmQtl P13/P14 and aging DATAREPO-52 are theirs. One tool trap: `gh run list
+--commit` needs the full sha, and a short one silently matches nothing, which is how a background CI
+watcher reported nothing for twenty minutes.
