@@ -24,7 +24,7 @@ This folder is a `/project`-managed research project. **You are de facto working
   ptmQtl P13/P14 (G72), go/QuantProject/ptmQtl checking
   v0.4 wording, logs DATAREPO-46, sdrf's drafted SDRF (G62), pyMzLib on G68. Other builds: G52
   ProForma diff; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the
-  same commit (a runner change: `RUNNER_VERSION`). Standing items: G48, G42, G35 (do NOT claim D15's
+  same commit (a runner change: `RUNNER_VERSION`). Standing items: G48, G35 (do NOT claim D15's
   bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.** Do NOT build
   `accession_is_leading` (G43).
   **D1-D21 locked.**
@@ -52,7 +52,21 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **The Bash tool eats backslashes in heredocs here.** `\\n` inside a `<<'EOF'` Python heredoc came
   out as a real newline three times in one session, breaking the files it patched. Write patch
   scripts with the Write tool and run them. Also: bash here cannot write to `C:/...` paths; use
-  `/c/...`.
+  `/c/...`. **It bit three more times on 2026-09-26, inside quoted `<<'PYEOF'` heredocs**: any
+  patch whose NEW text contains `\n` or `\t` goes through the Edit tool, never a heredoc.
+- **A core schema bump is a full-corpus re-ingest for the operator** (every stored bundle then
+  refuses to build). If the fact is already inside the bundle (a verbatim SDRF cell, a provenance
+  copy), derive it at BUILD instead (D32). A schema bump for two link columns was written and
+  reverted on 2026-09-26 for exactly this reason. And a schema version that has been PUSHED is
+  frozen: a column added after that is the next version (0.0.12 -> 0.0.13 the same afternoon).
+- **An unexpected number from `threads.py new` means the peer posted since you last looked**
+  (sdrf 021 came back when 019 was expected; 019/020 had already built what we were about to ask
+  for). Read the new messages before writing. Never hand-edit a template's `reply_to_digest`.
+- **Test a static-file limit on the real corpus, not the fixture.** A fixed two-character protein
+  shard passed every test and was 3.6 MB on aging's data, which is the truncation it was built to avoid.
+- **The store's bundles are schema 0.0.11 and the code is 0.0.13**, so a scratch catalog from aging's
+  store needs the 0.25.0 code (a temporary worktree at `b3d97b8`, per RESUME's recipe) until aging
+  re-ingests.
 - **A windowed pyMzLib read re-parses the whole file per window** (~55 s for 1.8 GB). Windows are
   512 MiB of source (1.24 GB is known to read whole, 1.83 GB not). A proven-identical reader change
   does not bump `INGESTER_VERSION` (D26); a probably-identical one does.

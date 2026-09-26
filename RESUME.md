@@ -6,9 +6,9 @@
 
 | | |
 |---|---|
-| Commits | 296 |
+| Commits | 297 |
 | Sync | [`trishorts/dataRepo`](https://github.com/trishorts/dataRepo) |
-| Locked decisions | 31 |
+| Locked decisions | 35 |
 | Open gaps | 69 |
 | Gate items skipped | 4 |
 
@@ -22,7 +22,33 @@ reanalyses. The results cover search, quant, provenance, design and organelle an
 use it, but AI agents are the main users. The question it serves is how organelle proteomes change
 with age.
 
-## Latest (2026-09-25, twentieth session): 0.19.1, 0.20.0 (the runner), 0.21.0 (PTM occupancy), charter v0.4
+## Latest (2026-09-26, twenty-first session): 0.22.0-0.27.0, the whole inbox answered, G74/G62/G42 built
+
+**Code is datarepo 0.27.0 (`82febc3`, CI green), schema 0.0.13, `INGESTER_VERSION` 0.19.0,
+`CATALOG_VERSION` 8, aging study layer 0.4.0, `STUDY_INGESTER_VERSION` 0.5.0.** aging's serving catalog
+read `deddfb23a567c7c7` (34 datasets, bundles on 0.21.0) on 2026-09-26.
+
+- **Pick up at:** run the thread checker. Nothing is owed by us. When aging answers 072-074, check
+  their new catalog's `catalog_id` and `catalog_version` (8) and that `sample_ages` carries
+  `age_source`; when they re-ingest on 0.27.0, check `sample_characteristics.value_reserved` counts.
+- **Shipped:**
+  - 0.22.0 (`036eaa0`): `pep` run-relative warning in the sql envelope + `pep:DEF-PEP` (G70; D35);
+  - 0.23.0 (`2fcd181`): per-dataset contaminant label (catalog 7), compact MCP provenance (D34) +
+    `catalog_file_changed`, occupancy duplicate comparison, SDRF `-calib` key, `sample_ages.age_source`;
+  - 0.24.0 (`8da69d2`) / 0.24.1 (`f2c7d4a`): the site's JSON index, per-dataset JSON, adaptive
+    protein/gene shards (<=150 KB), finding types, organism x enrichment; `read_first` in describe();
+  - 0.25.0 (`b3d97b8`): `samples.<col>_name` derived at build (G74; D32);
+  - 0.26.0 (`a53cc78`) / 0.27.0 (`82febc3`): SDRF `source` / `source_reference` / `source_method`,
+    run fraction / technical replicate sources, the data-file gate (`partial` / `unmatched`), and
+    `value_reserved` (G62, G42). **Full re-ingest needed.**
+- **Measured:** 548 of 548 dropped occupancy duplicates identical (PXD024803, PXD032044); 51 samples
+  gain a tissue name; PXD010115 and PXD011314 were asked for age, sex and disease and answered `not
+  available`; `docs/limitations.md` re-measured on `deddfb23a567c7c7`.
+- **Waiting on:** aging (re-deliver ages, rebuild on 0.25.0, then re-ingest on 0.27.0; 55e fields;
+  56 publication); pep DATAREPO-60; ptmQtl P13/P14; logs DATAREPO-46; phred Q1; sdrf's first real
+  drafted SDRF (G62 remainder).
+
+## 2026-09-25 (twentieth session): 0.19.1, 0.20.0 (the runner), 0.21.0 (PTM occupancy), charter v0.4
 
 **Code is datarepo 0.21.0 (`c163b15`, CI green), schema 0.0.11, `INGESTER_VERSION` 0.15.0,
 `RUNNER_VERSION` 1, `CATALOG_VERSION` 6.** aging's corpus is on **0.19.0** (catalog
@@ -756,26 +782,30 @@ from a single query.
 
 ### The next action
 
-1. **G70, pep 002.** Raw `pep` is retrained per search, so it is not comparable across datasets, even
-   within one MetaMorpheus version. Add the refusal where it cannot be skipped (D19: the envelope and
-   the column descriptions, not only `describe`). Key a `pep` definition on (MetaMorpheus release, PEP
-   regime), marked run-relative. Consider ingesting results.txt's PEP training block. Then reply to
-   pep (next=003).
-2. **G71:** a short ack to qc 004 (payload keys held stable; go by `definitions`, not key names).
-3. When aging reports the 0.21.0 re-ingest: check the new catalog's `ptm_stoichiometry` counts and
-   `catalog_checks` kind `engine-coverage`. Served engine runs are aging's, not ours (D27).
+Nothing is owed by us at the 2026-09-26 close. The next action depends on who answers first:
 
-**In flight (re-check each):**
-- **aging:** re-ingest on 0.21.0 and the first served logs runs (their thread, next=069); DATAREPO-52.
-- **ptmQtl:** P13 (what a NULL pair `value` means; write the answer into the column description) and
-  P14 (their occupancy rows MetaMorpheus did not write). G72.
-- **Charter v0.4:** go 014, QuantProject 008, ptmQtl 011 asked to check the wording. logs
-  (DATAREPO-46) and phred have not signed (G73).
-- **go:** PR B (mzLib#1353) review, then release; the D32 entrapment amendment to D18. The go engine
-  enters the runner only after the release.
-- **sdrf:** the drafted SDRF for PXD049018 (G62), after aging's SDRF-A14.
+1. **aging answers 072-074:** read their new catalog's `catalog_meta` (expect `catalog_version` 8)
+   and check that `sample_ages` rows carry `age_source` (236 rows, all `curated`). When they re-ingest
+   on 0.27.0, count `sample_characteristics` rows with `value_reserved` (on the 5 SDRF datasets a
+   scratch re-ingest gave 12-18 per characteristic per dataset) and check that every `sdrf_status`
+   is still `trusted`.
+2. **sdrf sends a real drafted SDRF** (from `e9513dd4` / mzLib #1374): run it through a scratch
+   ingest and report `source`, `source_method` and `fraction_source` counts back (G62 remainder).
+3. **Otherwise, build:** G70 remainder, which ingests `results.txt`'s PEP training block (AUC,
+   LogLoss, counts) and tells pep. It needs an `INGESTER_VERSION` bump, so batch it with the next
+   ingest change.
 
-**Standing:** G48 (explain `ERVK-6` for `P63135`; never back-fill `Protein.gene`), G42, G35 (do NOT
+**In flight (re-check each with the thread checker):**
+- **aging:** re-deliver `sample_ages` (layer 0.4.0), rebuild on 0.25.0, regenerate the site, then
+  re-ingest all on 0.27.0; add `pipeline.public_repo/public_commit` (55e); decide the catalog /
+  Parquet publication (56, Zenodo recommended). Their 57c (occupancy sentence) is in their `--about`.
+- **pep:** DATAREPO-60, checking `pep:DEF-PEP`'s wording (default: it stands).
+- **ptmQtl:** P13 (what a NULL pair `value` means) and P14. G72.
+- **Charter v0.4:** logs (DATAREPO-46) and phred have not signed (G73).
+- **go:** PR B (mzLib#1353) review, then release.
+- **sdrf:** the first real drafted SDRF.
+
+**Standing:** G48 (explain `ERVK-6` for `P63135`; never back-fill `Protein.gene`), G35 (do NOT
 claim D15's bar), G32, G46, G33/G26/G36, G13. **N1/G9 goes to the next NCEMS meeting regardless.**
 **`/project advance`**: the phase still says INCEPTION and the work is plainly BUILD. It is a gated
 step, not a close-out edit.

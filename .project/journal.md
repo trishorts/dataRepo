@@ -1645,3 +1645,47 @@ Owed at close: pep 002 (the cross-dataset `pep` guard, G70) and a qc 004 ack (G7
 answered this session; ptmQtl P13/P14 and aging DATAREPO-52 are theirs. One tool trap: `gh run list
 --commit` needs the full sha, and a short one silently matches nothing, which is how a background CI
 watcher reported nothing for twenty minutes.
+
+## 2026-09-26 - Twenty-first: six releases in a day, the whole inbox answered, G74, G62 and G42 built
+
+The session opened on G70. pep's 002 had said raw `pep` is not comparable across datasets even within
+one MetaMorpheus release, because the model is retrained on every search. 0.22.0 put that into the
+`sql` envelope (`run_relative_columns`) and into a per-bundle `pep:DEF-PEP` definition, versioned by
+release and PEP regime. The regime is read from the task files by MetaMorpheus's own rule, and all 204
+stored bundles read `standard`. It warns rather than refuses (D35): the query text cannot tell a
+within-dataset ranking from a cross-dataset comparison. On aging's catalog the per-dataset median
+`pep` ranges from 0 to 1, which is the kind of number the guard is there to stop.
+
+Then aging's 069-071 (DATAREPO-53..59) and sdrf's 016-017, in three releases. 0.23.0 made the
+contaminant label per dataset. The corpus-wide `bool_or` flag had called human albumin a contaminant
+everywhere, and the site's protein count had silently dropped it. 0.23.0 also compacted MCP
+provenance (D34), made the server say when its catalog file has been replaced, added
+`sample_ages.age_source` so that `normalizer_version` names only software, and stripped `-calib` in
+the SDRF run key. The occupancy duplicates were measured by a scratch re-ingest: all 548 were
+identical to the kept row and came from the same group. 0.24.0 rebuilt the public site's JSON after
+aging's agent test drive. The first version of the protein index used a fixed two-character shard,
+and on real data `Q9.json` came out at 3.6 MB, which is the very truncation 55a was about. It became
+adaptive, capped at 150 KB. 0.24.1 was words only: `read_first` in `describe()`.
+
+Re-measuring `docs/limitations.md` for 57b found G74. The term-only sample columns turned an SDRF's
+plain "heart" into NULL for 51 samples. 0.25.0 derives `<col>_name` at build instead of in the schema
+(D32). The same reasoning had already reverted a schema bump for aging's public pipeline pair an hour
+earlier: both facts were already inside the bundles, and a schema bump would have forced a
+34-dataset re-ingest for nothing.
+
+G62 and G42 did need the ingester, so they went together into 0.26.0 (schema 0.0.12):
+- sdrf's source columns are stored verbatim, with no enum, and NULL when absent;
+- `value_reserved` keeps `not available` cells as rows;
+- a data-file gate replaces "refuse the bundle" with `partial` / `unmatched`.
+
+The scratch re-ingest showed at once what G42 had hidden: two deposits were asked for age and
+answered `not available`. sdrf's 019/020 then arrived with the method column and fraction sources
+already built, so `source_method` went out as 0.27.0 (0.0.13) rather than editing a released schema.
+One re-ingest on 0.27.0 covers everything since 0.21.0.
+
+Twice the only thing between a wrong claim and a posted thread was re-checking before sending: the
+CI result sentence in aging 072, and a placeholder `reply_to_digest` in sdrf 021. The Bash heredoc
+backslash trap bit three times in one day, turning `\n` and `\t` into real characters inside patched
+code, and each time the file failed to parse. Owed at close: nothing by us. aging owes the
+`sample_ages` re-delivery, the rebuild on 0.25.0 and the 0.27.0 re-ingest. pep owes DATAREPO-60,
+ptmQtl P13/P14, logs DATAREPO-46 and phred Q1. sdrf will send the first real drafted SDRF.

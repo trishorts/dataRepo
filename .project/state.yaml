@@ -369,6 +369,33 @@ decisions:
       a dataset, `meta`, or `meta:<species>`; pooled rows list their `datasets`; the dataset count gets
       its own column `n_datasets`, and `n` ALWAYS means runs (total over the pooled datasets, or NULL) --
       one column never holds two units (the spectral-count lesson, 0.18.0).
+  - id: D32
+    date: 2026-09-26
+    text: >-
+      Derive at BUILD, not at ingest, when the fact is already stored verbatim in the bundle. A core
+      schema bump makes every stored bundle refuse to build until the operator re-ingests the whole
+      corpus, so it is spent only on facts the bundle does not hold. Applied twice on 2026-09-26: G74's
+      `samples.<col>_name` come from `sample_characteristics` at build (0.25.0), and aging's public
+      pipeline commit (55e) is read by the site from the bundle's own provenance copy (0.24.0) -- a
+      0.0.12 schema for two link columns was written and reverted. Default (dataRepo), not a user ruling.
+  - id: D33
+    date: 2026-09-26
+    text: >-
+      dataRepo publishes no usable / caution / exclude verdict on a dataset (aging 069 55d). It shows
+      finding counts by severity and finding types; whether a dataset is fit for a question is a
+      definition, and by D24 the instance owner would publish it (we display its result if they do).
+  - id: D34
+    date: 2026-09-26
+    text: >-
+      Every MCP answer carries COMPACT provenance (catalog_id, versions, n_bundles, kind); the full
+      bundle list is only in describe() with no target (aging 070 DATAREPO-58). catalog_id hashes that
+      exact list, so it is the whole citation (the D20 reasoning, one step further).
+  - id: D35
+    date: 2026-09-26
+    text: >-
+      Run-relative columns (`pep`, `best_pep`, `pep_q_value`) get a WARNING in the sql envelope, not a
+      refusal (G70, pep 002): a within-dataset ranking and a count at a threshold are correct uses, and
+      the query text cannot tell them from a cross-dataset comparison.
 gaps:
   - >-
     G1 Framework. Steps 1 (ingest), 2 (build) and 3 (MCP) are BUILT and locked as D9/D10/D12-D15.
