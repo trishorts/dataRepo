@@ -328,3 +328,12 @@ def test_occupancy_entries_not_stored_are_reported_not_dropped(bundle, tables):
     # Every entry is accounted for: 6 stored entries fill 4 rows (2 rows carry both bases).
     assert sum(note["not_stored"].values()) + 6 == note["entries"]
     assert "QuantProject:DEF-OCC-CELL" in {d["definition_id"] for d in tables["definitions"]}
+
+
+def test_pep_travels_with_its_definition_versioned_by_release_and_regime(tables):
+    """G70 / pep 002: there is no PEP method id, so the release and regime stand in for one."""
+    (row,) = [d for d in tables["definitions"] if d["definition_id"] == defs.PEP_ID]
+    assert row["owner_project"] == "pep"
+    assert "RUN-RELATIVE" in row["text"]
+    assert row["version"].startswith("MetaMorpheus ")
+    assert row["version"].endswith("; regime standard")

@@ -696,3 +696,46 @@ def test_prose_generated_from_a_different_schema_says_so(server, monkeypatch):
     assert "schema_drift" in server.describe("psms")
     assert "schema_drift" in server.describe()
     assert "schema_drift" in server.describe("Acquisition")
+
+
+# --- G70: `pep` is run-relative (pep 002) ----------------------------------------------------------
+
+
+def test_a_query_reading_pep_is_told_it_is_run_relative(server):
+    """`median(pep) GROUP BY dataset_id` reads as a comparison of datasets and is not one: each
+    search trains its own PEP model. The note is in the sql envelope because describe can be skipped."""
+    result = server.sql("SELECT dataset_id, median(pep) FROM psms GROUP BY 1")
+    assert list(result["run_relative_columns"]) == ["pep"]
+    assert "Do not compare their values across datasets" in result["run_relative_means"]
+    assert "pep:DEF-PEP" in result["run_relative_means"]
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("SELECT p.pep AS score FROM psms p", ["pep"]),  # renamed: the result column says nothing
+        ("SELECT * FROM psms LIMIT 1", ["pep", "pep_q_value"]),  # a star over a table that holds them
+        ("SELECT count(*) FROM peptidoforms WHERE best_pep < 0.01", ["best_pep"]),  # filter only
+        ("WITH t AS (SELECT pep_q_value AS x FROM psms) SELECT count(*) FROM t", ["pep_q_value"]),
+    ],
+)
+def test_the_run_relative_note_sees_through_aliases_stars_and_ctes(server, query, expected):
+    assert sorted(server.sql(query)["run_relative_columns"]) == expected
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT dataset_id, count(*) FROM psms WHERE q_value <= 0.01 GROUP BY 1",
+        "SELECT * FROM datasets",  # a star over a table with no PEP column
+    ],
+)
+def test_a_query_that_reads_no_pep_carries_no_pep_language(server, query):
+    assert "run_relative_columns" not in server.sql(query)
+
+
+def test_the_pep_columns_describe_themselves_as_run_relative(server):
+    means = {c["column"]: c.get("means") or "" for c in server.describe("psms", detail="detailed")["columns"]}
+    assert "RUN-RELATIVE" in means["pep"]
+    assert "moves whenever `pep` does" in means["pep_q_value"]
+    assert "does not depend on PEP" in means["q_value"]

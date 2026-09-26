@@ -1025,3 +1025,24 @@ def test_ptm_pairs_take_site_grain_and_per_species_pooling_with_n_kept_as_runs()
     assert table.num_rows == 1
     assert TABLES["ptm_pairs"].field("n").nullable  # NULL on a pooled row whose run total is unknown
     assert TABLES["ptm_pairs"].field("feature_type").nullable is False
+
+
+def test_pep_regime_follows_metamorpheus_and_refuses_to_guess(tmp_path):
+    """G70: MetaMorpheus picks the PEP feature set by search type (`FdrAnalysisEngine.cs:410-416`)."""
+    from datarepo.sources import search_params
+
+    def task(name, text):
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    gptmd = task("2_GptmdTask.toml", 'TaskType = "Gptmd"\n')
+    search = task("3_SearchTask.toml", 'TaskType = "Search"\n[CommonParameters.DigestionParams]\nProtease = "trypsin"\n')
+    assert search_params.pep_regime([gptmd, search]) == "standard"
+    top_down = task("td.toml", 'TaskType = "Search"\n[CommonParameters.DigestionParams]\nProtease = "top-down"\n')
+    assert search_params.pep_regime([top_down]) == "top-down"
+    assert search_params.pep_regime([task("xl.toml", 'TaskType = "XLSearch"\n')]) == "crosslink"
+    # Glyco's mapping is not established, and two searches that disagree have no one regime.
+    assert search_params.pep_regime([task("g.toml", 'TaskType = "GlycoSearch"\n')]) is None
+    assert search_params.pep_regime([search, top_down]) is None
+    assert search_params.pep_regime([gptmd]) is None

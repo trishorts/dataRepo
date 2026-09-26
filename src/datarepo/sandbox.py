@@ -310,17 +310,8 @@ class Sandbox:
             opaque table function, or is a kind whose reads this cannot see. **None means "unknown"
             and must never be rendered as "no tables".**
         """
-        import duckdb  # noqa: PLC0415
-
-        try:
-            document = self._con.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()
-        except duckdb.Error:
-            return None
-        if not document or not document[0]:
-            return None
-        try:
-            tree = json.loads(document[0])
-        except ValueError:
+        tree = self._parse_tree(sql)
+        if tree is None:
             return None
 
         tables: set[str] = set()
@@ -351,6 +342,54 @@ class Sandbox:
         if opaque:
             return None
         return sorted(tables - ctes)
+
+    def referenced_columns(self, sql: str) -> tuple[set[str], bool] | None:
+        """The column names a statement names, and whether it expands a `*` or `COLUMNS(...)`.
+
+        From the same parse tree as `referenced_tables`, so an alias (`pep AS x`) still names
+        `pep`. Names are lower-cased and unqualified (`p.pep` is `pep`). **A hint, like
+        `referenced_tables`**: a star is reported rather than resolved, because which columns it
+        reaches depends on tables this does not look inside.
+
+        Returns:
+            `(names, expands_star)`, or `None` when the statement could not be parsed.
+        """
+        tree = self._parse_tree(sql)
+        if tree is None:
+            return None
+        names: set[str] = set()
+        star = False
+
+        def walk(node: Any) -> None:
+            nonlocal star
+            if isinstance(node, dict):
+                if node.get("class") == "COLUMN_REF" and node.get("column_names"):
+                    names.add(str(node["column_names"][-1]).lower())
+                if node.get("class") == "STAR":
+                    star = True
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(tree)
+        return names, star
+
+    def _parse_tree(self, sql: str) -> Any | None:
+        """DuckDB's own parse of `sql` (`json_serialize_sql`), or None when it cannot be parsed."""
+        import duckdb  # noqa: PLC0415
+
+        try:
+            document = self._con.execute("SELECT json_serialize_sql(?)", [sql]).fetchone()
+        except duckdb.Error:
+            return None
+        if not document or not document[0]:
+            return None
+        try:
+            return json.loads(document[0])
+        except ValueError:
+            return None
 
     def has_table(self, name: str) -> bool:
         """Is this table or view present? A catalog built before a table existed still is one."""

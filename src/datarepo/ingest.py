@@ -631,7 +631,14 @@ def ingest_dataset(
     )
     if psm_rows:
         used.add(defs.NOTCH_AMBIGUOUS.definition_id)
-    writer.add("definitions", defs.rows(used))
+    definition_rows = defs.rows(used)
+    # `pep` is stored on every PSM and is comparable only inside the search that wrote it (pep 002),
+    # so the text saying so travels with the rows, versioned by the release and regime behind them.
+    if psm_rows:
+        definition_rows.append(
+            defs.pep_definition(engine_version, search_params.pep_regime(task_files)).row()
+        )
+    writer.add("definitions", definition_rows)
 
     writer.notes = {
         "instance": manifest.instance,

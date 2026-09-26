@@ -96,6 +96,38 @@ def task_names(provenance: dict[str, Any]) -> list[str]:
     return [str(t) for t in ((provenance.get("params") or {}).get("tasks") or [])]
 
 
+def pep_regime(task_files: list[Path]) -> str | None:
+    """Which of MetaMorpheus's PEP feature sets trained the search's PEP model.
+
+    MetaMorpheus picks it from the first PSM (`FdrAnalysisEngine.Compute_PEPValue`, at
+    `FdrAnalysisEngine.cs:410-416`): `crosslink` for a crosslink search, `top-down` when the
+    protease is "top-down", `RNA` for oligos, and `standard` otherwise. Read here from the task
+    files -- `TaskType` and `CommonParameters.DigestionParams.Protease` -- and claimed only for
+    task types whose mapping is certain: a `Search` task is `top-down` or `standard` by protease,
+    and an `XLSearch` is `crosslink`. Anything else (glyco, RNA, a type not seen yet) is None
+    rather than a guess, and so are two search tasks that disagree.
+    """
+    regimes = set()
+    for path in task_files:
+        if not path.is_file():
+            continue
+        try:
+            doc = tomllib.loads(path.read_text(encoding="utf-8-sig"))
+        except tomllib.TOMLDecodeError:
+            continue
+        task_type = str(doc.get("TaskType") or "")
+        if task_type == "XLSearch":
+            regimes.add("crosslink")
+        elif task_type == "Search":
+            digestion = (doc.get("CommonParameters") or {}).get("DigestionParams") or {}
+            regimes.add("top-down" if str(digestion.get("Protease")) == "top-down" else "standard")
+        elif "search" in task_type.lower():
+            regimes.add(None)
+    if len(regimes) != 1:
+        return None
+    return regimes.pop()
+
+
 #: MetaMorpheus's `SearchParameters.TCAmbiguity` default (`TaskLayer/SearchTask/SearchParameters.cs:50`).
 TC_AMBIGUITY_DEFAULT = "RemoveContaminant"
 

@@ -264,6 +264,37 @@ PRECURSOR_COUNT = Def(
     "NOT a count of scans, and it is not a count of distinct species.",
 )
 
+#: pep's description of MetaMorpheus's PEP columns (pep 002, G70). Unlike the others its VERSION is
+#: per bundle: there is no PEP method identifier, and the model is retrained on every search, so the
+#: nearest thing to one is the (release, regime) pair pep suggested keying it on.
+PEP_ID = "pep:DEF-PEP"
+_PEP_TEXT = (
+    "DEF-PEP -- `PEP` and `PEP_QValue` in MetaMorpheus's AllPSMs.psmtsv / AllPeptides.psmtsv "
+    "(dataRepo `psms.pep`, `psms.pep_q_value`, `peptidoforms.best_pep`). "
+    "RUN-RELATIVE. `PepAnalysisEngine` trains an ML.NET gradient-boosted classifier on the search's "
+    "OWN targets and decoys and writes its output onto every PSM. No fixed model ships, so two "
+    "datasets are scored by two models trained on different class balances, even on one release "
+    "(one dataset, same 30 files, trained at 22:1 target:decoy under a +-0.5 Da search and 1.43:1 "
+    "under +-20 ppm). The value is a Platt-calibrated classifier score, not an error rate: measured "
+    "13.8 sigma optimistic in its most confident bin at peptide level. "
+    "Comparable: the ranking by PEP within one dataset, and counts at a threshold (e.g. targets at "
+    "PEP_QValue <= 0.01). Not comparable: PEP values or distributions across datasets or releases. "
+    "`PEP_QValue` is computed by ordering on PEP and moves with it; the plain q-value comes from the "
+    "search-score ordering, ignores PEP, and is the more stable column across releases. "
+    "No PEP method identifier exists; this definition's version is the MetaMorpheus release and "
+    "the PEP regime (standard / top-down / crosslink / RNA, each a different feature set in "
+    "`PsmData.trainingInfos`). The per-run training metrics (AUC, LogLoss, training counts) in "
+    "results.txt are the only record of the model that produced the numbers. "
+    "[Source: pep thread 002 to dataRepo, 2026-09-25.]"
+)
+
+
+def pep_definition(release: str | None, regime: str | None) -> Def:
+    """DEF-PEP for one search, versioned by the release and regime that produced its PEP values."""
+    version = f"MetaMorpheus {release or 'release not recorded'}; regime {regime or 'not recorded'}"
+    return Def(PEP_ID, version, "pep", _PEP_TEXT)
+
+
 ALL: tuple[Def, ...] = (
     PSM_1PCT,
     NOTCH_AMBIGUOUS,

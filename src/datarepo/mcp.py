@@ -85,6 +85,22 @@ SEARCH_LIMIT_MAX = 200
 #: enter, in a tool whose whole job is to keep them out.
 PEPTIDE_RE = re.compile(r"^[ACDEFGHIKLMNPQRSTVWY]{6,}$")
 
+#: Columns whose VALUE means something only inside the search that wrote it (pep 002, G70).
+#: MetaMorpheus retrains its PEP model from scratch on every search, on that search's own targets
+#: and decoys, so two datasets' `pep` come from two different models even on one release. Stored
+#: faithfully, and useful -- within one dataset the ranking is sound, and a count at a threshold
+#: compares -- but `median(pep) GROUP BY dataset_id` reads as a comparison and is not one. Put in
+#: the `sql` envelope, not only in the column descriptions, for D19's reason: `describe` can be
+#: skipped and an envelope field cannot.
+RUN_RELATIVE_COLUMNS: dict[str, str] = {
+    "pep": "run-relative: a per-search model's score, not comparable across datasets or releases",
+    "best_pep": "run-relative: the lowest `pep` of the dataset's PSMs, so it inherits `pep`'s scale",
+    "pep_q_value": (
+        "ordered by `pep`, so it moves whenever `pep` does; a count at a threshold compares within "
+        "one MetaMorpheus release. Across releases use `q_value`, which does not depend on PEP"
+    ),
+}
+
 
 class ToolError(DataRepoError):
     """The tool was called with something it cannot act on. The message says what to send instead."""
@@ -1106,6 +1122,20 @@ class CatalogServer:
                 f"query: check before reporting an absence as a finding. An undelivered table is "
                 f"never evidence for a negative answer."
             )
+        run_relative = self._run_relative_read(query, result.columns, touched)
+        if run_relative:
+            out["run_relative_columns"] = {c: RUN_RELATIVE_COLUMNS[c] for c in run_relative}
+            # Not a refusal: a within-dataset ranking and a count at a threshold are correct uses,
+            # and nothing in the text of a query says which one it is. It states what the values
+            # are, which the reader cannot see from the numbers.
+            out["run_relative_means"] = (
+                f"This query reads {', '.join(run_relative)}. MetaMorpheus trains its PEP model "
+                f"afresh on every search, so these values are on a scale set by the search that "
+                f"wrote them. Rank or threshold them WITHIN one dataset. Do not compare their values "
+                f"across datasets or MetaMorpheus releases (no per-dataset medians, means or "
+                f"distributions set side by side): compare counts at a threshold instead, and prefer "
+                f"`q_value` across releases. Definition: describe('pep:DEF-PEP')."
+            )
         if result.truncated:
             out["truncated_by"] = result.truncated_by
             out["truncated_means"] = (
@@ -1115,6 +1145,28 @@ class CatalogServer:
             )
         return out
 
+
+    def _run_relative_read(
+        self, query: str, result_columns: Sequence[str], touched: list[dict[str, Any]] | None
+    ) -> list[str]:
+        """The `RUN_RELATIVE_COLUMNS` a statement reads, as far as can be seen.
+
+        Three routes, any one enough: the parse names the column (through an alias too); the result
+        has a column of that name; or the statement expands a `*` and reads a table that holds one.
+        The last over-reports -- `count(*) FROM (SELECT * FROM psms)` reads no `pep` -- and that
+        side is chosen on purpose: an unneeded note costs a sentence, a missing one a wrong answer.
+        What it cannot see is a value renamed inside a CTE whose parse this does not reach; that is
+        why the column descriptions carry the same warning.
+        """
+        hits = {c.lower() for c in result_columns} & RUN_RELATIVE_COLUMNS.keys()
+        parsed = self.box.referenced_columns(query)
+        if parsed is not None:
+            names, star = parsed
+            hits |= names & RUN_RELATIVE_COLUMNS.keys()
+            if star:
+                for table in touched or []:
+                    hits |= set(self._column_types(table["table"])) & RUN_RELATIVE_COLUMNS.keys()
+        return sorted(hits)
 
     def _tables_touched(self, query: str) -> tuple[list[dict[str, Any]] | None, str | None]:
         """The catalog tables a statement reads, or `(None, why)` when that cannot be determined.
