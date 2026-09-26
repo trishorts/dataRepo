@@ -990,17 +990,11 @@ gaps:
   - "G4 .gitignore template ignores bin/ (same as aging G21); add !/<dir>/bin/ exceptions if code lands in a bin/ folder."
   - "G9 Does NCEMS host public web services (not just compute)? Ask an NCEMS contact; if not, D1's production target needs revisiting."
   - >-
-    G70 pep 002 (answered our 001, NOT yet replied to): raw `pep` is not comparable across datasets even
-    within one MetaMorpheus version (the model is retrained per search, Platt-calibrated, 13.8 sigma
-    optimistic in its top bin), and `pep_q_value` moves with it while `q_value` does not. Owed: a guard
-    (describe/sql envelope + column descriptions) refusing cross-dataset comparison of raw `pep`; a
-    definition keyed on (MetaMorpheus release, PEP regime) marked run-relative; optionally ingest the
-    results.txt PEP training block (AUC, LogLoss, counts). Then reply to pep (next=003).
-  - >-
-    G71 qc 004 (no asks) is unanswered: payload keys held stable, count terms and grains now in qc's
-    contract (`dataset_*` keys; per-file vs whole-search), `pg_missing_frac_msms` added, older payloads
-    carry old definition ids -- go by the `definitions` entry, not the key. Owed: a short ack; ingesting
-    qc payloads is later (their QC-Q16).
+    G70 pep, remainder. The guard and `pep:DEF-PEP` shipped in 0.22.0 (`036eaa0`) and pep 003 told them.
+    It warns and does not refuse. Left: (a) ingest the results.txt PEP training block (AUC, LogLoss,
+    training counts) the next time the results.txt reader changes, and tell pep; (b) DATAREPO-60, pep to
+    check DEF-PEP's wording (default: the text stands). The next re-ingest carries DEF-PEP into aging's
+    catalog; the guard works without it.
   - >-
     G72 ptmQtl, after 0.21.0: DATAREPO-P13 (what a NULL `ptm_pairs.value` on a P row means; 1,065 in
     their bundle) and DATAREPO-P14 (their occupancy rows MetaMorpheus did not write: 3,030 / 1,280 / 191)
