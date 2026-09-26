@@ -9,13 +9,14 @@ This folder is a `/project`-managed research project. **You are de facto working
 - **Pick up at:** **First thing: run the thread checker.** The inbox was cleared on 2026-09-26:
   aging 072 answered DATAREPO-53..59, sdrf 018 answered DR10/DR11, pep 003 and qc 005 sent. **In
   flight with aging:** re-deliver `sample_ages` under layer 0.4.0 with `age_source` (all 236 rows),
-  rebuild the catalog on 0.25.0 (format 8, per aging 073; the site refuses older than 7), regenerate the site; re-ingest
-  when convenient; add `pipeline.public_repo/public_commit` to provenance (55e); decide the
-  catalog/Parquet publication (56, Zenodo recommended). Next builds: **G62** (SDRF source columns, now seven values + method + fraction sources),
-  G70 remainder (results.txt PEP block). Code is datarepo **0.25.0** (`b3d97b8`, CI green: G74 sample `_name` columns); 0.24.1 (`f2c7d4a`) read_first; 0.24.0
+  rebuild the catalog on 0.25.0 (format 8, per aging 073; the site refuses older than 7), regenerate the site; then
+  re-ingest ALL on 0.27.0 when convenient (schema 0.0.13, aging 074); add `pipeline.public_repo/public_commit` to provenance (55e); decide the
+  catalog/Parquet publication (56, Zenodo recommended). G62 and G42 are BUILT (0.26.0/0.27.0); next: run a real drafted SDRF from sdrf (`e9513dd4`, mzLib #1374)
+  through an ingest when they send one (G62 remainder), G70 remainder (results.txt PEP block). Code is datarepo **0.27.0** (`82febc3`, CI green: `source_method`); 0.26.0 (`a53cc78`) SDRF sources, data-file gate,
+  `value_reserved`; 0.25.0 (`b3d97b8`) G74 sample `_name` columns; 0.24.1 (`f2c7d4a`) read_first; 0.24.0
   (`8da69d2`) the site; 0.23.0 (`2fcd181`) per-dataset contaminant, compact provenance, age_source;
-  0.22.0 (`036eaa0`) pep guard. Core schema **0.0.11**, aging study layer **0.4.0**,
-  `bundle.INGESTER_VERSION` **0.17.0**, `runner.RUNNER_VERSION` **1**,
+  0.22.0 (`036eaa0`) pep guard. Core schema **0.0.13**, aging study layer **0.4.0**,
+  `bundle.INGESTER_VERSION` **0.19.0**, `runner.RUNNER_VERSION` **1**,
   `study.STUDY_INGESTER_VERSION` **0.5.0**, `catalog.CATALOG_VERSION` **8**. **D27: dataRepo SHIPS,
   the instance operator (aging) RUNS.** Charter **v0.4** (`874bf61`); logs (DATAREPO-46) and phred
   unsigned (G73). Public site: https://trishorts.github.io/aging-pipeline/. aging's serving catalog
