@@ -58,7 +58,7 @@ from typing import Any, Literal, Sequence, get_args
 from . import __version__
 from ._schema_docs import ENUMS, SCHEMA_DESCRIPTION, STUDY_ENUMS, STUDY_TABLE_DOCS, TABLE_DOCS
 from ._tables import SCHEMA_VERSION
-from .catalog import DERIVED_DOCS
+from .catalog import DERIVED_COLUMN_DOCS, DERIVED_DOCS
 from .errors import CatalogError, DataRepoError, QueryRefused, QueryTimeout
 from .sandbox import CHAR_CAP, ROW_CAP, TIMEOUT_SECONDS, Sandbox
 
@@ -540,6 +540,15 @@ class CatalogServer:
         for layer, tables in STUDY_TABLE_DOCS.items():
             for name, doc in tables.items():
                 docs[name] = {**doc, "layer": layer}
+        for table, columns in DERIVED_COLUMN_DOCS.items():
+            if table in docs:
+                docs[table] = {
+                    **docs[table],
+                    "columns": {
+                        **docs[table].get("columns", {}),
+                        **{c: {"description": text} for c, text in columns.items()},
+                    },
+                }
         for name, doc in DERIVED_DOCS.items():
             docs[name] = {
                 "description": doc["description"],
@@ -1018,29 +1027,35 @@ class CatalogServer:
 
     def _search_sample(self, query: str, limit: int):
         like = f"%{query.lower()}%"
+        # The `_name` columns exist in catalogs from format 8 on (G74): the term columns are NULL
+        # wherever the SDRF names a value without an accession, which is most of the time.
+        have = set(self._column_types("samples")) if self.box.has_table("samples") else set()
+        listed = [
+            (c, alias) for c, alias in (
+                ("organism", "organisms"), ("organism_part", "organism_parts"),
+                ("organism_part_name", "organism_part_names"), ("cell_type", "cell_types"),
+                ("cell_type_name", "cell_type_names"), ("sex_name", "sex_names"),
+                ("disease", "diseases"), ("disease_name", "disease_names"),
+                ("condition", "conditions"),
+            ) if c in have
+        ]
+        searched = [c for c, _ in listed] + [c for c in ("cell_line", "source_name") if c in have]
         rows = self._maybe(
             "samples",
             # NULLs are filtered out rather than coalesced to a placeholder: an empty list reads as
             # "not recorded for these samples", where a list of '-' reads as a value.
             "SELECT dataset_id, count(*) AS n_samples, "
-            "list_sort(list(DISTINCT organism) FILTER (WHERE organism IS NOT NULL)) AS organisms, "
-            "list_sort(list(DISTINCT organism_part) FILTER (WHERE organism_part IS NOT NULL)) "
-            "  AS organism_parts, "
-            "list_sort(list(DISTINCT cell_type) FILTER (WHERE cell_type IS NOT NULL)) AS cell_types, "
-            "list_sort(list(DISTINCT disease) FILTER (WHERE disease IS NOT NULL)) AS diseases, "
-            "list_sort(list(DISTINCT condition) FILTER (WHERE condition IS NOT NULL)) AS conditions "
-            "FROM samples WHERE lower(coalesce(organism, '')) LIKE ? "
-            "OR lower(coalesce(organism_part, '')) LIKE ? OR lower(coalesce(cell_type, '')) LIKE ? "
-            "OR lower(coalesce(disease, '')) LIKE ? OR lower(coalesce(condition, '')) LIKE ? "
-            "OR lower(coalesce(cell_line, '')) LIKE ? OR lower(coalesce(source_name, '')) LIKE ? "
-            "GROUP BY dataset_id ORDER BY dataset_id",
-            [like] * 7,
+            + ", ".join(
+                f'list_sort(list(DISTINCT "{c}") FILTER (WHERE "{c}" IS NOT NULL)) AS {alias}'
+                for c, alias in listed
+            )
+            + " FROM samples WHERE "
+            + " OR ".join(f"lower(coalesce(\"{c}\", '')) LIKE ?" for c in searched)
+            + " GROUP BY dataset_id ORDER BY dataset_id",
+            [like] * len(searched),
             limit,
-        )
-        sources = [self._source("samples", len(rows), searched_columns=(
-            "organism", "organism_part", "cell_type", "disease", "condition", "cell_line",
-            "source_name",
-        ))]
+        ) if searched else []
+        sources = [self._source("samples", len(rows), searched_columns=tuple(searched))]
         characteristics = self._maybe(
             "sample_characteristics",
             "SELECT name, value, count(*) AS n_samples FROM sample_characteristics "

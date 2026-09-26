@@ -53,10 +53,11 @@ from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 #: `catalog_study_bundles`; "4" adds `search_modifications_placed`; "5" adds
 #: `dataset_overview.enrichment_mixed` (G63); "6" loads engine artefacts (`gene_resolutions`, G64)
 #: and `catalog_engine_artefacts`; "7" makes the contaminant label per dataset
-#: (`protein_datasets.is_contaminant`, `protein_index.n_datasets_contaminant`; aging 070 57f). Same principle as
+#: (`protein_datasets.is_contaminant`, `protein_index.n_datasets_contaminant`; aging 070 57f); "8" adds
+#: `samples.<column>_name` beside each term-only sample column (G74). Same principle as
 #: `manifest.CONTENT_FIELDS` one level down -- an id moves when its own content moves, and not
 #: otherwise.
-CATALOG_VERSION = "7"
+CATALOG_VERSION = "8"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -1037,6 +1038,79 @@ def _load_tables(con: Any, bundles: Sequence[BundleRef]) -> dict[str, int]:
     return row_counts
 
 
+#: `samples` columns that hold an ontology TERM only, and the SDRF headers whose verbatim cell names
+#: the same thing. `characteristics[...]` is preferred to `factor value[...]` when both are present.
+SAMPLE_NAME_COLUMNS: dict[str, tuple[str, ...]] = {
+    "sex_name": ("characteristics[sex]", "factor value[sex]"),
+    "organism_part_name": ("characteristics[organism part]", "factor value[organism part]"),
+    "cell_type_name": ("characteristics[cell type]", "factor value[cell type]"),
+    "disease_name": ("characteristics[disease]", "factor value[disease]"),
+}
+
+#: Descriptions for columns `build` adds to a schema table (they are in no LinkML file).
+DERIVED_COLUMN_DOCS: dict[str, dict[str, str]] = {
+    "samples": {
+        column: (
+            f"The NAME the SDRF gives for `{column.removesuffix('_name')}`, as written (from "
+            f"{' or '.join(headers)}), whether or not it carries an ontology term. Added by "
+            f"`datarepo build` from `sample_characteristics` (G74): the term column beside it is "
+            f"NULL whenever the SDRF names a value without a term, which is the common case, so "
+            f"read this column for what the deposit says. NULL here means no SDRF cell named one, "
+            f"or the cell was `not available`; the two cannot yet be told apart (G42). Never mapped "
+            f"to a term here."
+        )
+        for column, headers in SAMPLE_NAME_COLUMNS.items()
+    }
+}
+
+
+def _add_sample_names(con: Any) -> None:
+    """Give each term-only `samples` column a `<column>_name` beside it (G74).
+
+    `samples.organism_part` holds an UBERON term and nothing else, so an SDRF that says `heart`
+    with no accession -- 51 samples in 4 of aging's datasets -- read NULL there, and "which
+    datasets are heart?" came back empty while the answer sat in `sample_characteristics`. The
+    name is taken from that table, which is filled at ingest from every verbatim cell, and parsed
+    with the ingester's own `sdrf._name`, so there is one reading of an SDRF cell, not two.
+    """
+    from .sources.sdrf import _name  # noqa: PLC0415
+
+    headers = {h: (column, rank) for column, hs in SAMPLE_NAME_COLUMNS.items() for rank, h in enumerate(hs)}
+    found: dict[tuple[str, str], tuple[int, set[str]]] = {}
+    for sample_id, header, value in con.execute(
+        "SELECT sample_id, lower(trim(name)), value FROM sample_characteristics "
+        f"WHERE lower(trim(name)) IN ({', '.join('?' for _ in headers)})",
+        list(headers),
+    ).fetchall():
+        column, rank = headers[header]
+        name = _name(value or "")
+        if not name:
+            continue
+        best = found.get((sample_id, column))
+        if best is None or rank < best[0]:
+            found[(sample_id, column)] = (rank, {name})
+        elif rank == best[0]:
+            best[1].add(name)
+    for column in SAMPLE_NAME_COLUMNS:
+        con.execute(f'ALTER TABLE samples ADD COLUMN "{column}" VARCHAR')
+    rows = [
+        # Two different names under one header for one sample are both kept, never one picked.
+        (sample_id, column, "; ".join(sorted(names)))
+        for (sample_id, column), (_, names) in found.items()
+    ]
+    if not rows:
+        return
+    con.execute("CREATE TEMP TABLE _sample_names (sample_id VARCHAR, col VARCHAR, name VARCHAR)")
+    con.executemany("INSERT INTO _sample_names VALUES (?, ?, ?)", rows)
+    for column in SAMPLE_NAME_COLUMNS:
+        con.execute(
+            f'UPDATE samples SET "{column}" = n.name FROM _sample_names n '
+            f"WHERE n.sample_id = samples.sample_id AND n.col = ?",
+            [column],
+        )
+    con.execute("DROP TABLE _sample_names")
+
+
 def _build_derived(con: Any) -> None:
     """The acceptance views and the cross-dataset tables.
 
@@ -1046,6 +1120,7 @@ def _build_derived(con: Any) -> None:
     """
     from .sources.identifications import PRODUCER_THRESHOLD  # noqa: PLC0415
 
+    _add_sample_names(con)
     for name, body in ACCEPTED_VIEWS.items():
         con.execute(f'CREATE VIEW "{name}" AS {body.format(t=PRODUCER_THRESHOLD)}')
     for name, body in GRAIN_VIEWS.items():

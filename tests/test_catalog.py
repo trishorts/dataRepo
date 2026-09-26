@@ -55,6 +55,7 @@ def write_bundle(
     ptm_sites: bool = False,
     extra_source: str | None = None,
     contaminants: tuple[str, ...] = (),
+    characteristics: tuple[tuple[str, str], ...] = (),
 ) -> BundleRef:
     """One small but complete bundle: a dataset, a run, an assay, and one protein's evidence."""
     store.mkdir(parents=True, exist_ok=True)
@@ -69,6 +70,10 @@ def write_bundle(
         "sample_id": sample_id, "dataset_id": dataset_id,
         "source_name": "s1", "organism": "NCBITaxon:9606",
     }])
+    if characteristics:
+        writer.add("sample_characteristics", [
+            {"sample_id": sample_id, "name": name, "value": value} for name, value in characteristics
+        ])
     writer.add("runs", [{"run_id": run_id, "dataset_id": dataset_id, "file_name": "r1.raw"}])
     writer.add("assays", [{
         "assay_id": assay_id, "run_id": run_id, "channel": "label_free", "sample_id": sample_id,
@@ -306,6 +311,27 @@ def test_the_contaminant_label_stays_per_dataset(tmp_path, store):
         for r in rows(catalog, "SELECT * FROM protein_datasets WHERE protein_accession = 'P11111'")
     }
     assert per == {"PXD000001": None, "PXD000002": True}
+
+
+def test_a_named_tissue_with_no_term_reaches_samples_as_a_name(tmp_path, store):
+    """G74: `organism_part` holds a term only, so 51 samples whose SDRF says `heart` read NULL and
+    "which datasets are heart?" came back empty. The name now sits beside the term column."""
+    bundles = [
+        write_bundle(store, "PXD000001", characteristics=(
+            ("characteristics[organism part]", "heart"),
+            ("factor value[organism part]", "cardiac muscle"),  # characteristics wins
+            ("characteristics[disease]", "NT=normal;AC=PATO:0000461"),
+            ("characteristics[sex]", "not available"),
+        )),
+        write_bundle(store, "PXD000002", characteristics=(("factor value[cell type]", "neuron"),)),
+    ]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    got = {r["dataset_id"]: r for r in rows(catalog, "SELECT * FROM samples")}
+    one, two = got["PXD000001"], got["PXD000002"]
+    assert one["organism_part"] is None and one["organism_part_name"] == "heart"
+    assert one["disease_name"] == "normal"
+    assert one["sex_name"] is None, "`not available` is not a name"
+    assert two["cell_type_name"] == "neuron" and two["organism_part_name"] is None
 
 
 def test_a_protein_with_no_accepted_evidence_is_listed_but_not_counted(tmp_path, store):

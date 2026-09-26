@@ -772,3 +772,17 @@ def test_the_first_answer_names_the_rules_agents_otherwise_learn_by_failing(serv
         assert fact in rules, fact
     means = {c["column"]: c.get("means") or "" for c in server.describe("protein_groups", detail="detailed")["columns"]}
     assert "SORTED" in means["protein_group_id"]
+
+
+def test_a_tissue_named_without_a_term_is_found_and_described(tmp_path):
+    """G74: `describe('samples')` explains the `_name` columns, and `search` reads them."""
+    from datarepo.catalog import build_catalog
+
+    store = tmp_path / "store"
+    bundle = write_bundle(store, "PXD000001", characteristics=(("characteristics[organism part]", "heart"),))
+    path = build_catalog([bundle], tmp_path / "catalog.duckdb").path
+    with CatalogServer(path) as server:
+        means = {c["column"]: c.get("means") or "" for c in server.describe("samples", detail="detailed")["columns"]}
+        assert "G74" in means["organism_part_name"] and "not available" in means["organism_part_name"]
+        hit = next(h for h in server.search("heart", kind="sample")["hits"]["sample"] if "n_samples" in h)
+        assert hit["organism_part_names"] == ["heart"] and not hit["organism_parts"]
