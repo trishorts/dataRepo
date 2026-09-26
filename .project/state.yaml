@@ -996,6 +996,11 @@ gaps:
     check DEF-PEP's wording (default: the text stands). The next re-ingest carries DEF-PEP into aging's
     catalog; the guard works without it.
   - >-
+    G74 `samples.sex/organism_part/cell_type/disease` hold ontology TERMS only, so a plain-name SDRF cell
+    ("heart", "Urine", "Blood serum") is NULL there: 51 samples in PXD026608/PXD034432/PXD011314/PXD010115
+    on catalog deddfb23. Descriptions say so since 0.23.0. Fix: add verbatim-name columns (or map names
+    to terms via pyMzLib/sdrf, never in-house), and let G42 separate "not available" from "never asked".
+  - >-
     G72 ptmQtl, after 0.21.0: DATAREPO-P13 (what a NULL `ptm_pairs.value` on a P row means; 1,065 in
     their bundle) and DATAREPO-P14 (their occupancy rows MetaMorpheus did not write: 3,030 / 1,280 / 191)
     asked in our 010. When P13 is answered, write it into the column description. When their engine is

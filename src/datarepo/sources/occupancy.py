@@ -55,6 +55,29 @@ class OccupancyResult:
     failed_fields: list[str] = field(default_factory=list)
     #: Cells whose segments did not line up with their accessions and were resolved by sequence.
     realigned_cells: int = 0
+    #: Up to `MAX_DUPLICATE_EXAMPLES` dropped duplicates whose values differ from the stored row.
+    differing_duplicates: list[dict[str, Any]] = field(default_factory=list)
+
+
+MAX_DUPLICATE_EXAMPLES = 10
+
+
+def _duplicate(out: OccupancyResult, row: dict[str, Any], group_id: str, basis: str, same: bool) -> None:
+    """Count a second entry for a (site, run) that already has a row, by whether it could matter.
+
+    The first entry in file order is kept. That is safe only when the dropped one says the same
+    thing (aging 069, DATAREPO-53), so the two cases are counted apart, and so is whether the second
+    came from the same protein group (MetaMorpheus writing one group twice, aging's S34) or from
+    another group holding the same accession.
+    """
+    where = "same protein group" if group_id == row["protein_group_id"] else "another protein group"
+    what = "identical values" if same else "DIFFERENT values, first in file kept"
+    out.not_stored[f"duplicate entry for one site and run ({what}; {where})"] += 1
+    if not same and len(out.differing_duplicates) < MAX_DUPLICATE_EXAMPLES:
+        out.differing_duplicates.append({
+            "ptm_site_id": row["ptm_site_id"], "assay_id": row["assay_id"], "basis": basis,
+            "kept_group": row["protein_group_id"], "dropped_group": group_id,
+        })
 
 
 def _motif(modification: str) -> str | None:
@@ -211,7 +234,10 @@ def rows(
                 })
                 if basis == "count":
                     if row.get("n_covering_psms") is not None:
-                        out.not_stored["duplicate entry for one site and run"] += 1
+                        same = (row["modified_fraction_count"], row["n_modified_psms"], row["n_covering_psms"]) == (
+                            entry["fraction"], int(entry["numerator"]), int(entry["denominator"])
+                        )
+                        _duplicate(out, row, group_id, basis, same)
                         continue
                     row["modified_fraction_count"] = entry["fraction"]
                     row["n_modified_psms"] = int(entry["numerator"])
@@ -219,7 +245,10 @@ def rows(
                     row["count_is_ceiling"] = int(entry["numerator"]) == int(entry["denominator"])
                 elif basis == "intensity":
                     if row.get("intensity_total") is not None:
-                        out.not_stored["duplicate entry for one site and run"] += 1
+                        same = (row["modified_fraction_intensity"], row["intensity_modified"], row["intensity_total"]) == (
+                            entry["fraction"], float(entry["numerator"]), float(entry["denominator"])
+                        )
+                        _duplicate(out, row, group_id, basis, same)
                         continue
                     row["modified_fraction_intensity"] = entry["fraction"]
                     row["intensity_modified"] = float(entry["numerator"])

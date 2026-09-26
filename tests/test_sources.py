@@ -1046,3 +1046,38 @@ def test_pep_regime_follows_metamorpheus_and_refuses_to_guess(tmp_path):
     assert search_params.pep_regime([task("g.toml", 'TaskType = "GlycoSearch"\n')]) is None
     assert search_params.pep_regime([search, top_down]) is None
     assert search_params.pep_regime([gptmd]) is None
+
+
+def test_an_sdrf_naming_the_calibrated_file_still_meets_the_deposited_run(tmp_path):
+    """aging 069, DATAREPO-54: an SDRF MetaMorpheus writes names `X-calib.mzML`, the file it searched.
+    Keyed on that stem, the run `X` got no sample, instrument or fraction and nothing said so."""
+    source = RUN / "02_fetch/metadata/PXD999999.sdrf.tsv"
+    deposited = sdrf_source.parse(source, "PXD999999")
+    text = source.read_text(encoding="utf-8")
+    for run in deposited.sample_of_run:
+        text = text.replace(f"{run}.raw", f"{run}-calib.mzML")
+    assert "-calib.mzML" in text, "fixture no longer names .raw files; rewrite this test"
+    calibrated = tmp_path / "calibrated.sdrf.tsv"
+    calibrated.write_text(text, encoding="utf-8")
+    parsed = sdrf_source.parse(calibrated, "PXD999999")
+    assert parsed.sample_of_run == deposited.sample_of_run
+    assert parsed.run_facts == deposited.run_facts
+    assert [a["assay_id"] for a in parsed.assays] == [a["assay_id"] for a in deposited.assays]
+
+
+def test_a_dropped_occupancy_duplicate_says_whether_it_matched_the_stored_row():
+    """aging 069, DATAREPO-53: dropping a duplicate is safe only when it says the same thing."""
+    from datarepo.sources import occupancy
+
+    out = occupancy.OccupancyResult()
+    row = {"ptm_site_id": "D:P1:S3:Phosphorylation on S", "assay_id": "D:r1:label_free", "protein_group_id": "D:P1"}
+    occupancy._duplicate(out, row, "D:P1", "count", same=True)
+    occupancy._duplicate(out, row, "D:P1;P2", "intensity", same=False)
+    assert out.not_stored == {
+        "duplicate entry for one site and run (identical values; same protein group)": 1,
+        "duplicate entry for one site and run (DIFFERENT values, first in file kept; another protein group)": 1,
+    }
+    assert out.differing_duplicates == [{
+        "ptm_site_id": row["ptm_site_id"], "assay_id": row["assay_id"], "basis": "intensity",
+        "kept_group": "D:P1", "dropped_group": "D:P1;P2",
+    }]

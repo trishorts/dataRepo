@@ -208,11 +208,15 @@ def _figures_of_merit(con: Any) -> list[dict[str, Any]]:
         "SELECT sum(value), count(DISTINCT dataset_id) FROM metrics "
         "WHERE scope = 'dataset' AND name = 'ms2'"
     ).fetchone()
+    # Per dataset, because the contaminant label is: human albumin is a target in a human search
+    # and a contaminant in a rodent one, and a corpus-wide flag dropped it from every count (aging
+    # 070 57f). An accession counts in a dataset where it was accepted and was not a contaminant.
     proteins, shared = con.execute(
-        "SELECT count(*) FILTER (WHERE n_datasets_1pct > 0), "
-        "       count(*) FILTER (WHERE n_datasets_1pct >= 3) "
-        "FROM protein_index "
-        "WHERE NOT coalesce(is_contaminant, false) AND protein_accession NOT LIKE 'DECOY%'"
+        "SELECT count(*), count(*) FILTER (WHERE n >= 3) FROM ("
+        "  SELECT protein_accession, count(DISTINCT dataset_id) AS n FROM protein_datasets "
+        "  WHERE (n_protein_groups > 0 OR n_peptidoforms > 0) "
+        "    AND NOT coalesce(is_contaminant, false) AND protein_accession NOT LIKE 'DECOY%' "
+        "  GROUP BY 1)"
     ).fetchone()
     kinds = con.execute(
         "SELECT count(DISTINCT modification_name) FROM ptm_sites WHERE target_decoy = 'target'"

@@ -180,10 +180,10 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
             "dataset_id": {"description": 'Dataset this row belongs to (ProteomeXchange accession).', "range": 'Dataset'},
             "source_name": {"description": 'SDRF source name. Also the donor key for longitudinal designs (R10).', "range": 'string'},
             "organism": {"description": "NCBITaxon term of the sample's organism.", "range": 'uriorcurie'},
-            "sex": {"description": 'PATO term.', "range": 'uriorcurie'},
-            "organism_part": {"description": 'UBERON term.', "range": 'uriorcurie'},
-            "cell_type": {"description": 'CL term.', "range": 'uriorcurie'},
-            "disease": {"description": 'MONDO or EFO term; PATO:0000461 for normal.', "range": 'uriorcurie'},
+            "sex": {"description": "PATO term. NULL whenever the SDRF cell gives a NAME without an ontology term, which is the common case (PXD026608 says 'heart', PXD011314 'Blood'): NULL here is NOT 'not recorded'. The verbatim cell is in `sample_characteristics`; read it before concluding a sample has no sex.", "range": 'uriorcurie'},
+            "organism_part": {"description": "UBERON term. NULL whenever the SDRF cell gives a NAME without an ontology term, which is the common case (PXD026608 says 'heart', PXD011314 'Blood'): NULL here is NOT 'not recorded'. The verbatim cell is in `sample_characteristics`; read it before concluding a sample has no tissue.", "range": 'uriorcurie'},
+            "cell_type": {"description": "CL term. NULL whenever the SDRF cell gives a NAME without an ontology term, which is the common case (PXD026608 says 'heart', PXD011314 'Blood'): NULL here is NOT 'not recorded'. The verbatim cell is in `sample_characteristics`; read it before concluding a sample has no cell type.", "range": 'uriorcurie'},
+            "disease": {"description": "MONDO or EFO term; PATO:0000461 for normal. NULL whenever the SDRF cell gives a NAME without an ontology term, which is the common case (PXD026608 says 'heart', PXD011314 'Blood'): NULL here is NOT 'not recorded'. The verbatim cell is in `sample_characteristics`; read it before concluding a sample has no disease.", "range": 'uriorcurie'},
             "condition": {"description": 'Free-text condition, e.g. HGPS, caloric restriction (B7, I4).', "range": 'string'},
             "material_type": {"description": 'SDRF material type: tissue, cell culture, body fluid… (B8).', "range": 'string'},
             "cell_line": {"description": 'Cell line name, for cell-culture samples.', "range": 'string'},
@@ -647,7 +647,9 @@ STUDY_TABLE_DOCS: dict[str, dict[str, dict[str, Any]]] = {
                 "age_years": {"description": 'Normalized to years. NA when not parseable, which is not the same as no age being recorded -- `age_raw` distinguishes them.', "range": 'float'},
                 "age_is_lower_bound": {"description": "True for a right-censored age such as '65+' or '>=90Y'. `aging:DEF-AGE-EFFECT v1` section 5 EXCLUDES these from a primary fit and counts them in `n_age_lower_bound`; they are never silently treated as the bound value, because the datasets most likely to carry them are the ones with the oldest donors.", "range": 'boolean'},
                 "age_is_range": {"description": 'True if the SDRF gives a range (e.g. 60-69Y).', "range": 'boolean'},
-                "normalizer_version": {"description": 'Version of the age normalizer (SdrfAge) used. Two rows normalized by different versions are not comparable and this is how a caller can tell.', "range": 'string'},
+                "age_source": {"description": "Where `age_raw` came from: an SDRF cell, or the study owner's curation from a named source.", "range": 'AgeSource', "enum": 'AgeSource'},
+                "age_source_reference": {"description": "For a curated age, the source it was read from (for example 'PMID 40544948' or 'PRIDE PXD056433 project record'). NULL for an SDRF age, whose source is the SDRF.", "range": 'string'},
+                "normalizer_version": {"description": 'Version of the software that turned `age_raw` into `age_years` (SdrfAge). Two rows normalized by different versions are not comparable and this is how a caller can tell. NULL when no normalizer ran, e.g. a curated age converted by hand; never a curation label (that is `age_source`).', "range": 'string'},
             },
         },
         "age_effects": {
@@ -798,6 +800,10 @@ STUDY_ENUMS: dict[str, dict[str, dict[str, Any]]] = {
         "AgeResponse": {
             "description": "What changes with age. `aging:DEF-AGE-EFFECT v1` section 1: an age effect is always OF a named response, because a protein's abundance and a site's modified fraction are different age effects on the same molecule and the point of this repository is that they can disagree. Never one column.",
             "values": ['abundance', 'modified_fraction', 'isoform_ratio', 'glycoform_fraction'],
+        },
+        "AgeSource": {
+            "description": "Where a sample's `age_raw` came from (aging 071, DATAREPO-59). Kept apart from `normalizer_version`, which names software: putting a curation label there would give one column two meanings, and a caller comparing normalizer versions would compare a label.",
+            "values": ['sdrf', 'curated'],
         },
         "AgeEstimator": {
             "description": 'Which estimator produced the response, where a response has more than one. QuantProject 017: count-based and intensity-based stoichiometry differ about threefold and MUST NEVER be averaged, so they are separate rows rather than one number.',

@@ -78,7 +78,17 @@ def test_every_result_carries_its_catalog_id(server, call):
     assert provenance["catalog_id"] == server.identity.catalog_id
     assert provenance["schema_version"]
     assert provenance["served_by"].startswith("datarepo ")
-    assert provenance["bundles"]
+    assert provenance["n_bundles"] == len(server.identity.bundles)
+
+
+def test_the_bundle_list_is_carried_once_in_the_overview_and_nowhere_else(server):
+    """aging 070, DATAREPO-58: the 2-3 KB list on every answer buried the answer. catalog_id is
+    the hash of that exact list, so it is the whole citation; the list itself is in describe()."""
+    overview = server.describe()["provenance"]
+    assert {b["bundle_id"] for b in overview["bundles"]} == {b["bundle_id"] for b in server.identity.bundles}
+    for result in (server.sql("SELECT 1"), server.search("P11111"), server.describe("psms")):
+        assert "bundles" not in result["provenance"]
+        assert "catalog_id" in result["provenance"]["bundles_are"]
 
 
 def test_sql_provenance_is_the_catalog_and_never_the_query(server):
@@ -89,16 +99,14 @@ def test_sql_provenance_is_the_catalog_and_never_the_query(server):
     ptm_sites` returned a catalog-wide count stamped with one dataset's bundle, in the same words
     a correct narrowing uses. Provenance is now a fact about the server: same on every answer.
     """
-    every = {b["bundle_id"] for b in server.identity.bundles}
+    expected = server.sql("SELECT 1 AS n")["provenance"]
     for sql in (
         "SELECT dataset_id, bundle_id, count(*) FROM psms GROUP BY 1, 2",
         "SELECT * FROM psms WHERE dataset_id = 'PXD000001'",
         "SELECT max(dataset_id) AS dataset_id, count(*) AS n FROM psms",
-        "SELECT 1 AS n",
     ):
-        provenance = server.sql(sql)["provenance"]
-        assert {b["bundle_id"] for b in provenance["bundles"]} == every, sql
-        assert "fact about the server" in provenance["bundles_are"]
+        assert server.sql(sql)["provenance"] == expected, sql
+    assert "describes the server" in expected["bundles_are"]
 
 
 
@@ -543,11 +551,11 @@ def test_a_populated_query_still_names_an_empty_table_it_joined(server):
 
 def test_a_forged_bundle_id_changes_nothing(server):
     """The old patch rejected UNKNOWN ids and let a real one narrow. Now neither does anything."""
-    every = {b["bundle_id"] for b in server.identity.bundles}
+    plain = server.sql("SELECT count(*) AS n FROM psms")["provenance"]
     forged = server.sql("SELECT 'deadbeefdeadbeef' AS bundle_id, count(*) AS n FROM psms")
     real = server.sql("SELECT 'PXD000001' AS dataset_id, count(*) AS n FROM psms")
     for result in (forged, real):
-        assert {b["bundle_id"] for b in result["provenance"]["bundles"]} == every
+        assert result["provenance"] == plain
 
 
 
@@ -564,9 +572,7 @@ def test_a_cte_named_after_a_real_table_certifies_nothing(server):
     assert result["rows"] == [["PXD000001", 99999]]
     assert result["tables_touched"] == [], "a CTE name must not be reported as a table read"
     assert "empty_tables" not in result
-    assert {b["bundle_id"] for b in result["provenance"]["bundles"]} == {
-        b["bundle_id"] for b in server.identity.bundles
-    }
+    assert result["provenance"] == server.sql("SELECT 1")["provenance"]
 
 
 def test_an_unparseable_read_says_unknown_not_none(server):
@@ -585,9 +591,10 @@ def test_search_provenance_covers_every_bundle_that_fed_a_visible_number(server)
     """`n_datasets: 3` beside a two-bundle provenance block. No trickery needed to produce it."""
     hits = server.search("P11111", kind="protein")
     hit = next(h for h in hits["hits"]["protein"] if h["protein_accession"] == "P11111")
+    assert hits["provenance"]["catalog_id"] == server.identity.catalog_id
     assert set(hit["dataset_ids"]) <= {
-        b["dataset_id"] for b in hits["provenance"]["bundles"]
-    }, "a dataset counted in the row is missing from the provenance"
+        b["dataset_id"] for b in server.describe()["provenance"]["bundles"]
+    }, "a dataset counted in the row is missing from the catalog the provenance names"
 
 
 def test_a_column_that_is_null_on_every_row_says_so(server):
@@ -739,3 +746,19 @@ def test_the_pep_columns_describe_themselves_as_run_relative(server):
     assert "RUN-RELATIVE" in means["pep"]
     assert "moves whenever `pep` does" in means["pep_q_value"]
     assert "does not depend on PEP" in means["q_value"]
+
+
+def test_a_replaced_catalog_file_is_announced_not_silently_served(catalog, tmp_path):
+    """aging 070, 57k: a server served `62d419643e71320c` for hours after `1e2f13be6f121fd7` was
+    published over the same path. It keeps what it opened, and now says so."""
+    import os
+    import shutil
+
+    copy = tmp_path / "catalog.duckdb"
+    shutil.copyfile(catalog, copy)
+    with CatalogServer(copy) as instance:
+        assert "catalog_file_changed" not in instance.sql("SELECT 1")["provenance"]
+        stat = os.stat(copy)
+        os.utime(copy, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000_000))
+        warning = instance.sql("SELECT 1")["provenance"]["catalog_file_changed"]
+        assert instance.identity.catalog_id in warning and "Restart" in warning

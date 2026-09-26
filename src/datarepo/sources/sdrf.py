@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from ..readers import ReaderLog, read_sdrf
+from ..usi import strip_pipeline_suffix
 
 #: Values SDRF writers use to mean "absent". They become nulls, not strings.
 NOT_AVAILABLE = {"", "not available", "not applicable", "na", "n/a", "unknown", "none"}
@@ -159,7 +160,11 @@ def parse(
         data_file = _clean(row.get("comment[data file]", "")) or _clean(row.get("assay name", ""))
         if not data_file:
             continue
-        run_name = Path(data_file).stem
+        # An SDRF MetaMorpheus writes names the file it SEARCHED, which after Calibrate is
+        # `X-calib.mzML`, not the deposited `X.raw` (sdrf D40, aging 069 DATAREPO-54). Runs are keyed
+        # on the deposited name, so without the same stripping the USI path does, that run would
+        # silently get no sample, instrument or fraction.
+        run_name = strip_pipeline_suffix(Path(data_file).stem)
         sample_of_run[run_name] = sample_id
         fraction = _clean(row.get("comment[fraction identifier]", ""))
         technical = _clean(row.get("comment[technical replicate]", ""))

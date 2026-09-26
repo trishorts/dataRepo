@@ -557,6 +557,7 @@ def ingest_dataset(
             "truncated_cells": occ.truncated_cells,
             "failed_fields": occ.failed_fields,
             "realigned_cells": occ.realigned_cells,
+            "differing_duplicates": occ.differing_duplicates,
         }
         findings += _occupancy_findings(occ, dataset_id)
     elif pg_path.is_file():
@@ -1080,7 +1081,11 @@ def _occupancy_findings(occ: "occupancy.OccupancyResult", dataset_id: str) -> li
                 f"ptm_stoichiometry: {detail}. 'site not in ptm_sites' means the entry's site has no "
                 f"ptm_sites row to key on; 'not determinable' means a cell's segments could not be "
                 f"assigned to its accessions from the sequences (QuantProject DEF-OCC-ACCESSION), "
-                f"which is never guessed. Absence of a row for these sites is therefore not NA."
+                f"which is never guessed. Absence of a row for these sites is therefore not NA. "
+                f"A 'duplicate' is a second entry for a (site, run) that already has a row: one with "
+                f"identical values loses nothing; one with DIFFERENT values means MetaMorpheus wrote "
+                f"two answers and the first in file order was stored (examples in bundle.json "
+                f"occupancy.differing_duplicates; which one should be stored is QuantProject's to define)."
             ),
             "source": "datarepo ingest",
         })

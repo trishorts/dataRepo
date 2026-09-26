@@ -423,6 +423,7 @@ def test_a_sample_age_for_an_unknown_sample_is_refused(tmp_path, store):
             "age_raw": "62Y",
             "age_years": "62",
             "normalizer_version": "sdrf-age/0.1.0",
+            "age_source": "sdrf",
         }
     ]
     delivered = write_study_bundle(write_delivery(tmp_path, {"sample_ages": ages}, store=store))
@@ -518,3 +519,17 @@ def test_the_register_is_part_of_the_delivery_identity(tmp_path, store):
         write_delivery(tmp_path / "b", {"age_effects": [EFFECT]}, store=store, definitions=DEFS)
     )
     assert narrow.bundle_id != wide.bundle_id
+
+
+def test_a_curated_age_names_its_source_and_leaves_the_normalizer_null(tmp_path, store):
+    """aging 071, DATAREPO-59: `normalizer_version` names software, so a hand-curated age does not
+    put a curation label there; `age_source` and `age_source_reference` say where it came from."""
+    ages = [{
+        "sample_id": "PXD000001:sample1", "age_raw": "24 months", "age_years": "2",
+        "age_source": "curated", "age_source_reference": "PMID 40544948",
+    }]
+    delivered = write_study_bundle(write_delivery(tmp_path, {"sample_ages": ages}, store=store))
+    assert delivered.bundle_id
+    missing = [{"sample_id": "PXD000001:sample1", "age_raw": "24 months", "age_years": "2"}]
+    with pytest.raises(IngestError, match="age_source"):
+        write_study_bundle(write_delivery(tmp_path / "second", {"sample_ages": missing}, store=store))

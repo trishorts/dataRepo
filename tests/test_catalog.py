@@ -54,6 +54,7 @@ def write_bundle(
     ambiguous_psm: bool = False,
     ptm_sites: bool = False,
     extra_source: str | None = None,
+    contaminants: tuple[str, ...] = (),
 ) -> BundleRef:
     """One small but complete bundle: a dataset, a run, an assay, and one protein's evidence."""
     store.mkdir(parents=True, exist_ok=True)
@@ -74,7 +75,8 @@ def write_bundle(
     }])
     writer.add("proteins", [
         {"protein_accession": acc, "organism": "NCBITaxon:9606", "source_db": "uniprot",
-         "gene": "GENE1" if acc == "P11111" else "GENE2"}
+         "gene": "GENE1" if acc == "P11111" else "GENE2",
+         **({"is_contaminant": True} if acc in contaminants else {})}
         for acc in accessions
     ])
     writer.add("protein_groups", [{
@@ -286,6 +288,24 @@ def test_the_protein_index_answers_which_datasets_have_this_protein(catalog):
     assert shared["dataset_ids_1pct"] == ["PXD000001", "PXD000002"]
     only_one = rows(catalog, "SELECT * FROM protein_index WHERE protein_accession = 'P22222'")[0]
     assert only_one["n_datasets"] == 1
+
+
+def test_the_contaminant_label_stays_per_dataset(tmp_path, store):
+    """aging 070, 57f: `protein_index.is_contaminant` was bool_or over datasets, so human albumin
+    read `true` while a target in every human search, and an agent concluded it was excluded."""
+    bundles = [
+        write_bundle(store, "PXD000001"),
+        write_bundle(store, "PXD000002", contaminants=("P11111",)),
+    ]
+    catalog = build_catalog(bundles, tmp_path / "catalog.duckdb").path
+    entry = rows(catalog, "SELECT * FROM protein_index WHERE protein_accession = 'P11111'")[0]
+    assert "is_contaminant" not in entry, "a corpus-wide flag cannot be true of a per-dataset label"
+    assert (entry["n_datasets"], entry["n_datasets_contaminant"]) == (2, 1)
+    per = {
+        r["dataset_id"]: r["is_contaminant"]
+        for r in rows(catalog, "SELECT * FROM protein_datasets WHERE protein_accession = 'P11111'")
+    }
+    assert per == {"PXD000001": None, "PXD000002": True}
 
 
 def test_a_protein_with_no_accepted_evidence_is_listed_but_not_counted(tmp_path, store):

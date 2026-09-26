@@ -52,10 +52,11 @@ from .study import STUDY_BUNDLE_MANIFEST, STUDY_DIR
 #: tables; "3" fills them -- a study bundle's rows, their two provenance columns and
 #: `catalog_study_bundles`; "4" adds `search_modifications_placed`; "5" adds
 #: `dataset_overview.enrichment_mixed` (G63); "6" loads engine artefacts (`gene_resolutions`, G64)
-#: and `catalog_engine_artefacts`. Same principle as
+#: and `catalog_engine_artefacts`; "7" makes the contaminant label per dataset
+#: (`protein_datasets.is_contaminant`, `protein_index.n_datasets_contaminant`; aging 070 57f). Same principle as
 #: `manifest.CONTENT_FIELDS` one level down -- an id moves when its own content moves, and not
 #: otherwise.
-CATALOG_VERSION = "6"
+CATALOG_VERSION = "7"
 
 #: Provenance columns prepended to every table. `dataset_id` is re-derived from the bundle rather
 #: than trusted from the row, so a table without one (proteins, definitions) still gets it.
@@ -241,6 +242,10 @@ DERIVED_DOCS: dict[str, dict[str, Any]] = {
             "`protein_datasets` keeps the per-dataset truth.",
             "organism": "As above, per-accession. NULL for contaminant and decoy entries: a "
             "contaminant panel is bovine, porcine and bacterial by design.",
+            "n_datasets_contaminant": "Datasets in which this accession is labelled a contaminant. "
+            "There is no corpus-wide contaminant flag, because the label is per dataset: P02768 "
+            "(human albumin) is a target in every human search and a contaminant in every rodent "
+            "one. Compare with `n_datasets`, and use `protein_datasets.is_contaminant` per dataset.",
         },
     },
     "protein_datasets": {
@@ -253,6 +258,10 @@ DERIVED_DOCS: dict[str, dict[str, Any]] = {
             "accession. Zero means no group passed, not that it was absent from the search.",
             "n_peptidoforms": "Accepted peptidoforms mapping to it in that dataset.",
             "best_q_value": "Lowest accepted group q-value; NULL when no group passed.",
+            "is_contaminant": "The contaminant label IN THIS DATASET, from the database the "
+            "search read the accession from. It is per dataset on purpose: human albumin is a "
+            "target in a human search and a contaminant in a rodent one. NULL where the label "
+            "could not be resolved.",
         },
     },
     "peptide_index": {
@@ -1081,7 +1090,7 @@ def _build_derived(con: Any) -> None:
         """
         CREATE TABLE protein_datasets AS
         WITH observed AS (
-            SELECT DISTINCT dataset_id, protein_accession FROM proteins
+            SELECT DISTINCT dataset_id, protein_accession, is_contaminant FROM proteins
         ),
         in_groups AS (
             SELECT dataset_id, unnest(protein_accessions) AS protein_accession, protein_group_id,
@@ -1095,6 +1104,7 @@ def _build_derived(con: Any) -> None:
         SELECT
             o.dataset_id,
             o.protein_accession,
+            o.is_contaminant,
             count(DISTINCT g.protein_group_id) AS n_protein_groups,
             count(DISTINCT p.peptidoform_id)   AS n_peptidoforms,
             min(g.q_value)                     AS best_q_value
@@ -1103,7 +1113,7 @@ def _build_derived(con: Any) -> None:
                ON g.dataset_id = o.dataset_id AND g.protein_accession = o.protein_accession
         LEFT JOIN in_peptides p
                ON p.dataset_id = o.dataset_id AND p.protein_accession = o.protein_accession
-        GROUP BY o.dataset_id, o.protein_accession
+        GROUP BY o.dataset_id, o.protein_accession, o.is_contaminant
         """
     )
 
@@ -1122,7 +1132,7 @@ def _build_derived(con: Any) -> None:
             p.protein_accession,
             max(p.gene)                                AS gene,
             max(p.organism)                            AS organism,
-            bool_or(coalesce(p.is_contaminant, false)) AS is_contaminant,
+            count(DISTINCT p.dataset_id) FILTER (WHERE p.is_contaminant) AS n_datasets_contaminant,
             count(DISTINCT p.dataset_id)               AS n_datasets,
             count(DISTINCT p.dataset_id) FILTER (
                 WHERE d.n_protein_groups > 0 OR d.n_peptidoforms > 0)  AS n_datasets_1pct,

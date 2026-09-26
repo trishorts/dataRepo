@@ -191,6 +191,31 @@ class CatalogServer:
         self.box = Sandbox(catalog, **sandbox_kwargs)
         self.identity = _read_identity(self.box)
         self._tables: dict[str, dict[str, Any]] | None = None
+        self._opened_stat = self._file_stat()
+
+    def _file_stat(self) -> tuple[int, int] | None:
+        try:
+            stat = os.stat(self.box.path)
+        except OSError:
+            return None
+        return stat.st_mtime_ns, stat.st_size
+
+    @property
+    def catalog_file_changed(self) -> str | None:
+        """Set when the file at the catalog's path is no longer the one this server opened.
+
+        aging's server answered from `62d419643e71320c` for hours after they published
+        `1e2f13be6f121fd7` over the same path (070, 57k). The server keeps what it opened, on
+        purpose: an answer must not change catalogs halfway through a conversation, and a reload
+        would do exactly that. What it must not do is keep quiet about it.
+        """
+        if self._file_stat() == self._opened_stat:
+            return None
+        return (
+            f"The file at {self.box.path} has changed since this server opened it. Every answer "
+            f"still comes from the catalog it opened ({self.identity.catalog_id}), which may no "
+            f"longer be the one published there. Restart the MCP server to serve the current file."
+        )
 
     @property
     def schema_drift(self) -> str | None:
@@ -264,9 +289,14 @@ class CatalogServer:
             self._tables = dict(sorted(found.items()))
         return self._tables
 
-    def _provenance(self) -> dict[str, Any]:
+    def _provenance(self, full: bool = False) -> dict[str, Any]:
         """What frozen data this server holds. **Identical on every answer, and inferred from
         nothing.**
+
+        **Compact by default; the bundle list is in `describe()` only** (aging 070, DATAREPO-58).
+        All four of aging's agents said the 2-3 KB list on every answer buried the answer. Nothing
+        is lost by carrying it once: `catalog_id` is the hash of exactly that list, so it names the
+        same set, and it cannot drift from it within one server.
 
         It used to narrow per answer -- 'the bundles named in the rows returned' -- and that was a
         mistake of kind, not of implementation. Two different questions were being answered as one:
@@ -287,21 +317,31 @@ class CatalogServer:
         that cannot be computed honestly here, so it is not computed at all.
         """
         out = self.identity.base()
-        out["bundles"] = [
-            {"dataset_id": b["dataset_id"], "bundle_id": b["bundle_id"]}
-            for b in self.identity.bundles
-        ]
-        out["bundles_are"] = (
-            "every bundle this catalog holds, which is what `catalog_id` is a hash of. This is a "
-            "fact about the server, not a claim about this answer: no question can change it, and "
-            "it is NOT narrowed to what this particular result touched, because that cannot be "
-            "determined from a result without being wrong sometimes and silent about which times."
-        )
-        if self.identity.study_bundles:
-            out["study_bundles"] = [
-                {"layer": b.get("layer"), "bundle_id": b.get("bundle_id")}
-                for b in self.identity.study_bundles
+        out["n_bundles"] = len(self.identity.bundles)
+        if full:
+            out["bundles"] = [
+                {"dataset_id": b["dataset_id"], "bundle_id": b["bundle_id"]}
+                for b in self.identity.bundles
             ]
+            out["bundles_are"] = (
+                "every bundle this catalog holds, which is what `catalog_id` is a hash of. This is "
+                "a fact about the server, not a claim about any answer: no question can change it, "
+                "and it is NOT narrowed to what a result touched, because that cannot be determined "
+                "from a result without being wrong sometimes and silent about which times."
+            )
+            if self.identity.study_bundles:
+                out["study_bundles"] = [
+                    {"layer": b.get("layer"), "bundle_id": b.get("bundle_id")}
+                    for b in self.identity.study_bundles
+                ]
+        else:
+            if self.identity.study_bundles:
+                out["n_study_bundles"] = len(self.identity.study_bundles)
+            out["bundles_are"] = (
+                "the whole citation is catalog_id: it is a hash of the exact set of bundles this "
+                "catalog holds, listed once by describe() with no target. It describes the server, "
+                "not a slice this answer touched."
+            )
         # A release is archived at a fixed path and never changes; a working catalog is rebuilt in
         # place and its id moves when the bundles under it do. Both ids are exact -- only one is
         # durable, and a caller citing a number needs to know which kind it is holding.
@@ -311,6 +351,9 @@ class CatalogServer:
                 "a working catalog is rebuilt in place, so this catalog_id identifies the data "
                 "exactly today but the file at this path may be replaced. Cite a release."
             )
+        changed = self.catalog_file_changed
+        if changed:
+            out["catalog_file_changed"] = changed
         return out
 
     # -- describe ---------------------------------------------------------------------------
@@ -401,7 +444,7 @@ class CatalogServer:
                 "search('<gene, accession, peptide, tissue or modification>') to find ids",
                 "sql('SELECT ...') for anything else",
             ],
-            "provenance": self._provenance(),
+            "provenance": self._provenance(full=True),
         }
 
     def _study_layers(self) -> list[dict[str, Any]]:
@@ -838,7 +881,7 @@ class CatalogServer:
         # answer produced entirely by presentation.
         rows = self._maybe(
             "protein_index",
-            "SELECT protein_accession, gene, organism, is_contaminant, "
+            "SELECT protein_accession, gene, organism, n_datasets_contaminant, "
             "starts_with(protein_accession, 'DECOY_') AS is_decoy, n_datasets, "
             "n_datasets_1pct, dataset_ids, dataset_ids_1pct, best_q_value FROM protein_index "
             "WHERE upper(protein_accession) = ? OR upper(coalesce(gene, '')) = ? "
@@ -866,6 +909,15 @@ class CatalogServer:
             notes.append(
                 "hits marked is_decoy are reversed-sequence entries the search used to estimate "
                 "FDR; they are not proteins and must never be counted as evidence"
+            )
+        if any(r.get("n_datasets_contaminant") for r in rows):
+            # There used to be one corpus-wide `is_contaminant`, and P02768 read `true` while it is
+            # a target in all 17 human datasets; an agent concluded albumin was excluded (aging 070).
+            notes.append(
+                "the contaminant label is PER DATASET: n_datasets_contaminant counts the datasets "
+                "whose search labelled this accession a contaminant, out of n_datasets. Human "
+                "albumin is a target in a human search and a contaminant in a rodent one. Use "
+                "protein_datasets.is_contaminant for one dataset"
             )
         notes.append(
             "matched on ACCESSION (exact) and GENE SYMBOL (exact, then prefix) ONLY. There is no "
