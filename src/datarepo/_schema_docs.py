@@ -36,7 +36,7 @@ ENUMS: dict[str, dict[str, Any]] = {
     },
     "SdrfStatus": {
         "description": "How far the dataset's SDRF could be trusted (P4).",
-        "values": ['trusted', 'repaired', 'config_fallback', 'absent'],
+        "values": ['trusted', 'repaired', 'config_fallback', 'absent', 'partial', 'unmatched'],
     },
     "ModUsage": {
         "description": 'How a modification entered the search (P1).',
@@ -198,8 +198,11 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
         "columns": {
             "sample_id": {"description": 'Sample this row describes.', "range": 'Sample'},
             "name": {"description": 'The SDRF column header, verbatim, e.g. characteristics[age] or characteristics[organism part]. This is the column to filter on; there is no `characteristic` column.', "range": 'string'},
-            "value": {"description": 'Value as written in the SDRF.', "range": 'string'},
+            "value": {"description": 'Value as written in the SDRF, including a reserved word such as `not available` (see `value_reserved`).', "range": 'string'},
+            "value_reserved": {"description": "True when the cell is an SDRF reserved word (`not available`, `not applicable`, `unknown`, `none`, `na`, `n/a`): the column was ASKED and no value was given. It is what separates 'asked, not available' from 'never asked' (G42), which is no row at all. Filter it out before counting values: a reserved cell is not an annotation.", "range": 'boolean'},
             "term": {"description": 'Ontology term for the value, where the SDRF gives one.', "range": 'uriorcurie'},
+            "source": {"description": "Where this value came from, per the SDRF's own `comment[<name> source]` column or, failing that, its row default `comment[characteristics source]` (G62): sdrf's vocabulary, verbatim (D31 grain, sdrf 010-017): deposited, pride project record, config, curated, inferred, default (a value nothing established, e.g. a replicate of 1), publication (read from the paper or a supplement). Not an enum here: the words are sdrf's, and a new one must not fail an ingest. NULL when the SDRF records no source, which is every deposited SDRF; never assumed to be `deposited`.", "range": 'string'},
+            "source_reference": {"description": 'Where exactly, when the SDRF says (`comment[<name> source reference]`, SDRF-DR11): a locator such as `mmc2.xlsx!Sheet1!R14C3` or a PMCID with its section. Verbatim; NULL when absent.', "range": 'string'},
         },
     },
     "runs": {
@@ -211,8 +214,10 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
             "file_name": {"description": 'Raw file name as deposited.', "range": 'string'},
             "sha256": {"description": 'SHA-256 of the file that was searched.', "range": 'string'},
             "pride_checksum_sha1": {"description": 'Checksum published by the archive, for comparison with sha256 (F6).', "range": 'string'},
-            "fraction": {"description": 'Fraction identifier from the SDRF.', "range": 'integer'},
+            "fraction": {"description": "Fraction identifier from the SDRF. A drafted SDRF writes 1 when nothing established it; read `fraction_source` before treating 1 as 'not fractionated'.", "range": 'integer'},
+            "fraction_source": {"description": "Where the SDRF's fraction came from (`comment[fraction identifier source]`, SDRF-DR10): sdrf's vocabulary, verbatim (D31 grain, sdrf 010-017): deposited, pride project record, config, curated, inferred, default (a value nothing established, e.g. a replicate of 1), publication (read from the paper or a supplement). Not an enum here: the words are sdrf's, and a new one must not fail an ingest. NULL when the SDRF does not say, which is every deposited SDRF and every draft written before sdrf adds the column.", "range": 'string'},
             "technical_replicate": {"description": 'Technical replicate number.', "range": 'integer'},
+            "technical_replicate_source": {"description": "Where the SDRF's technical replicate came from (`comment[technical replicate source]`, SDRF-DR10). Same vocabulary and NULL rule as `fraction_source`.", "range": 'string'},
             "fragmentation": {"description": 'HCD, EThcD, ETD… (T10).', "range": 'string', "multivalued": True},
             "ms2_spectra": {"description": 'Number of MS2 spectra in the file.', "range": 'integer'},
             "run_minutes": {"description": 'Acquisition length in minutes.', "range": 'float'},

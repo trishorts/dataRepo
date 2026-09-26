@@ -337,3 +337,47 @@ def test_pep_travels_with_its_definition_versioned_by_release_and_regime(tables)
     assert "RUN-RELATIVE" in row["text"]
     assert row["version"].startswith("MetaMorpheus ")
     assert row["version"].endswith("; regime standard")
+
+
+def _ingest_with_sdrf(tmp_path, rename: dict[str, str]):
+    """Ingest the fixture after renaming data files in its SDRF (the data-file gate, G62)."""
+    import shutil
+
+    import pyarrow.parquet as pq
+
+    from conftest import DATA
+    from datarepo.manifest import load_manifest
+
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    sdrf = root / "work_root/run_test/PXD999999/02_fetch/metadata/PXD999999.sdrf.tsv"
+    text = sdrf.read_text(encoding="utf-8")
+    for old, new in rename.items():
+        text = text.replace(old, new)
+    sdrf.write_text(text, encoding="utf-8")
+    manifest = load_manifest(root / "manifest.yaml")
+    result = ingest_dataset(manifest, manifest.dataset("PXD999999"), store=tmp_path / "s", mm_settings=MM_SETTINGS)
+    return {p.stem: pq.read_table(p).to_pylist() for p in result.bundle_path.glob("*.parquet")}
+
+
+def test_an_sdrf_naming_one_unsearched_file_is_used_for_the_rest(tmp_path):
+    """It used to leave an assay pointing at no run, and the integrity check refused the bundle."""
+    tables = _ingest_with_sdrf(tmp_path, {"QE-002107_GM1_b.raw": "NOT_SEARCHED.raw"})
+    (dataset,) = tables["datasets"]
+    assert dataset["sdrf_status"] == "partial"
+    assert check(tables) == []
+    by_run = {a["run_id"]: a["sample_id"] for a in tables["assays"]}
+    assert by_run["PXD999999:QE-002106_GM1_a"] == "PXD999999:PXD999999-Sample-1"
+    assert by_run["PXD999999:QE-002107_GM1_b"] == "PXD999999:QE-002107_GM1_b"  # synthetic
+    assert {c["sample_id"] for c in tables["sample_characteristics"]} == {"PXD999999:PXD999999-Sample-1"}
+    (finding,) = [f for f in tables["findings"] if f["code"] == "sdrf_partial"]
+    assert "NOT_SEARCHED" in finding["message"] and "QE-002107_GM1_b" in finding["message"]
+
+
+def test_an_sdrf_naming_no_searched_file_is_not_used(tmp_path):
+    tables = _ingest_with_sdrf(tmp_path, {"QE-002106_GM1_a.raw": "X1.raw", "QE-002107_GM1_b.raw": "X2.raw"})
+    (dataset,) = tables["datasets"]
+    assert dataset["sdrf_status"] == "unmatched"
+    assert check(tables) == [] and tables.get("sample_characteristics", []) == []
+    codes = {f["code"] for f in tables["findings"]}
+    assert "sdrf_unmatched" in codes and not codes & {"no_sdrf", "sdrf_skeleton", "sdrf_uncoded"}

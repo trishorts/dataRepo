@@ -1055,9 +1055,10 @@ DERIVED_COLUMN_DOCS: dict[str, dict[str, str]] = {
             f"{' or '.join(headers)}), whether or not it carries an ontology term. Added by "
             f"`datarepo build` from `sample_characteristics` (G74): the term column beside it is "
             f"NULL whenever the SDRF names a value without a term, which is the common case, so "
-            f"read this column for what the deposit says. NULL here means no SDRF cell named one, "
-            f"or the cell was `not available`; the two cannot yet be told apart (G42). Never mapped "
-            f"to a term here."
+            f"read this column for what the deposit says. NULL here means no SDRF cell named one: "
+            f"from schema 0.0.12, a `sample_characteristics` row with `value_reserved` true says "
+            f"the SDRF was asked and answered `not available` (G42), and no row says it was never "
+            f"asked. Never mapped to a term here."
         )
         for column, headers in SAMPLE_NAME_COLUMNS.items()
     }

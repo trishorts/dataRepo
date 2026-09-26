@@ -146,16 +146,29 @@ def parse(
                 "biological_replicate": int(replicate) if replicate and replicate.isdigit() else None,
                 "timepoint": _name(row.get("characteristics[time]", "")),
             }
+            default_source = _clean(row.get("comment[characteristics source]", ""))
             for column, raw in pairs:
                 m = _COLUMN.match(column.strip())
                 if not m or m.group("kind").lower() == "comment":
                     continue
-                value = _clean(raw)
-                if value is None:
-                    continue
-                characteristics.append(
-                    {"sample_id": sample_id, "name": column.strip(), "value": value, "term": _term(raw)}
-                )
+                written = (raw or "").strip()
+                if not written:
+                    continue  # an empty cell says nothing, not even "not available"
+                inner = m.group("name").strip()
+                # A reserved word is kept, flagged: `not available` is an answer to a question
+                # that was asked, and dropping it made it look like one never asked (G42).
+                characteristics.append({
+                    "sample_id": sample_id,
+                    "name": column.strip(),
+                    "value": written,
+                    "value_reserved": _clean(written) is None,
+                    "term": _term(raw),
+                    # sdrf's D31 grain: a column's own `comment[<name> source]` overrides the row's
+                    # `comment[characteristics source]`. Neither present means NULL, never
+                    # `deposited`: nothing in the file says so (G62).
+                    "source": _clean(row.get(f"comment[{inner} source]", "")) or default_source,
+                    "source_reference": _clean(row.get(f"comment[{inner} source reference]", "")),
+                })
 
         data_file = _clean(row.get("comment[data file]", "")) or _clean(row.get("assay name", ""))
         if not data_file:
@@ -173,6 +186,10 @@ def parse(
             "instrument_term": _term(row.get("comment[instrument]", "")),
             "fraction": int(fraction) if fraction and fraction.isdigit() else None,
             "technical_replicate": int(technical) if technical and technical.isdigit() else None,
+            # SDRF-DR10: a drafted `1` is a default nothing established, so where it came from is
+            # carried beside it. NULL until the SDRF writes the column.
+            "fraction_source": _clean(row.get("comment[fraction identifier source]", "")),
+            "technical_replicate_source": _clean(row.get("comment[technical replicate source]", "")),
             "acquisition": _name(row.get("comment[proteomics data acquisition method]", "")),
         }
         channel = _channel(row.get("comment[label]", ""))

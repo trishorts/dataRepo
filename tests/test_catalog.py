@@ -72,7 +72,9 @@ def write_bundle(
     }])
     if characteristics:
         writer.add("sample_characteristics", [
-            {"sample_id": sample_id, "name": name, "value": value} for name, value in characteristics
+            {"sample_id": sample_id, "name": name, "value": value,
+             "value_reserved": value.lower() in ("not available", "not applicable")}
+            for name, value in characteristics
         ])
     writer.add("runs", [{"run_id": run_id, "dataset_id": dataset_id, "file_name": "r1.raw"}])
     writer.add("assays", [{

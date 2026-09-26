@@ -169,8 +169,11 @@ def test_every_characteristic_is_kept_verbatim_even_when_it_has_no_curated_colum
     names = {c["name"] for c in parsed.characteristics}
     assert "characteristics[organism]" in names
     assert "characteristics[biological replicate]" in names
-    # `not available` cells carry no information, so they are not stored as characteristics.
-    assert "characteristics[disease]" not in names
+    # G42: a `not available` cell is an answer to a question that was asked, so it is kept, flagged,
+    # and never carries a term. No row at all is what "never asked" looks like.
+    reserved = [c for c in parsed.characteristics if c["name"] == "characteristics[disease]"]
+    assert reserved and all(c["value_reserved"] and c["term"] is None for c in reserved)
+    assert not any(c["value_reserved"] for c in parsed.characteristics if c["name"] == "characteristics[organism]")
 
 
 def test_an_ontology_term_in_the_cell_is_preferred_over_a_name_lookup():
@@ -1081,3 +1084,32 @@ def test_a_dropped_occupancy_duplicate_says_whether_it_matched_the_stored_row():
         "ptm_site_id": row["ptm_site_id"], "assay_id": row["assay_id"], "basis": "intensity",
         "kept_group": "D:P1", "dropped_group": "D:P1;P2",
     }]
+
+
+def test_a_drafted_sdrf_says_where_each_value_came_from(tmp_path):
+    """G62 / sdrf D31: a column's own `comment[<name> source]` overrides the row default; neither
+    means NULL, never `deposited`. DR10 and DR11 columns are read when present."""
+    header = [
+        "source name", "characteristics[organism]", "characteristics[organism part]",
+        "characteristics[biological replicate]", "characteristics[age]", "comment[fraction identifier]",
+        "comment[technical replicate]", "comment[data file]", "comment[biological replicate source]",
+        "comment[characteristics source]", "comment[age source]", "comment[age source reference]",
+        "comment[fraction identifier source]",
+    ]
+    row = [
+        "S1", "NT=homo sapiens;AC=NCBITaxon:9606", "NT=Cell culture;AC=BTO:0000214", "1", "24 months",
+        "1", "1", "R1.raw", "default", "pride project record", "publication", "PMC123#Methods", "inferred",
+    ]
+    path = tmp_path / "drafted.sdrf.tsv"
+    path.write_text("\t".join(header) + "\n" + "\t".join(row) + "\n", encoding="utf-8")
+    parsed = sdrf_source.parse(path, "PXD1")
+    by = {c["name"]: c for c in parsed.characteristics}
+    assert by["characteristics[organism]"]["source"] == "pride project record"
+    assert by["characteristics[biological replicate]"]["source"] == "default"
+    assert (by["characteristics[age]"]["source"], by["characteristics[age]"]["source_reference"]) == (
+        "publication", "PMC123#Methods")
+    assert parsed.run_facts["R1"]["fraction_source"] == "inferred"
+    assert parsed.run_facts["R1"]["technical_replicate_source"] is None
+
+    deposited = sdrf_source.parse(RUN / "02_fetch/metadata/PXD999999.sdrf.tsv", "PXD999999")
+    assert {c["source"] for c in deposited.characteristics} == {None}

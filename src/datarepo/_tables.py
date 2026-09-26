@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-SCHEMA_VERSION = "0.0.11"
+SCHEMA_VERSION = "0.0.12"
 
 TABLES: dict[str, pa.Schema] = {
     "releases": pa.schema([  # Release
@@ -74,7 +74,10 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("sample_id", pa.string(), nullable=False),
         pa.field("name", pa.string(), nullable=False),
         pa.field("value", pa.string(), nullable=False),
+        pa.field("value_reserved", pa.bool_(), nullable=False),
         pa.field("term", pa.string(), nullable=True),
+        pa.field("source", pa.string(), nullable=True),
+        pa.field("source_reference", pa.string(), nullable=True),
     ]),
     "runs": pa.schema([  # Run
         pa.field("run_id", pa.string(), nullable=False),
@@ -83,7 +86,9 @@ TABLES: dict[str, pa.Schema] = {
         pa.field("sha256", pa.string(), nullable=True),
         pa.field("pride_checksum_sha1", pa.string(), nullable=True),
         pa.field("fraction", pa.int64(), nullable=True),
+        pa.field("fraction_source", pa.string(), nullable=True),
         pa.field("technical_replicate", pa.int64(), nullable=True),
+        pa.field("technical_replicate_source", pa.string(), nullable=True),
         pa.field("fragmentation", pa.list_(pa.string()), nullable=True),
         pa.field("ms2_spectra", pa.int64(), nullable=True),
         pa.field("run_minutes", pa.float64(), nullable=True),

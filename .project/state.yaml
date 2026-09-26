@@ -619,19 +619,6 @@ gaps:
     reference resource rather than a measurement, so by D1 it is probably neither aging's nor ours.
     Re-map B6 in SCHEMA_COVERAGE.md once an owner exists.
   - >-
-    G42 `samples` cannot distinguish 'the deposit was asked and answered `not available`' from
-    'the deposit was never asked'. Found answering sdrf SDRF-DR1 on 2026-09-22. PXD036557's SDRF
-    carries `characteristics[organism part]` and `characteristics[disease]`, both `not available`
-    in all 18 rows -- and `samples.organism_part` is NULL for those 18 exactly as it is for the
-    144 samples in the eight datasets with no SDRF at all. This is the `empty` vs `unknown` rule
-    this project has already written down twice (`referenced_tables` returning `[]` for both
-    'reads no tables' and 'cannot tell'; `describe` reporting a 100%-NULL column separately from
-    an absent one), shipped a third time. sdrf's own §2 makes the same argument upstream: a column
-    that is missing has no fill rate, so it is invisible to every quality instrument. Fix is ours.
-    Default: carry the deposit's verbatim cell into `sample_characteristics` (which already has
-    the `(sample_id, name, value)` grain) and let `samples` stay the typed projection, so absence
-    and a reserved word stop sharing NULL. Answered to sdrf in 004 §3 as owed.
-  - >-
     G43 Leading-protein identity is not recoverable from this pipeline's output, and we nearly
     stored a false column claiming it. go 002 §2.5 asked us to commit to `accession_is_leading`
     as load-bearing. MetaMorpheus's `AllQuantifiedProteinGroups.tsv` has 26 columns and none names
@@ -880,22 +867,12 @@ gaps:
     datarepo's runner"), then ONE message each to go, logs, ptmQtl, sdrf, QuantProject covering v0.2 +
     v0.3 together (the five v0.2 notices are HELD for this). U11 closes as dissolved.
   - >-
-    G62 Two SDRF builds promised to sdrf in thread 010 (2026-09-23). (1) A `source` column on
-    SampleCharacteristic with sdrf's five values (deposited, pride project record, config, curated,
-    inferred), filled from option B (row default + per-characteristic override); a cell with neither is
-    NULL, never `deposited`. Build from the first REAL SDRF carrying `comment[characteristics source]`.
-    Our 006 had claimed this column existed; 010 corrected it. (2) The data-file gate: match SDRF
-    `comment[data file]` against the runs actually searched. Today an unmatched SDRF gives dangling
-    assay run_ids and integrity.py REFUSES the whole bundle as an "ingester bug" while `sdrf_status` is
-    `trusted` for any SDRF present. Build: all matched -> trusted; some -> use matching rows, a finding
-    names the rest, not trusted; none -> SDRF unused, flagged sample per run, finding. Cross-check against
-    sdrf's `results/benchmark/screen.tsv` (46 SDRFs naming absent files). Needs an INGESTER_VERSION bump
-    and an SdrfStatus value. UPDATED 2026-09-26 (sdrf 015-018): seven source values now (+ `default`,
-    `publication`); also store `comment[<column> source reference]` as `source_reference` and ask-for
-    `comment[<column> source method]` (rules|model) as its own column (DR11); fraction and technical
-    replicate get `comment[fraction identifier source]` / `comment[technical replicate source]` (DR10),
-    and until written, drafted fractions are unlabelled and kept out of pooling. The drafted PXD049018
-    SDRF in sdrf 015 is the real input to build against. 0.23.0 already strips -calib in the run key.
+    G62 remainder (built in 0.26.0: `sample_characteristics.source` / `source_reference`,
+    `runs.fraction_source` / `technical_replicate_source`, the data-file gate with SdrfStatus
+    partial / unmatched; G42 closed by `value_reserved`). Checked on sdrf 015's drafted PXD049018 SDRF:
+    replicate `default`, organism and organism part `pride project record`. Left: (a) `source_method`
+    once sdrf answers our DR11 proposal (own column vs prefix); (b) cross-check the gate against sdrf's
+    `results/benchmark/screen.tsv` (46 SDRFs naming absent files) when one reaches an ingest.
   - >-
     G63 [MANIFEST PATH BUILT in 0.18.0, 2026-09-24 (aging said yes in 058): runs.enrichment,
     runs.enrichment_source, datasets.enrichment_mixed, manifest run_enrichment + mixed_enrichment as

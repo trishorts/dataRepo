@@ -275,30 +275,53 @@ def ingest_dataset(
     )
 
     samples = list(sdrf.samples)
+    characteristics = list(sdrf.characteristics)
     excluded_run_ids = {f"{dataset_id}:{stem}" for stem in excluded_stems}
     assays = [a for a in sdrf.assays if a["run_id"] not in excluded_run_ids]
-    if not samples:
-        # No SDRF at all: one synthetic sample per run, clearly flagged, so quantities still have
-        # something to hang on. Nothing biological is invented, only the identity of the sample.
-        for run in run_rows:
+    sdrf_status = "trusted" if sdrf_path else "absent"
+
+    def synthetic(runs: list[dict[str, Any]]) -> None:
+        # One synthetic sample per run, clearly flagged, so quantities still have something to
+        # hang on. Nothing biological is invented, only the identity of the sample.
+        taken = {s["sample_id"] for s in samples}
+        for run in runs:
             base = Path(run["file_name"]).stem
             sample_id = f"{dataset_id}:{base}"
+            if sample_id in taken:  # an SDRF source name equal to a run name
+                sample_id = f"{dataset_id}:{base}#run"
             samples.append(
-                {
-                    "sample_id": sample_id,
-                    "dataset_id": dataset_id,
-                    "source_name": base,
-                    "organism": entry.organism,
-                }
+                {"sample_id": sample_id, "dataset_id": dataset_id, "source_name": base, "organism": entry.organism}
             )
             assays.append(
-                {
-                    "assay_id": f"{dataset_id}:{base}:label_free",
-                    "run_id": run["run_id"],
-                    "channel": "label_free",
-                    "sample_id": sample_id,
-                }
+                {"assay_id": f"{dataset_id}:{base}:label_free", "run_id": run["run_id"],
+                 "channel": "label_free", "sample_id": sample_id}
             )
+
+    # The data-file gate (G62). An SDRF naming a file that was not searched used to leave an assay
+    # pointing at no run, and the integrity check then refused the WHOLE bundle as an ingester bug
+    # -- while any SDRF present was reported `trusted`. sdrf's corpus screen found 46 such SDRFs.
+    # Now the rows for searched runs are used, the rest are named, and the status says which.
+    if sdrf_path:
+        searched = {r["run_id"] for r in run_rows}
+        named_unsearched = sorted({a["run_id"].split(":", 1)[1] for a in assays if a["run_id"] not in searched})
+        assays = [a for a in assays if a["run_id"] in searched]
+        unnamed = [r for r in run_rows if r["run_id"] not in {a["run_id"] for a in assays}]
+        if not assays:
+            sdrf_status = "unmatched"
+            samples, characteristics = [], []
+            findings.append(_sdrf_gate_finding(dataset_id, "sdrf_unmatched", named_unsearched, []))
+        elif named_unsearched or unnamed:
+            sdrf_status = "partial"
+            used = {a["sample_id"] for a in assays}
+            samples = [s for s in samples if s["sample_id"] in used]
+            characteristics = [c for c in characteristics if c["sample_id"] in used]
+            synthetic(unnamed)
+            findings.append(_sdrf_gate_finding(
+                dataset_id, "sdrf_partial", named_unsearched, [Path(r["file_name"]).stem for r in unnamed]
+            ))
+    if not samples:
+        synthetic(run_rows)
+    if not sdrf_path:
         findings.append(
             {
                 "finding_id": f"{dataset_id}:no_sdrf",
@@ -314,9 +337,9 @@ def ingest_dataset(
                 "source": "datarepo ingest",
             }
         )
-    elif not any(
+    elif sdrf_status != "unmatched" and not any(
         s.get(column) for s in samples for column in ("organism_part", "cell_type", "disease", "individual_id")
-    ) and (uncoded := _uncoded_annotation(sdrf.characteristics)):
+    ) and (uncoded := _uncoded_annotation(characteristics)):
         # The curated columns want an ontology term; an SDRF that writes `Blood serum` with no term
         # leaves them empty while the text sits in sample_characteristics. Calling that "absent" was
         # false for PXD010115 and PXD034432 -- found by an agent reading both tables (0.18.0).
@@ -337,7 +360,7 @@ def ingest_dataset(
                 "source": "datarepo ingest",
             }
         )
-    elif not any(
+    elif sdrf_status != "unmatched" and not any(
         s.get(column) for s in samples for column in ("organism_part", "cell_type", "disease", "individual_id")
     ):
         findings.append(
@@ -499,7 +522,7 @@ def ingest_dataset(
         "search_engine_version": engine_version,
         "search_database": database_name,
         "search_database_sha256": database_sha,
-        "sdrf_status": "trusted" if sdrf_path else "absent",
+        "sdrf_status": sdrf_status,
         "pipeline_repo": pipeline.get("repo"),
         "pipeline_commit": pipeline.get("commit"),
         "searches": [search_label],
@@ -608,7 +631,7 @@ def ingest_dataset(
     # --- assemble ------------------------------------------------------------------------------
     writer.add("datasets", [dataset_row])
     writer.add("samples", samples)
-    writer.add("sample_characteristics", sdrf.characteristics)
+    writer.add("sample_characteristics", characteristics)
     writer.add("runs", run_rows)
     writer.add("assays", assays)
     writer.add("psms", psm_rows)
@@ -917,6 +940,39 @@ def _contaminant_label_findings(unresolved: Counter, tc: str | None, dataset_id:
             "source": "datarepo ingest",
         }
     ]
+
+
+def _sdrf_gate_finding(
+    dataset_id: str, code: str, named_unsearched: list[str], unnamed: list[str]
+) -> dict[str, Any]:
+    """What the data-file gate did with an SDRF that does not match the searched runs (G62)."""
+    parts = []
+    if named_unsearched:
+        parts.append(
+            f"it names {len(named_unsearched)} file(s) the search did not use, whose rows were not "
+            f"used: {', '.join(named_unsearched[:10])}{' ...' if len(named_unsearched) > 10 else ''}"
+        )
+    if unnamed:
+        parts.append(
+            f"it names no row for {len(unnamed)} searched run(s), each given a synthetic sample "
+            f"with no annotation: {', '.join(unnamed[:10])}{' ...' if len(unnamed) > 10 else ''}"
+        )
+    what = (
+        "The SDRF matches none of the searched files and was not used; every run has a synthetic "
+        "sample with no annotation, as if there were no SDRF"
+        if code == "sdrf_unmatched"
+        else "The SDRF was used only for the runs it names that were searched"
+    )
+    return {
+        "finding_id": f"{dataset_id}:{code}",
+        "dataset_id": dataset_id,
+        "run_id": None,
+        "code": code,
+        "severity": "warning",
+        "status": "open",
+        "message": f"{what}: {'; '.join(parts)}. sdrf_status is `{code.removeprefix('sdrf_')}`.",
+        "source": "datarepo ingest",
+    }
 
 
 #: The SDRF characteristics behind the four curated sample columns an `sdrf_skeleton` finding names.
