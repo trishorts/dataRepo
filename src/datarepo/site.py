@@ -61,9 +61,6 @@ DOWNLOAD_TABLES = (
     "runs", "samples", "assays", "findings", "metrics", "definitions",
 )
 
-#: How many modifications a dataset page lists. The full table is one query away.
-TOP_MODIFICATIONS = 10
-
 
 @dataclass
 class SiteResult:
@@ -99,6 +96,34 @@ def _bundle_licence(path: str | None) -> tuple[str | None, str | None]:
     return doc.get("licence"), doc.get("credit")
 
 
+def _bundle_public_pipeline(path: str | None, commit: str | None) -> tuple[str | None, str | None]:
+    """The PUBLIC repo and commit for a private pipeline commit, if the producer records one.
+
+    aging 069 55e: their pipeline repo is private and their public copy is a subtree split with
+    different hashes, so neither pair can be derived from the other. They record the public pair in
+    the provenance's `pipeline` block (`public_repo`, `public_commit`), and the bundle keeps a
+    verbatim copy of every provenance file. The block is found by its `commit`, not by the file's
+    name, because the stage names are the producer's.
+    """
+    if not path or not commit:
+        return None, None
+    try:
+        doc = json.loads((Path(path) / "bundle.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None
+    for source in doc.get("sources") or []:
+        if not str(source.get("role", "")).startswith("provenance:") or not source.get("bundle_path"):
+            continue
+        try:
+            provenance = json.loads((Path(path) / source["bundle_path"]).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pipeline = provenance.get("pipeline") or {}
+        if pipeline.get("commit") == commit and pipeline.get("public_commit"):
+            return pipeline.get("public_repo"), pipeline.get("public_commit")
+    return None, None
+
+
 def read_site_facts(catalog: Path) -> dict[str, Any]:
     """Everything the site says, read from one catalog in one pass.
 
@@ -115,6 +140,13 @@ def read_site_facts(catalog: Path) -> dict[str, Any]:
             meta = _rows(con, "SELECT * FROM catalog_meta")[0]
         except (duckdb.Error, IndexError) as exc:
             raise CatalogError(f"{catalog} is not a datarepo catalog: {exc}") from exc
+        if "is_contaminant" not in _columns(con, "protein_datasets"):
+            # Catalog format 7 made the contaminant label per dataset. Counting proteins from an
+            # older catalog would fall back on the corpus-wide flag that dropped albumin (57f).
+            raise CatalogError(
+                f"{catalog} is catalog format {meta.get('catalog_version')}, built before the "
+                f"contaminant label was per dataset (format 7); rebuild it with this datarepo"
+            )
         overview = _rows(con, "SELECT * FROM dataset_overview ORDER BY dataset_id")
         extra = {
             r["dataset_id"]: r
@@ -151,6 +183,7 @@ def read_site_facts(catalog: Path) -> dict[str, Any]:
             "AND name IN ('id_rate', 'contamination_psm_share')",
         )
         merit = _figures_of_merit(con)
+        proteins = _protein_evidence(con)
 
     organism_names: dict[tuple[str, str], str] = {
         (r["dataset_id"], r["organism"]): r["organism_name"] for r in names
@@ -160,6 +193,9 @@ def read_site_facts(catalog: Path) -> dict[str, Any]:
         ds = row["dataset_id"]
         bundle = bundles.get(ds, {})
         licence, credit = _bundle_licence(bundle.get("path"))
+        public_repo, public_commit = _bundle_public_pipeline(
+            bundle.get("path"), (extra.get(ds) or {}).get("pipeline_commit")
+        )
         datasets.append({
             **row,
             **{k: v for k, v in extra.get(ds, {}).items() if k != "dataset_id"},
@@ -176,20 +212,68 @@ def read_site_facts(catalog: Path) -> dict[str, Any]:
             },
             "licence": licence,
             "credit": credit,
+            "pipeline_public_repo": public_repo,
+            "pipeline_public_commit": public_commit,
             "findings": [
                 {k: f[k] for k in ("code", "severity", "message")}
                 for f in findings if f["dataset_id"] == ds
             ],
+            # All of them: a list cut at ten read "zero" for the eleventh (PXD026608's deamidation,
+            # aging 069 55c).
             "modifications": [
                 {k: m[k] for k in ("modification_name", "modification", "n_sites")}
                 for m in modifications if m["dataset_id"] == ds
-            ][:TOP_MODIFICATIONS],
+            ],
             "metrics": {
                 m["name"]: {"value": m["value"], "definition_id": m["definition_id"]}
                 for m in metrics if m["dataset_id"] == ds
             },
         })
-    return {"meta": meta, "datasets": datasets, "merit": merit}
+    for ds in datasets:
+        severities = [f["severity"] for f in ds["findings"]]
+        ds["findings_by_severity"] = {s: severities.count(s) for s in ("error", "warning", "info")}
+        ds["finding_codes"] = sorted({f["code"] for f in ds["findings"]})
+    return {"meta": meta, "datasets": datasets, "merit": merit, "proteins": proteins}
+
+
+def _columns(con: Any, table: str) -> set[str]:
+    return {
+        r["column_name"]
+        for r in _rows(
+            con, "SELECT column_name FROM information_schema.columns WHERE table_name = ?", [table]
+        )
+    }
+
+
+def _protein_evidence(con: Any) -> dict[str, dict[str, Any]]:
+    """Every accession with accepted evidence somewhere, and where (aging 070, DATAREPO-56).
+
+    The site could answer no protein-level question at all -- is albumin identified, which datasets
+    have tau -- because nothing below the dataset reached it. This is the smallest thing that does:
+    per accession, the datasets where a protein group or peptidoform passed, with the contaminant
+    label AS THAT DATASET HAS IT. Decoys are left out; a contaminant is kept and labelled.
+    """
+    rows = _rows(
+        con,
+        "SELECT d.protein_accession, i.gene, i.organism, d.dataset_id, d.n_protein_groups, "
+        "d.n_peptidoforms, d.best_q_value, d.is_contaminant "
+        "FROM protein_datasets d JOIN protein_index i USING (protein_accession) "
+        "WHERE (d.n_protein_groups > 0 OR d.n_peptidoforms > 0) "
+        "AND d.protein_accession NOT LIKE 'DECOY%' ORDER BY 1, 4",
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        entry = out.setdefault(
+            r["protein_accession"], {"gene": r["gene"], "organism": r["organism"], "datasets": []}
+        )
+        entry["datasets"].append({
+            "dataset_id": r["dataset_id"],
+            "n_protein_groups": r["n_protein_groups"],
+            "n_peptidoforms": r["n_peptidoforms"],
+            "best_protein_group_q_value": r["best_q_value"],
+            "is_contaminant": r["is_contaminant"],
+        })
+    return out
 
 
 def _figures_of_merit(con: Any) -> list[dict[str, Any]]:
@@ -218,6 +302,19 @@ def _figures_of_merit(con: Any) -> list[dict[str, Any]]:
         "    AND NOT coalesce(is_contaminant, false) AND protein_accession NOT LIKE 'DECOY%' "
         "  GROUP BY 1)"
     ).fetchone()
+    # Enriched datasets (pull-downs, probes, IPs) say nothing about a proteome, so the count a reader
+    # asking "how much of the proteome is here" needs is the one over whole-proteome datasets only
+    # (aging 070 57d). A mixed deposit is left out: its declaration is true of some runs only.
+    whole = con.execute(
+        "SELECT count(DISTINCT p.protein_accession) FROM protein_datasets p "
+        "JOIN datasets d USING (dataset_id) "
+        "WHERE d.enrichment = ['none'] AND NOT coalesce(d.enrichment_mixed, false) "
+        "AND (p.n_protein_groups > 0 OR p.n_peptidoforms > 0) "
+        "AND NOT coalesce(p.is_contaminant, false) AND p.protein_accession NOT LIKE 'DECOY%'"
+    ).fetchone()[0]
+    n_whole = con.execute(
+        "SELECT count(*) FROM datasets WHERE enrichment = ['none'] AND NOT coalesce(enrichment_mixed, false)"
+    ).fetchone()[0]
     kinds = con.execute(
         "SELECT count(DISTINCT modification_name) FROM ptm_sites WHERE target_decoy = 'target'"
     ).fetchone()[0]
@@ -234,6 +331,9 @@ def _figures_of_merit(con: Any) -> list[dict[str, Any]]:
         {"label": "Proteins identified", "value": proteins,
          "note": f"accessions with 1%-FDR evidence, decoys and contaminants excluded; "
                  f"{shared or 0:,} of them in 3 or more datasets"},
+        {"label": "Proteins, whole-proteome datasets", "value": whole,
+         "note": f"the same count over the {n_whole:,} datasets with no enrichment step; an "
+                 f"enriched dataset (pull-down, probe, IP) says nothing about the proteome"},
         {"label": "PTM sites", "value": sites,
          "note": f"modified residues on proteins, {kinds or 0:,} kinds of modification"},
     ]
@@ -717,13 +817,52 @@ def about_html(markdown: str) -> str:
     return "\n".join(out)
 
 
+def _severity_words(ds: dict[str, Any]) -> str:
+    counts = ds["findings_by_severity"]
+    return (
+        f"Recorded against this dataset: {_plural(counts['error'], 'error')}, "
+        f"{_plural(counts['warning'], 'warning')} and {counts['info']:,} for information"
+    )
+
+
+def _findings_cell(ds: dict[str, Any]) -> str:
+    counts = ds["findings_by_severity"]
+    head = f"{counts['error']} E / {counts['warning']} W / {counts['info']} I"
+    return f'{head}<br><span class="note">{_e(", ".join(ds["finding_codes"]))}</span>'
+
+
+def _corpus_table(datasets: Sequence[dict[str, Any]]) -> str:
+    """Datasets by organism and enrichment (aging 070 57d), so "which datasets are whole-proteome
+    mouse" is one glance rather than 34 page opens."""
+    grid: dict[str, dict[str, int]] = {}
+    for ds in datasets:
+        organism = _join(ds["organism_names"]) or "not recorded"
+        enrichment = _enrichment_cell(ds) or "not recorded"
+        grid.setdefault(organism, {}).setdefault(enrichment, 0)
+        grid[organism][enrichment] += 1
+    columns = sorted({e for row in grid.values() for e in row}, key=lambda e: (e != "none", e))
+    head = "".join(f'<th class="num">{_e(c)}</th>' for c in columns)
+    body = "\n".join(
+        f"<tr><td>{_e(org)}</td>"
+        + "".join(f'<td class="num">{row.get(c, "")}</td>' for c in columns)
+        + f'<td class="num">{sum(row.values())}</td></tr>'
+        for org, row in sorted(grid.items())
+    )
+    return (
+        '<div class="scroll"><table>\n<thead><tr><th>Organism searched</th>'
+        f'{head}<th class="num">All</th></tr></thead>\n<tbody>\n{body}\n</tbody></table></div>\n'
+        '<p class="note">Datasets by the organism of the searched database and the declared '
+        'enrichment. "none" is a whole-proteome dataset; any other value is a capture, and a '
+        "protein's absence from one says nothing about the proteome.</p>"
+    )
+
+
 def _index_html(
     facts: dict[str, Any], *, title: str, base_url: str | None, about: str | None = None
 ) -> str:
     meta = facts["meta"]
     rows = []
     for ds in facts["datasets"]:
-        warn = sum(1 for f in ds["findings"] if f["severity"] in ("warning", "error"))
         rows.append(
             "<tr>"
             f'<td><a href="{_page_path(ds["dataset_id"])}">{_e(ds["dataset_id"])}</a></td>'
@@ -734,7 +873,7 @@ def _index_html(
             f'<td class="num">{_n(ds["n_psms_1pct"])}</td>'
             f'<td class="num">{_n(ds["n_protein_groups_1pct"])}</td>'
             f'<td class="num">{_n(ds["n_ptm_sites"])}</td>'
-            f'<td class="num">{warn}</td>'
+            f"<td>{_findings_cell(ds)}</td>"
             "</tr>"
         )
     tiles = "\n".join(
@@ -760,13 +899,16 @@ reanalysed with one pipeline and stored with the same schema, so they can be com
 they serve is how organelle proteomes change with age.</p>
 <p><strong>For AI agents:</strong> start at <a href="llms.txt"><code>llms.txt</code></a>. The same facts
 as this page are in <a href="datasets.json"><code>datasets.json</code></a>.</p>
+<h2>The corpus at a glance</h2>
+{_corpus_table(facts["datasets"])}
 <h2>Datasets</h2>
-<p class="note">Counts are at 1% FDR, as the search engine reports them. "Warnings" are open findings
-about a dataset. Read them before using it.</p>
+<p class="note">Counts are at 1% FDR, as the search engine reports them. "Findings" are what is
+recorded against a dataset, by type; most are about what the deposit lacks (no SDRF, no design).
+Read them before using it. Organism is that of the protein database searched.</p>
 <div class="scroll"><table>
 <thead><tr><th>Dataset</th><th>Title</th><th>Organism</th><th>Enrichment</th>
 <th class="num">Runs</th><th class="num">PSMs</th><th class="num">Protein groups</th>
-<th class="num">PTM sites</th><th class="num">Warnings</th></tr></thead>
+<th class="num">PTM sites</th><th>Findings</th></tr></thead>
 <tbody>
 {chr(10).join(rows)}
 </tbody>
@@ -832,8 +974,10 @@ def _dataset_html(
 <tbody>
 {mods}
 </tbody></table></div>
-<p class="note">Target proteins only, the {TOP_MODIFICATIONS} most frequent. A dash in the UNIMOD column means the
-modification has no UNIMOD term in the registry that searched it, not that it is unknown.</p>"""
+<p class="note">Every modification with a site on a target protein, most frequent first. A dash in the UNIMOD
+column means the modification has no UNIMOD term in the registry that searched it, not that it is
+unknown. One chemistry can appear under two names (UniProt's and MetaMorpheus's); the catalog's
+<code>ptm_sites_by_chemistry</code> view merges them.</p>"""
     else:
         mods = "<p>No PTM sites are recorded for this dataset.</p>"
 
@@ -848,8 +992,10 @@ modification has no UNIMOD term in the registry that searched it, not that it is
     else:
         reconciliation = "not recorded"
 
-    commit = ds.get("pipeline_commit")
-    repo = (ds.get("pipeline_repo") or "").removesuffix(".git")
+    # The public pair when the producer records one (aging 069 55e): the private repo is where the
+    # commit lives, and a reader cannot open it.
+    commit = ds.get("pipeline_public_commit") or ds.get("pipeline_commit")
+    repo = (ds.get("pipeline_public_repo") or ds.get("pipeline_repo") or "").removesuffix(".git")
     pipeline = (
         f'<a href="{_e(repo)}/tree/{_e(commit)}">{_e(commit[:12])}</a>'
         if commit and repo.startswith("https://github.com/")
@@ -884,6 +1030,7 @@ modification has no UNIMOD term in the registry that searched it, not that it is
 <br><span class="note">Written from catalog fields only (D17), with no model involved. It says nothing the tables below do not.</span></div>
 
 <h2>Open findings</h2>
+<p><strong>{_severity_words(ds)}</strong></p>
 {findings}
 
 <h2>What was found</h2>
@@ -893,7 +1040,7 @@ modification has no UNIMOD term in the registry that searched it, not that it is
 
 <h2>How it was measured</h2>
 <dl>
-<dt>Organism</dt><dd>{_e(_join(ds['organism_names']) or 'not recorded')}</dd>
+<dt>Organism searched</dt><dd>{_e(_join(ds['organism_names']) or 'not recorded')} <span class="note">(the protein database's organism, not a statement about the samples)</span></dd>
 <dt>Acquisition</dt><dd>{_e(ds.get('acquisition'))}</dd>
 <dt>Quantification</dt><dd>{_e(ds.get('quant_method'))}</dd>
 <dt>Labelling</dt><dd>{_e(ds.get('labelling'))}</dd>
@@ -906,7 +1053,7 @@ modification has no UNIMOD term in the registry that searched it, not that it is
 <dt>Pipeline commit</dt><dd>{pipeline}</dd>
 </dl>
 
-<h2>Most frequent modifications</h2>
+<h2>Modifications</h2>
 {mods}
 
 <h2>Data</h2>
@@ -927,7 +1074,9 @@ modification has no UNIMOD term in the registry that searched it, not that it is
 # --- llms.txt ----------------------------------------------------------------------------------
 
 
-def _llms_txt(facts: dict[str, Any], *, title: str, data_url: str | None) -> str:
+def _llms_txt(
+    facts: dict[str, Any], *, title: str, data_url: str | None, base_url: str | None = None
+) -> str:
     meta = facts["meta"]
     lines = [
         f"# {title}",
@@ -948,7 +1097,13 @@ def _llms_txt(facts: dict[str, Any], *, title: str, data_url: str | None) -> str
         "- An empty table means nothing was delivered. It does not mean the answer is zero or "
         "none. The MCP `describe` tool says which tables are empty.",
         "- Contaminant proteins (e.g. bovine albumin, porcine trypsin) are flagged and carry "
-        "their own species. They are reagents, not evidence about the sample's organism.",
+        "their own species. They are reagents, not evidence about the sample's organism. The "
+        "flag is PER DATASET: human albumin is a target in a human search and a contaminant in "
+        "a rodent one.",
+        "- A dataset's organism is the organism of the protein database searched, not a "
+        "statement about the samples.",
+        "- `pep` values are not comparable across datasets: the model is retrained on every "
+        "search. Compare counts at a threshold instead.",
         "- A protein group's accession list is kept in the search engine's order, and "
         "MetaMorpheus writes it alphabetically. The first accession is not a leading or razor "
         "protein, and nothing in this repository names one.",
@@ -965,7 +1120,13 @@ def _llms_txt(facts: dict[str, Any], *, title: str, data_url: str | None) -> str
         "",
         "## Access",
         "",
-        "- [datasets.json](datasets.json): every fact on these pages, as JSON.",
+        "- [datasets.json](datasets.json): a small index, one entry per dataset, each naming "
+        "its full JSON (`datasets/<id>.json`: every fact on its page, all findings and "
+        "modifications).",
+        "- [proteins/index.json](proteins/index.json): which datasets have accepted evidence for "
+        "a protein. It lists every protein shard by accession prefix: fetch the shard whose "
+        "prefix is the longest one the accession starts with. A gene symbol is in "
+        "`genes/<first letter>.json`, which gives its accessions.",
         f"- [MCP server]({REPOSITORY}/blob/master/docs/mcp.md): `datarepo mcp --catalog "
         "<catalog.duckdb>` serves a catalog to an agent over stdio (describe, search, "
         "read-only SQL).",
@@ -988,6 +1149,122 @@ def _llms_txt(facts: dict[str, Any], *, title: str, data_url: str | None) -> str
         "",
     ]
     return "\n".join(lines)
+
+
+# --- JSON for programs ---------------------------------------------------------------------------
+
+#: Said wherever a dataset's organism is shown, because it reads as a fact about the sample and it
+#: is not one: PXD050351 is a human cell line, and an agent judged it "maybe a mouse sample" from the
+#: title while `organisms` said only which proteome was searched (aging 070 57g).
+ORGANISMS_ARE = (
+    "`organisms` is the organism of the protein DATABASE the search used, not a statement about "
+    "the samples. Sample annotation, where any exists, is in the catalog's `samples` and "
+    "`sample_characteristics` tables."
+)
+
+DATASETS_ARE = (
+    "One entry per dataset. Each names its page and its full JSON (`json`), which holds every "
+    "fact on the page including all findings and modifications. `findings_by_severity` and "
+    "`finding_codes` say what is recorded against a dataset; whether that makes it usable for a "
+    "question is the question's call, not this file's. " + ORGANISMS_ARE
+)
+
+#: No protein shard is written larger than this. A fixed two-character prefix put 3.6 MB in
+#: `Q9.json` on aging's 34 datasets, which is the truncation 55a was about in a new file; so a shard
+#: over the cap is split by lengthening its prefix, and the index names every shard.
+MAX_SHARD_BYTES = 150_000
+
+
+def _json(doc: Any) -> str:
+    return json.dumps(doc, indent=1, ensure_ascii=False, default=str) + "\n"
+
+
+def _json_path(dataset_id: str) -> str:
+    return f"datasets/{quote(dataset_id)}.json"
+
+
+def _links(dataset_id: str, base_url: str | None) -> dict[str, str | None]:
+    """Relative paths always; absolute URLs as well when the site's address is known (55b)."""
+    page, doc = _page_path(dataset_id), _json_path(dataset_id)
+    return {
+        "page": page, "json": doc,
+        "page_url": _absolute(base_url, page), "json_url": _absolute(base_url, doc),
+    }
+
+
+def _index_entry(ds: dict[str, Any], base_url: str | None) -> dict[str, Any]:
+    keys = (
+        "dataset_id", "title", "organisms", "organism_names", "acquisition", "quant_method",
+        "labelling", "enrichment", "enrichment_mixed", "n_runs", "n_samples", "n_psms_1pct",
+        "n_peptidoforms_1pct", "n_protein_groups_1pct", "n_ptm_sites", "sdrf_status",
+        "findings_by_severity", "finding_codes",
+    )
+    return {**{k: ds.get(k) for k in keys}, "summary": summary(ds), **_links(ds["dataset_id"], base_url)}
+
+
+def _json_compact(doc: Any) -> str:
+    return json.dumps(doc, separators=(",", ":"), ensure_ascii=False, default=str) + "\n"
+
+
+def _shards(entries: dict[str, Any], length: int = 2) -> dict[str, dict[str, Any]]:
+    """`{prefix: entries}` with every shard under `MAX_SHARD_BYTES`, prefixes as short as allows."""
+    groups: dict[str, dict[str, Any]] = {}
+    for accession, entry in entries.items():
+        groups.setdefault(accession[:length], {})[accession] = entry
+    out: dict[str, dict[str, Any]] = {}
+    for prefix, group in groups.items():
+        too_big = len(_json_compact(group).encode("utf-8")) > MAX_SHARD_BYTES
+        if too_big and any(len(a) > length for a in group):
+            out.update(_shards(group, length + 1))
+        else:
+            out[prefix] = group
+    return out
+
+
+def _protein_files(proteins: dict[str, dict[str, Any]], catalog: dict[str, Any]) -> dict[str, str]:
+    """`proteins/<shard>.json`, `genes/<letter>.json` and `proteins/index.json` (DATAREPO-56)."""
+    shards = _shards(proteins)
+    genes: dict[str, dict[str, list[str]]] = {}
+    for accession, entry in proteins.items():
+        gene = entry.get("gene")
+        if gene:
+            letter = gene[0].upper() if gene[0].isalnum() else "_"
+            genes.setdefault(letter, {}).setdefault(gene.upper(), []).append(accession)
+    about = (
+        "Accessions with evidence that passed acceptance (an accepted protein group OR an "
+        "accepted peptidoform) in at least one dataset; decoys excluded, contaminants kept and "
+        "labelled PER DATASET, because the label is: human albumin is a target in a human search "
+        "and a contaminant in a rodent one. `best_protein_group_q_value` is NULL where only a "
+        "peptidoform passed, so a listed dataset is not 'identified at 1% protein FDR'. An "
+        "accession absent from its shard had no accepted evidence anywhere in this catalog."
+    )
+    paths = {key: f"proteins/{quote(key, safe='')}.json" for key in shards}
+    files = {
+        paths[key]: _json_compact({"catalog": catalog, "proteins_are": about, "proteins": entries})
+        for key, entries in sorted(shards.items())
+    }
+    files.update({
+        f"genes/{key}.json": _json_compact({
+            "catalog": catalog,
+            "genes_are": "Gene symbol (upper-cased) -> accessions, from the producer's display "
+                         "symbol. Look each accession up in its proteins/ shard.",
+            "genes": dict(sorted(entries.items())),
+        })
+        for key, entries in sorted(genes.items())
+    })
+    files["proteins/index.json"] = _json({
+        "catalog": catalog,
+        "how_to_look_up": (
+            "Find the LONGEST key of `protein_shards` that the accession starts with, and fetch "
+            "that shard's `file` (P02768 -> the key 'P02' or 'P0', whichever is listed). By gene "
+            "symbol, fetch genes/<first letter, upper-cased>.json first. " + about
+        ),
+        "protein_shards": {
+            k: {"file": paths[k], "n": len(v)} for k, v in sorted(shards.items())
+        },
+        "gene_shards": {k: len(v) for k, v in sorted(genes.items())},
+    })
+    return files
 
 
 # --- writing -----------------------------------------------------------------------------------
@@ -1016,9 +1293,10 @@ def _clear_previous(out: Path) -> None:
         path = (out / name).resolve()
         if out.resolve() in path.parents and path.is_file():
             path.unlink()
-    datasets = out / "datasets"
-    if datasets.is_dir() and not any(datasets.iterdir()):
-        datasets.rmdir()
+    for folder in ("datasets", "proteins", "genes"):
+        path = out / folder
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
 
 
 def build_site(
@@ -1061,29 +1339,39 @@ def build_site(
     _clear_previous(out)
     (out / "datasets").mkdir(parents=True, exist_ok=True)
 
+    catalog_block = {
+        **{k: meta[k] for k in (
+            "catalog_id", "catalog_version", "schema_version", "builder_version", "built_utc",
+            "instance")},
+        "base_url": base_url,
+    }
     files: dict[str, str] = {
         "style.css": STYLE,
         "index.html": _index_html(facts, title=title, base_url=base_url, about=about),
-        "llms.txt": _llms_txt(facts, title=title, data_url=data_url),
-        "datasets.json": json.dumps(
-            {
-                "catalog": {k: meta[k] for k in (
-                    "catalog_id", "catalog_version", "schema_version", "builder_version",
-                    "built_utc", "instance")},
-                "datasets": [
-                    {**{k: v for k, v in ds.items() if k != "bundle"},
-                     "bundle": {k: v for k, v in ds["bundle"].items() if k != "path"},
-                     "summary": summary(ds), "page": _page_path(ds["dataset_id"])}
-                    for ds in facts["datasets"]
-                ],
-            },
-            indent=1, ensure_ascii=False, default=str,
-        ) + "\n",
+        "llms.txt": _llms_txt(facts, title=title, data_url=data_url, base_url=base_url),
+        # An INDEX, one small entry per dataset. The whole thing in one file was cut off by agent
+        # fetch tools after about 19 of 26 entries, and the agent could not tell (aging 069 55a).
+        "datasets.json": _json({
+            "catalog": catalog_block,
+            "datasets_are": DATASETS_ARE,
+            "datasets": [_index_entry(ds, base_url) for ds in facts["datasets"]],
+        }),
     }
     for ds in facts["datasets"]:
         files[_page_path(ds["dataset_id"])] = _dataset_html(
             ds, meta, title=title, base_url=base_url, data_url=data_url
         )
+        files[_json_path(ds["dataset_id"])] = _json({
+            "catalog": catalog_block,
+            "dataset": {
+                **{k: v for k, v in ds.items() if k != "bundle"},
+                "bundle": {k: v for k, v in ds["bundle"].items() if k != "path"},
+                "summary": summary(ds),
+                **_links(ds["dataset_id"], base_url),
+            },
+            "organisms_are": ORGANISMS_ARE,
+        })
+    files.update(_protein_files(facts["proteins"], catalog_block))
 
     result = SiteResult(out=out, catalog_id=meta["catalog_id"], files=[])
     if data_url:

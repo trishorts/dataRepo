@@ -148,7 +148,7 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
         "columns": {
             "dataset_id": {"description": 'ProteomeXchange accession, e.g. PXD036557.', "range": 'string', "identifier": True},
             "title": {"description": 'Title from the archive.', "range": 'string'},
-            "organisms": {"description": 'NCBITaxon IDs.', "range": 'uriorcurie', "multivalued": True},
+            "organisms": {"description": "NCBITaxon IDs of the protein DATABASE the search used, as the producer declares it. Not a statement about the samples: PXD050351's title says mice and it is a human cell line, and this field can say only which proteome was searched (aging 070 57g). Sample annotation, where any exists, is in `samples` and `sample_characteristics`.", "range": 'uriorcurie', "multivalued": True},
             "acquisition": {"description": 'Acquisition mode.', "range": 'Acquisition', "enum": 'Acquisition'},
             "quant_method": {"description": 'Quantification principle.', "range": 'QuantMethod', "enum": 'QuantMethod'},
             "labelling": {"description": 'Label reagent, if any.', "range": 'Labelling', "enum": 'Labelling'},

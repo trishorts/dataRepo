@@ -270,3 +270,116 @@ def test_the_command_line_writes_the_site(tmp_path, catalog, capsys):
     out = capsys.readouterr().out
     assert "2 dataset pages" in out
     assert "skipped  croissant.json" in out
+
+
+# --- aging 069 section 3 and 070 (the agent test drive) ------------------------------------------
+
+
+def test_datasets_json_is_a_small_index_and_each_dataset_has_its_own_file(tmp_path, catalog):
+    """55a: one file with every fact was cut off by agent fetch tools after ~19 of 26 entries."""
+    build_site(catalog, tmp_path / "site", base_url="https://example.org/repo/")
+    index = json.loads((tmp_path / "site/datasets.json").read_text(encoding="utf-8"))
+    assert index["catalog"]["base_url"] == "https://example.org/repo/"
+    entry = index["datasets"][0]
+    assert "findings" not in entry and "modifications" not in entry, "the index must stay small"
+    assert entry["json"] == f"datasets/{entry['dataset_id']}.json"
+    # 55b: absolute URLs beside the relative ones when the address is known.
+    assert entry["json_url"] == f"https://example.org/repo/datasets/{entry['dataset_id']}.json"
+    assert entry["page_url"] == f"https://example.org/repo/datasets/{entry['dataset_id']}.html"
+    assert set(entry["findings_by_severity"]) == {"error", "warning", "info"}
+    full = json.loads((tmp_path / "site" / entry["json"]).read_text(encoding="utf-8"))["dataset"]
+    assert full["dataset_id"] == entry["dataset_id"] and "findings" in full
+    assert "protein DATABASE" in index["datasets_are"]
+    assert "not a statement about the samples" in index["datasets_are"]
+
+
+def test_every_modification_is_published_not_the_top_ten(tmp_path, catalog):
+    """55c: an eleventh modification read as zero."""
+    build_site(catalog, tmp_path / "site")
+    full = json.loads((tmp_path / "site/datasets/PXD000001.json").read_text(encoding="utf-8"))["dataset"]
+    columns, data = run_query(
+        catalog,
+        "SELECT count(DISTINCT modification_name) FROM ptm_sites "
+        "WHERE dataset_id = 'PXD000001' AND target_decoy = 'target'",
+    )
+    assert len(full["modifications"]) == data[0][0] > 0
+
+
+def test_a_protein_is_found_by_accession_and_by_gene(tmp_path, catalog):
+    """DATAREPO-56: the site could reach no protein at all."""
+    build_site(catalog, tmp_path / "site")
+    index = json.loads((tmp_path / "site/proteins/index.json").read_text(encoding="utf-8"))
+    prefix = max((k for k in index["protein_shards"] if "P11111".startswith(k)), key=len)
+    shard_file = tmp_path / "site" / index["protein_shards"][prefix]["file"]
+    shard = json.loads(shard_file.read_text(encoding="utf-8"))["proteins"]
+    assert [d["dataset_id"] for d in shard["P11111"]["datasets"]] == ["PXD000001", "PXD000002"]
+    genes = json.loads((tmp_path / "site/genes/G.json").read_text(encoding="utf-8"))["genes"]
+    assert genes["GENE1"] == ["P11111"]
+    assert "LONGEST key" in index["how_to_look_up"]
+    assert "proteins/index.json" in (tmp_path / "site/llms.txt").read_text(encoding="utf-8")
+
+
+def test_no_protein_shard_is_large_enough_to_be_cut_off(monkeypatch):
+    """A fixed two-character prefix put 3.6 MB in one file on aging's 34 datasets."""
+    from datarepo import site
+
+    monkeypatch.setattr(site, "MAX_SHARD_BYTES", 2_000)
+    entries = {f"Q9{i:04d}": {"gene": None, "organism": None, "datasets": [{"dataset_id": "PXD1"}] * 3}
+               for i in range(200)}
+    shards = site._shards(entries)
+    assert len(shards) > 1
+    assert sum(len(v) for v in shards.values()) == 200
+    for prefix, group in shards.items():
+        assert all(a.startswith(prefix) for a in group)
+        assert len(site._json_compact(group).encode()) <= 2_000
+
+
+def test_the_index_shows_finding_types_and_the_corpus_by_organism_and_enrichment(tmp_path, catalog):
+    """57d: counts alone meant opening every page to learn which datasets had a design."""
+    build_site(catalog, tmp_path / "site")
+    index = (tmp_path / "site/index.html").read_text(encoding="utf-8")
+    assert "The corpus at a glance" in index and "Organism searched" in index
+    page = (tmp_path / "site/datasets/PXD000001.html").read_text(encoding="utf-8")
+    assert "not a statement about the samples" in page
+
+
+def test_the_public_pipeline_commit_is_linked_when_the_producer_records_one(tmp_path, catalog):
+    """55e: the private repo is where the commit lives, and a reader cannot open it."""
+    from datarepo.site import _dataset_html, read_site_facts
+
+    facts = read_site_facts(catalog)
+    ds = {**facts["datasets"][0], "pipeline_repo": "https://github.com/me/private",
+          "pipeline_commit": "a" * 40, "pipeline_public_repo": "https://github.com/me/public",
+          "pipeline_public_commit": "b" * 40}
+    page = _dataset_html(ds, facts["meta"], title="t", base_url=None, data_url=None)
+    assert f"https://github.com/me/public/tree/{'b' * 40}" in page
+    assert "me/private" not in page
+
+
+def test_an_older_catalog_is_refused_rather_than_counted_with_the_old_flag(tmp_path, catalog, monkeypatch):
+    """A format-6 catalog has no per-dataset label, and its corpus-wide flag dropped albumin (57f)."""
+    from datarepo import site
+
+    real = site._columns
+    monkeypatch.setattr(
+        site, "_columns",
+        lambda con, table: real(con, table) - {"is_contaminant"} if table == "protein_datasets" else real(con, table),
+    )
+    with pytest.raises(CatalogError, match="format 7"):
+        build_site(catalog, tmp_path / "site")
+
+
+def test_the_public_pair_is_read_from_the_bundles_own_provenance_copy(tmp_path):
+    """Found by the private commit it corresponds to, never by the producer's stage file name."""
+    from datarepo.site import _bundle_public_pipeline
+
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "sources/prov_a.json").write_text(json.dumps({"pipeline": {"commit": "other"}}), encoding="utf-8")
+    (tmp_path / "sources/prov_b.json").write_text(json.dumps({"pipeline": {
+        "commit": "abc", "public_repo": "https://github.com/me/public", "public_commit": "def"}}), encoding="utf-8")
+    (tmp_path / "bundle.json").write_text(json.dumps({"sources": [
+        {"role": "provenance:x", "bundle_path": "sources/prov_a.json"},
+        {"role": "provenance:y", "bundle_path": "sources/prov_b.json"},
+    ]}), encoding="utf-8")
+    assert _bundle_public_pipeline(str(tmp_path), "abc") == ("https://github.com/me/public", "def")
+    assert _bundle_public_pipeline(str(tmp_path), "nomatch") == (None, None)
