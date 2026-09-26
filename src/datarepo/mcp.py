@@ -85,6 +85,20 @@ SEARCH_LIMIT_MAX = 200
 #: enter, in a tool whose whole job is to keep them out.
 PEPTIDE_RE = re.compile(r"^[ACDEFGHIKLMNPQRSTVWY]{6,}$")
 
+#: What the no-target `describe()` says before anything else.
+READ_FIRST = [
+    "`target_decoy` has THREE values: target, decoy and contaminant. Count targets explicitly; "
+    "decoys are FDR machinery and contaminants are reagents.",
+    "The contaminant label is per dataset: human albumin is a target in a human search and a "
+    "contaminant in a rodent one. Never use one corpus-wide flag.",
+    "`datasets.organisms` is the organism of the searched protein database, not a statement "
+    "about the samples.",
+    "A protein group's accessions are sorted alphabetically, in `protein_accessions` and in "
+    "`protein_group_id`: the first is not a leading or razor protein.",
+    "`pep` is run-relative: never compare its values across datasets.",
+    "An empty table means nothing was delivered, not that the answer is none.",
+]
+
 #: Columns whose VALUE means something only inside the search that wrote it (pep 002, G70).
 #: MetaMorpheus retrains its PEP model from scratch on every search, on that search's own targets
 #: and decoys, so two datasets' `pep` come from two different models even on one release. Stored
@@ -438,6 +452,10 @@ class CatalogServer:
                 "rather than answering from the empty table."
             ),
             "open_findings": findings,
+            # The rules an agent in aging's evaluation reached only by querying, or not at all
+            # (aging 070 57h/i/g, 57f, pep 002). Short, and on the first answer, because the first
+            # answer is the one every agent reads.
+            "read_first": READ_FIRST,
             "next": [
                 "describe('tables') for every table with its row count",
                 "describe('<table>') for one table's columns and what they mean",

@@ -762,3 +762,13 @@ def test_a_replaced_catalog_file_is_announced_not_silently_served(catalog, tmp_p
         os.utime(copy, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000_000))
         warning = instance.sql("SELECT 1")["provenance"]["catalog_file_changed"]
         assert instance.identity.catalog_id in warning and "Restart" in warning
+
+
+def test_the_first_answer_names_the_rules_agents_otherwise_learn_by_failing(server):
+    """aging 070 57h/57i: the contaminant value of target_decoy and the sorted group id were
+    reachable only by querying, and the first answer is the one every agent reads."""
+    rules = " ".join(server.describe()["read_first"])
+    for fact in ("THREE values", "per dataset", "searched protein database", "not a leading", "run-relative"):
+        assert fact in rules, fact
+    means = {c["column"]: c.get("means") or "" for c in server.describe("protein_groups", detail="detailed")["columns"]}
+    assert "SORTED" in means["protein_group_id"]

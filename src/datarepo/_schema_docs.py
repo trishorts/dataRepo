@@ -197,7 +197,7 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
         "description": 'Every SDRF characteristic, kept verbatim, so nothing is lost to the curated columns.',
         "columns": {
             "sample_id": {"description": 'Sample this row describes.', "range": 'Sample'},
-            "name": {"description": 'SDRF column, e.g. characteristics[age].', "range": 'string'},
+            "name": {"description": 'The SDRF column header, verbatim, e.g. characteristics[age] or characteristics[organism part]. This is the column to filter on; there is no `characteristic` column.', "range": 'string'},
             "value": {"description": 'Value as written in the SDRF.', "range": 'string'},
             "term": {"description": 'Ontology term for the value, where the SDRF gives one.', "range": 'uriorcurie'},
         },
@@ -292,7 +292,7 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
         "class": "ProteinGroup",
         "description": 'One protein group in one dataset.',
         "columns": {
-            "protein_group_id": {"description": '<dataset_id>:<sorted accessions joined by ;>', "range": 'string', "identifier": True},
+            "protein_group_id": {"description": '<dataset_id>:<sorted accessions joined by ;>. The accessions are SORTED, so the first one in this id is the alphabetically first and nothing else: MetaMorpheus names no leading, razor or representative protein, and neither does this id (aging 070 57h).', "range": 'string', "identifier": True},
             "dataset_id": {"description": 'Dataset this row belongs to (ProteomeXchange accession).', "range": 'Dataset'},
             "protein_accessions": {"description": 'All protein accessions the peptide maps to.', "range": 'Protein', "multivalued": True},
             "genes": {"description": 'Gene names of the member proteins.', "range": 'string', "multivalued": True},
@@ -451,7 +451,7 @@ TABLE_DOCS: dict[str, dict[str, Any]] = {
         "columns": {
             "definition_id": {"description": "`logs:DEF-GENE-RESOLUTION v1`. A run without Ensembl's xref is not v1 and is refused by the runner (logs 017 section 3).", "range": 'Definition'},
             "accession": {"description": 'As the search database has it, variant suffix and all.', "range": 'string'},
-            "entry_accession": {"description": 'The UniProt entry or unversioned RefSeq accession; verbatim otherwise.', "range": 'string'},
+            "entry_accession": {"description": "The UniProt entry or unversioned RefSeq accession; verbatim otherwise. Joins to `proteins.protein_accession` (the same accession under the name logs' artefact uses); the catalog's `protein_genes` view has already made that join.", "range": 'string'},
             "isoform": {"description": 'UniProt isoform number. NULL: the accession has no `-N` suffix.', "range": 'integer'},
             "namespace": {"description": '`uniprot`, `refseq` or `unrecognized`.', "range": 'string'},
             "outcome": {"description": 'What the resolver found for this protein. The same on every row of one protein.', "range": 'GeneResolutionOutcome', "enum": 'GeneResolutionOutcome'},
