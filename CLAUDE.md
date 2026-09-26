@@ -6,20 +6,21 @@ This folder is a `/project`-managed research project. **You are de facto working
 
 - **Phase:** INCEPTION
 - **Goal:** An AI-ready, API-accessible repository for the search + quant results of the many PRIDE datasets the `aging` pipeline reanalyzes. Humans can use it, but AI agents are the main users. The question it serves is how organelle proteomes change with age.
-- **Pick up at:** **First thing: run the thread checker.** Then **G71**, a short ack to qc 004. Then
-  **aging 069-071 (DATAREPO-53..59, all owed by us)**: 53 (were dropped occupancy duplicates
-  identical? a measurement), 57e (`describe('ptm_sites_by_chemistry')` errors) and 57f (`search`'s
-  corpus-level `is_contaminant`), 59 (how to mark hand-curated ages), then 54 (SDRF reader strips
-  `-calib`), and the site asks 55/56/57a-d/58. Then **sdrf SDRF-DR11** (`publication` source value).
-  G70 shipped: 0.22.0 (`036eaa0`) marks `pep` run-relative in the sql envelope + `pep:DEF-PEP`; pep
-  003 sent (their DATAREPO-60: check wording). Code is datarepo **0.22.0**; 0.21.0 (`c163b15`) is
-  PTM site occupancy (D29), 0.20.0 (`bb2b365`) THE RUNNER (G64). Core schema **0.0.11**, aging study
-  layer **0.3.0**, `bundle.INGESTER_VERSION` **0.16.0**, `runner.RUNNER_VERSION` **1**,
-  `study.STUDY_INGESTER_VERSION` **0.4.0**, `catalog.CATALOG_VERSION` **6**. **D27: dataRepo SHIPS,
+- **Pick up at:** **First thing: run the thread checker.** The inbox was cleared on 2026-09-26:
+  aging 072 answered DATAREPO-53..59, sdrf 018 answered DR10/DR11, pep 003 and qc 005 sent. **In
+  flight with aging:** re-deliver `sample_ages` under layer 0.4.0 with `age_source` (all 236 rows),
+  rebuild the catalog on 0.24.1 (format 7; the 0.24 site refuses older), regenerate the site; re-ingest
+  when convenient; add `pipeline.public_repo/public_commit` to provenance (55e); decide the
+  catalog/Parquet publication (56, Zenodo recommended). Next builds: **G74** (term-only sample columns
+  drop plain names), **G62** (SDRF source columns, now seven values + method + fraction sources),
+  G70 remainder (results.txt PEP block). Code is datarepo **0.24.1** (`f2c7d4a`, CI green); 0.24.0
+  (`8da69d2`) the site; 0.23.0 (`2fcd181`) per-dataset contaminant, compact provenance, age_source;
+  0.22.0 (`036eaa0`) pep guard. Core schema **0.0.11**, aging study layer **0.4.0**,
+  `bundle.INGESTER_VERSION` **0.17.0**, `runner.RUNNER_VERSION` **1**,
+  `study.STUDY_INGESTER_VERSION` **0.5.0**, `catalog.CATALOG_VERSION` **7**. **D27: dataRepo SHIPS,
   the instance operator (aging) RUNS.** Charter **v0.4** (`874bf61`); logs (DATAREPO-46) and phred
-  unsigned (G73). Public site: https://trishorts.github.io/aging-pipeline/. **In flight:** aging's
-  corpus is on 0.21.0 (catalog `1e2f13be6f121fd7`, then `c16e95f79df1da11` with the first 40
-  `sample_ages` rows; the serving file read `328b2e2d7ba0e9cf` on 2026-09-26). Theirs to answer:
+  unsigned (G73). Public site: https://trishorts.github.io/aging-pipeline/. aging's serving catalog
+  read `deddfb23a567c7c7` (34 datasets, 0.21.0) on 2026-09-26. Theirs to answer: pep DATAREPO-60,
   ptmQtl P13/P14 (G72), go/QuantProject/ptmQtl checking
   v0.4 wording, logs DATAREPO-46, sdrf's drafted SDRF (G62), pyMzLib on G68. Other builds: G52
   ProForma diff; G67 leftovers. Each change that reaches rows needs an `INGESTER_VERSION` bump in the

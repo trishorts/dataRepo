@@ -890,7 +890,12 @@ gaps:
     `trusted` for any SDRF present. Build: all matched -> trusted; some -> use matching rows, a finding
     names the rest, not trusted; none -> SDRF unused, flagged sample per run, finding. Cross-check against
     sdrf's `results/benchmark/screen.tsv` (46 SDRFs naming absent files). Needs an INGESTER_VERSION bump
-    and an SdrfStatus value.
+    and an SdrfStatus value. UPDATED 2026-09-26 (sdrf 015-018): seven source values now (+ `default`,
+    `publication`); also store `comment[<column> source reference]` as `source_reference` and ask-for
+    `comment[<column> source method]` (rules|model) as its own column (DR11); fraction and technical
+    replicate get `comment[fraction identifier source]` / `comment[technical replicate source]` (DR10),
+    and until written, drafted fractions are unlabelled and kept out of pooling. The drafted PXD049018
+    SDRF in sdrf 015 is the real input to build against. 0.23.0 already strips -calib in the run key.
   - >-
     G63 [MANIFEST PATH BUILT in 0.18.0, 2026-09-24 (aging said yes in 058): runs.enrichment,
     runs.enrichment_source, datasets.enrichment_mixed, manifest run_enrichment + mixed_enrichment as
