@@ -168,6 +168,7 @@ def parse(
                     # `deposited`: nothing in the file says so (G62).
                     "source": _clean(row.get(f"comment[{inner} source]", "")) or default_source,
                     "source_reference": _clean(row.get(f"comment[{inner} source reference]", "")),
+                    "source_method": _clean(row.get(f"comment[{inner} source method]", "")),
                 })
 
         data_file = _clean(row.get("comment[data file]", "")) or _clean(row.get("assay name", ""))

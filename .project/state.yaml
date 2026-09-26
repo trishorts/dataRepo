@@ -870,8 +870,9 @@ gaps:
     G62 remainder (built in 0.26.0: `sample_characteristics.source` / `source_reference`,
     `runs.fraction_source` / `technical_replicate_source`, the data-file gate with SdrfStatus
     partial / unmatched; G42 closed by `value_reserved`). Checked on sdrf 015's drafted PXD049018 SDRF:
-    replicate `default`, organism and organism part `pride project record`. Left: (a) `source_method`
-    once sdrf answers our DR11 proposal (own column vs prefix); (b) cross-check the gate against sdrf's
+    replicate `default`, organism and organism part `pride project record`. `source_method` added in
+    0.27.0 (sdrf 019: rules / curator / model). Left: (a) run a REAL drafted SDRF carrying the source,
+    method and fraction-source columns (sdrf `e9513dd4`, mzLib #1374) through an ingest; (b) cross-check the gate against sdrf's
     `results/benchmark/screen.tsv` (46 SDRFs naming absent files) when one reaches an ingest.
   - >-
     G63 [MANIFEST PATH BUILT in 0.18.0, 2026-09-24 (aging said yes in 058): runs.enrichment,

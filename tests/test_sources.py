@@ -1093,12 +1093,12 @@ def test_a_drafted_sdrf_says_where_each_value_came_from(tmp_path):
         "source name", "characteristics[organism]", "characteristics[organism part]",
         "characteristics[biological replicate]", "characteristics[age]", "comment[fraction identifier]",
         "comment[technical replicate]", "comment[data file]", "comment[biological replicate source]",
-        "comment[characteristics source]", "comment[age source]", "comment[age source reference]",
+        "comment[characteristics source]", "comment[age source]", "comment[age source reference]", "comment[age source method]",
         "comment[fraction identifier source]",
     ]
     row = [
         "S1", "NT=homo sapiens;AC=NCBITaxon:9606", "NT=Cell culture;AC=BTO:0000214", "1", "24 months",
-        "1", "1", "R1.raw", "default", "pride project record", "publication", "PMC123#Methods", "inferred",
+        "1", "1", "R1.raw", "default", "pride project record", "publication", "PMC123#Methods", "model", "inferred",
     ]
     path = tmp_path / "drafted.sdrf.tsv"
     path.write_text("\t".join(header) + "\n" + "\t".join(row) + "\n", encoding="utf-8")
@@ -1108,6 +1108,8 @@ def test_a_drafted_sdrf_says_where_each_value_came_from(tmp_path):
     assert by["characteristics[biological replicate]"]["source"] == "default"
     assert (by["characteristics[age]"]["source"], by["characteristics[age]"]["source_reference"]) == (
         "publication", "PMC123#Methods")
+    assert by["characteristics[age]"]["source_method"] == "model"
+    assert by["characteristics[organism]"]["source_method"] is None
     assert parsed.run_facts["R1"]["fraction_source"] == "inferred"
     assert parsed.run_facts["R1"]["technical_replicate_source"] is None
 
